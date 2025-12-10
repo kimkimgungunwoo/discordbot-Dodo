@@ -3,7 +3,8 @@ from discord.ext import commands
 
 COGS = [
     "bot.cogs.basic",
-    "bot.cogs.util"
+    "bot.cogs.util",
+    "bot.cogs.test"
 ]
 
 
