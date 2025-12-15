@@ -11,7 +11,8 @@ MAX_CHAT = 10
 
 load_dotenv(ENV_PATH)
 apiKey = os.getenv("GEMINI_API_KEY")
-prompt = os.getenv("chatbot_prompt")
+gemini_prompt=os.getenv("gemini_prompt")
+chatbot_prompt = os.getenv("chatbot_prompt")
 
 genai.configure(api_key=apiKey)
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
@@ -114,14 +115,14 @@ class Util(commands.Cog):
     @commands.command(name="g", aliases=["ㅎ", "AI", "ai"])
     async def gemini(self, ctx, *, message):
         loop = asyncio.get_running_loop()
-        full_message = prompt + message
+        full_message = gemini_prompt + message
         response = await loop.run_in_executor(None, model.generate_content, full_message)
         await ctx.reply(response.text, mention_author=False)
 
     @commands.command(name="c", aliases=["chat", "chatbot", "챗봇", "gemini", "ㅊ"])
     async def geminiChat(self, ctx: commands.Context):
         chat = model.start_chat(history=[])
-        chat.send_message(prompt)
+        chat.send_message(chatbot_prompt)
 
         thread = await ctx.channel.create_thread(
             name=f"{ctx.author.name}-gemini-chat",
