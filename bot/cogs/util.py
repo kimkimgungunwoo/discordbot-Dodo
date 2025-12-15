@@ -5,16 +5,41 @@ import os
 import asyncio
 import discord
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__)) 
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
 MAX_CHAT = 10
 
 load_dotenv(ENV_PATH)
 apiKey = os.getenv("GEMINI_API_KEY")
-prompt= os.getenv("chatbot_prompt")
+prompt = os.getenv("chatbot_prompt")
 
 genai.configure(api_key=apiKey)
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
+
+
+async def _archive_thread(thread: discord.Thread):
+    try:
+        await thread.edit(archived=True)
+    except Exception:
+        return
+    try:
+        await thread.edit(locked=True)
+    except Exception:
+        pass
+
+
+async def _end_session(thread: discord.Thread, state: dict[int, dict], chats: dict[int, object]):
+    st = state.get(thread.id)
+    if st is not None:
+        st["active"] = False
+        st["remaining"] = 0
+        state[thread.id] = st
+    chats.pop(thread.id, None)
+    try:
+        await thread.send("대화가 종료됩니다")
+    except Exception:
+        pass
+    await _archive_thread(thread)
 
 
 class GeminiStopView(discord.ui.View):
@@ -77,11 +102,7 @@ class GeminiStopView(discord.ui.View):
         self.chats.pop(self.thread.id, None)
 
         await interaction.response.send_message("대화가 종료됩니다")
-
-        try:
-            await self.thread.edit(archived=True, locked=True)
-        except Exception:
-            pass
+        await _archive_thread(self.thread)
 
 
 class Util(commands.Cog):
@@ -97,7 +118,7 @@ class Util(commands.Cog):
         response = await loop.run_in_executor(None, model.generate_content, full_message)
         await ctx.reply(response.text, mention_author=False)
 
-    @commands.command(name="c", aliases=["chat", "chatbot", "챗봇", "gemini"])
+    @commands.command(name="c", aliases=["chat", "chatbot", "챗봇", "gemini", "ㅊ"])
     async def geminiChat(self, ctx: commands.Context):
         chat = model.start_chat(history=[])
         chat.send_message(prompt)
@@ -105,7 +126,7 @@ class Util(commands.Cog):
         thread = await ctx.channel.create_thread(
             name=f"{ctx.author.name}-gemini-chat",
             type=discord.ChannelType.public_thread,
-            auto_archive_duration=60
+            auto_archive_duration=60,
         )
 
         self.state[thread.id] = {
@@ -127,14 +148,12 @@ class Util(commands.Cog):
             return
 
         channel = message.channel
-
         if not isinstance(channel, discord.Thread):
             return
 
-        if channel.id not in self.state:
+        st = self.state.get(channel.id)
+        if st is None:
             return
-
-        st = self.state[channel.id]
 
         if not st["active"]:
             return
@@ -142,9 +161,8 @@ class Util(commands.Cog):
         if message.author.id != st["owner_id"]:
             return
 
-        st["remaining"] -= 1
-        remaining = st["remaining"]
-        self.state[channel.id] = st
+        if st["remaining"] <= 0:
+            return
 
         chat = self.chats.get(channel.id)
         if chat is None:
@@ -152,30 +170,26 @@ class Util(commands.Cog):
             return
 
         loop = asyncio.get_running_loop()
-        user_text = message.content
+        try:
+            response = await loop.run_in_executor(None, chat.send_message, message.content)
+            answer = response.text
+        except Exception:
+            await channel.send("오류가 발생했습니다. 대화를 종료합니다.")
+            await _end_session(channel, self.state, self.chats)
+            return
 
-        response = await loop.run_in_executor(None, chat.send_message, user_text)
-        answer = response.text
+        st["remaining"] -= 1
+        remaining = st["remaining"]
+        self.state[channel.id] = st
 
         view = GeminiStopView(channel, self.state, self.chats)
-
         await channel.send(
             content=f"{answer}\n\n남은 대화: {remaining}회",
             view=view,
         )
-        if st["remaining"] == 0:
-            st["active"] = False
-            self.state[channel.id] = st
-            self.chats.pop(channel.id, None)
 
-            await channel.send("대화가 종료됩니다")
-
-            try:
-                await channel.edit(archived=True, locked=True)
-            except Exception:
-                pass
-
-        return
+        if remaining == 0:
+            await _end_session(channel, self.state, self.chats)
 
 
 async def setup(bot):
