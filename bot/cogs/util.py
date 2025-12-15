@@ -5,20 +5,20 @@ import os
 import asyncio
 import discord
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # discordbot/ 절대 경로
+BASE_DIR = os.path.dirname(os.path.dirname(__file__)) 
 ENV_PATH = os.path.join(BASE_DIR, ".env")
 MAX_CHAT = 10
 
 load_dotenv(ENV_PATH)
 apiKey = os.getenv("GEMINI_API_KEY")
-prompt = os.getenv("gemini_prompt")
+prompt= os.getenv("chatbot_prompt")
 
 genai.configure(api_key=apiKey)
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
 
 class GeminiStopView(discord.ui.View):
-    def __init__(self, thread: discord.Thread, state: dict[int, dict], chats: dict[int, any]):
+    def __init__(self, thread: discord.Thread, state: dict[int, dict], chats: dict[int, object]):
         super().__init__(timeout=None)
         self.thread = thread
         self.state = state
@@ -40,7 +40,6 @@ class GeminiStopView(discord.ui.View):
 
         st = self._get_state()
 
-        # 이미 종료된 세션
         if not st["active"]:
             await interaction.response.send_message(
                 "이 대화는 이미 종료되었습니다.",
@@ -48,7 +47,6 @@ class GeminiStopView(discord.ui.View):
             )
             return False
 
-        # 세션 시작한 사람이 아닌 경우
         if interaction.user.id != st["owner_id"]:
             await interaction.response.send_message(
                 "이 세션은 생성한 사람만 종료할 수 있습니다.",
@@ -80,13 +78,17 @@ class GeminiStopView(discord.ui.View):
 
         await interaction.response.send_message("대화가 종료됩니다")
 
+        try:
+            await self.thread.edit(archived=True, locked=True)
+        except Exception:
+            pass
+
 
 class Util(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
         self.state: dict[int, dict] = {}
-        self.chats: dict[int, any] = {}
+        self.chats: dict[int, object] = {}
 
     @commands.command(name="g", aliases=["ㅎ", "AI", "ai"])
     async def gemini(self, ctx, *, message):
@@ -97,13 +99,13 @@ class Util(commands.Cog):
 
     @commands.command(name="c", aliases=["chat", "chatbot", "챗봇", "gemini"])
     async def geminiChat(self, ctx: commands.Context):
-
         chat = model.start_chat(history=[])
         chat.send_message(prompt)
 
         thread = await ctx.channel.create_thread(
             name=f"{ctx.author.name}-gemini-chat",
             type=discord.ChannelType.public_thread,
+            auto_archive_duration=60
         )
 
         self.state[thread.id] = {
@@ -137,17 +139,7 @@ class Util(commands.Cog):
         if not st["active"]:
             return
 
-
         if message.author.id != st["owner_id"]:
-            return
-
-        if st["remaining"] <= 1:
-            st["active"] = False
-            st["remaining"] = 0
-            self.state[channel.id] = st
-            self.chats.pop(channel.id, None)
-
-            await channel.send("대화가 종료됩니다")
             return
 
         st["remaining"] -= 1
@@ -167,11 +159,23 @@ class Util(commands.Cog):
 
         view = GeminiStopView(channel, self.state, self.chats)
 
-
         await channel.send(
             content=f"{answer}\n\n남은 대화: {remaining}회",
             view=view,
         )
+        if st["remaining"] == 0:
+            st["active"] = False
+            self.state[channel.id] = st
+            self.chats.pop(channel.id, None)
+
+            await channel.send("대화가 종료됩니다")
+
+            try:
+                await channel.edit(archived=True, locked=True)
+            except Exception:
+                pass
+
+        return
 
 
 async def setup(bot):
