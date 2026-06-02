@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import os
 import asyncio
 import discord
+import datetime
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -17,6 +18,16 @@ chatbot_prompt = os.getenv("chatbot_prompt")
 genai.configure(api_key=apiKey)
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
+async def alarm(channel, target_time):
+    now = datetime.datetime.now()
+    wait = (target_time - now).total_seconds()
+
+    if wait <= 0:
+        await channel.send("이미 지난 시간이다")
+        return
+
+    await asyncio.sleep(wait)
+    await channel.send("알람 울림")
 
 async def _archive_thread(thread: discord.Thread):
     try:
@@ -191,6 +202,9 @@ class Util(commands.Cog):
 
         if remaining == 0:
             await _end_session(channel, self.state, self.chats)
+
+    
+
 
 
 async def setup(bot):
