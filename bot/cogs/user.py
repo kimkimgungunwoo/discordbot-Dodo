@@ -8,11 +8,14 @@ from api.database import SessionLocal
 from api.crud.user_crud import get_user, register_user
 from api.crud.attendance_crud import get_today_attendance, create_attendance
 from api.crud.game_log_crud import get_recent_game_logs
+from api.crud.gamble_log_crud import get_recent_gamble_logs
 from api.schemas.user_schema import UserInfo
 from api.schemas.game_log_schema import GameLogInfo, GameLogListInfo
+from api.schemas.gamble_log_schema import GambleLogInfo, GambleLogListInfo
 
 
-GAME_TYPE_KR = {"chamchamcham": "참참참", "rsp": "가위바위보", "lotdraw": "제비뽑기"}
+GAME_TYPE_KR   = {"chamchamcham": "참참참", "rsp": "가위바위보", "lotdraw": "제비뽑기"}
+GAMBLE_TYPE_KR = {"holcham": "홀짝", "racing": "경마"}
 _GAME_COL = 10  # "가위바위보" ea-width
 
 
@@ -42,6 +45,25 @@ def _build_game_table(logs: list) -> str:
         else:
             pt = "±0P"
         rows.append(f"{i:>2}  {game}  {log.result}  {_ea_rjust(pt, 6)}")
+    return "```\n" + "\n".join([header, sep, *rows]) + "\n```"
+
+
+_GAMBLE_COL = 4  # "홀짝" ea-width
+
+
+def _build_gamble_table(logs: list) -> str:
+    header = f"{'#':>2}  {_ea_ljust('도박', _GAMBLE_COL)}  결과  {'포인트':>6}"
+    sep = "─" * _ea_width(header)
+    rows = []
+    for i, log in enumerate(logs, 1):
+        gamble = _ea_ljust(GAMBLE_TYPE_KR.get(log.gamble_type, log.gamble_type), _GAMBLE_COL)
+        if log.point > 0:
+            pt = f"+{log.point}P"
+        elif log.point < 0:
+            pt = f"{log.point}P"
+        else:
+            pt = "±0P"
+        rows.append(f"{i:>2}  {gamble}  {log.result}  {_ea_rjust(pt, 6)}")
     return "```\n" + "\n".join([header, sep, *rows]) + "\n```"
 
 
@@ -167,6 +189,51 @@ class UserCog(commands.Cog):
         )
         embed.set_thumbnail(url=ctx.author.display_avatar.url)
         embed.add_field(name="최근 기록", value=_build_game_table(data.game_log_list), inline=False)
+        embed.add_field(name="📊 승률", value=f"**{data.win_rate}%**", inline=True)
+        embed.add_field(name="💰 보유 포인트", value=f"**{data.user.point:,} P**", inline=True)
+        await ctx.reply(embed=embed, mention_author=False)
+
+    @commands.command(name="도박기록")
+    async def gamble_history(self, ctx: commands.Context):
+        async with SessionLocal() as session:
+            user = await get_user(session, ctx.author.id)
+            if user is None:
+                await ctx.reply("`!등록` 명령어로 먼저 등록해주세요.", mention_author=False)
+                return
+
+            logs = await get_recent_gamble_logs(session, ctx.author.id, limit=5)
+
+        if not logs:
+            await ctx.reply("도박 기록이 없습니다. `!도박` 으로 먼저 플레이해보세요!", mention_author=False)
+            return
+
+        wins = sum(1 for log in logs if log.point > 0)
+        win_rate = round(wins / len(logs) * 100, 1)
+
+        user_info = UserInfo(
+            user_nickname=ctx.author.display_name,
+            point=user.point,
+            created_at=user.created_at,
+        )
+        data = GambleLogListInfo(
+            user=user_info,
+            gamble_log_list=[
+                GambleLogInfo(
+                    gamble_type=log.gamble_type,
+                    result="승리" if log.point > 0 else "패배",
+                    point=log.point,
+                )
+                for log in logs
+            ],
+            win_rate=win_rate,
+        )
+
+        embed = discord.Embed(
+            title=f"🎰 {data.user.user_nickname}의 도박 기록",
+            color=discord.Color.gold(),
+        )
+        embed.set_thumbnail(url=ctx.author.display_avatar.url)
+        embed.add_field(name="최근 기록", value=_build_gamble_table(data.gamble_log_list), inline=False)
         embed.add_field(name="📊 승률", value=f"**{data.win_rate}%**", inline=True)
         embed.add_field(name="💰 보유 포인트", value=f"**{data.user.point:,} P**", inline=True)
         await ctx.reply(embed=embed, mention_author=False)

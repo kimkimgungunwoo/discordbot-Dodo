@@ -11,6 +11,7 @@ class GambleType(str, enum.Enum):
     sniffling = "sniffling"
     racing = "racing"
     slotmachine = "slotmachine"
+    holcham = "holcham"
 
 
 class PointReason(str, enum.Enum):

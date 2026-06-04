@@ -12,6 +12,7 @@ COGS = [
     "bot.cogs.music",
     "bot.cogs.control",
     "bot.cogs.user",
+    "bot.cogs.gamble",
 ]
 
 COGS_DIR = Path(__file__).parent.parent / "cogs"

@@ -59,6 +59,17 @@ class Control(commands.Cog):
         )
 
         embed.add_field(
+            name="🎰 도박",
+            value=(
+                "`!도박` — 도박 선택\n"
+                "┣ 홀짝 — 배팅 후 홀/짝 선택. 승리 시 순이익 100%, 패배 시 전액 소멸\n"
+                "┣ 경마 — 배팅 후 말 선택. 1등 순이익 150% / 2등 50% 손실 / 3등 전액 소멸\n"
+                "┗ `!도박기록` — 최근 도박 5판 전적 및 승률 확인"
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
             name="👥 파티",
             value=(
                 "`!party` — 파티 생성\n"
