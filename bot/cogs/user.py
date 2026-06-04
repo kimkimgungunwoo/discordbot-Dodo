@@ -12,7 +12,7 @@ from api.schemas.user_schema import UserInfo
 from api.schemas.game_log_schema import GameLogInfo, GameLogListInfo
 
 
-GAME_TYPE_KR = {"chamchamcham": "참참참", "rsp": "가위바위보"}
+GAME_TYPE_KR = {"chamchamcham": "참참참", "rsp": "가위바위보", "lotdraw": "제비뽑기"}
 _GAME_COL = 10  # "가위바위보" ea-width
 
 

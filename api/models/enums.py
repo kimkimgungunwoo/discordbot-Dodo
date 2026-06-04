@@ -4,6 +4,7 @@ import enum
 class GameType(str, enum.Enum):
     chamchamcham = "chamchamcham"
     rsp = "rsp"
+    lotdraw = "lotdraw"
 
 
 class GambleType(str, enum.Enum):
