@@ -8,7 +8,7 @@ from api.database import SessionLocal
 from api.crud.user_crud import get_user, register_user
 from api.crud.attendance_crud import get_today_attendance, create_attendance
 from api.crud.game_log_crud import get_recent_game_logs
-from api.crud.gamble_log_crud import get_recent_gamble_logs
+from api.crud.gamble_log_crud import get_recent_gamble_logs, get_total_gamble_net, get_total_gamble_win_rate
 from api.schemas.user_schema import UserInfo
 from api.schemas.game_log_schema import GameLogInfo, GameLogListInfo
 from api.schemas.gamble_log_schema import GambleLogInfo, GambleLogListInfo
@@ -202,6 +202,8 @@ class UserCog(commands.Cog):
                 return
 
             logs = await get_recent_gamble_logs(session, ctx.author.id, limit=5)
+            total_net = await get_total_gamble_net(session, ctx.author.id)
+            total_win_rate = await get_total_gamble_win_rate(session, ctx.author.id)
 
         if not logs:
             await ctx.reply("도박 기록이 없습니다. `!도박` 으로 먼저 플레이해보세요!", mention_author=False)
@@ -226,16 +228,23 @@ class UserCog(commands.Cog):
                 for log in logs
             ],
             win_rate=win_rate,
+            total_win_rate=total_win_rate,
+            total_net=total_net,
         )
 
         embed = discord.Embed(
             title=f"🎰 {data.user.user_nickname}의 도박 기록",
             color=discord.Color.gold(),
         )
+        net = data.total_net
+        net_str = f"+{net:,} P" if net > 0 else f"{net:,} P"
+        net_color = "🟢" if net > 0 else ("🔴" if net < 0 else "⚪")
         embed.set_thumbnail(url=ctx.author.display_avatar.url)
         embed.add_field(name="최근 기록", value=_build_gamble_table(data.gamble_log_list), inline=False)
-        embed.add_field(name="📊 승률", value=f"**{data.win_rate}%**", inline=True)
+        embed.add_field(name="📊 최근 승률 (5판)", value=f"**{data.win_rate}%**", inline=True)
+        embed.add_field(name="📈 총 승률", value=f"**{data.total_win_rate}%**", inline=True)
         embed.add_field(name="💰 보유 포인트", value=f"**{data.user.point:,} P**", inline=True)
+        embed.add_field(name=f"{net_color} 총 득실", value=f"**{net_str}**", inline=True)
         await ctx.reply(embed=embed, mention_author=False)
 
 

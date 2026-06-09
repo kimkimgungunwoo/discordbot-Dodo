@@ -17,3 +17,5 @@ class GambleLogListInfo(GambleLogBase):
     user: UserInfo
     gamble_log_list: list[GambleLogInfo]
     win_rate: float
+    total_win_rate: float
+    total_net: int

@@ -9,12 +9,12 @@ from api.crud.gamble_log_crud import create_gamble_log
 from api.models.enums import GambleType
 
 # ── 경마 상수 ──────────────────────────────────────────
-TRACK_LEN     = 40
+TRACK_LEN     = 20
 MAX_TICKS     = 20   # 20 * 0.7s = 14초 (버퍼 포함)
 TICK_INTERVAL = 0.7
 HORSE_EMOJIS  = ["🐴", "🦌", "🐂"]
-# 5% 후진(-1), 나머지 전진 → 평균 약 3.1/tick → 40칸 기준 약 13틱 ≈ 9초
-STEP_POOL = [-1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5]
+# 5% 후진(-1), 평균 약 1.9/tick → 20칸 기준 약 10틱 ≈ 7초
+STEP_POOL = [-1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3]
 RANK_MEDALS   = {1: "🥇", 2: "🥈", 3: "🥉"}
 
 

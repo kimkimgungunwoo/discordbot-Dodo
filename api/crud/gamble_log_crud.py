@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from api.models.gamble_log import GambleLog
 from api.models.user import User
 from api.models.enums import GambleType, PointReason
@@ -30,3 +30,24 @@ async def get_recent_gamble_logs(
         .limit(limit)
     )
     return list(result.scalars().all())
+
+
+async def get_total_gamble_net(session: AsyncSession, user_id: int) -> int:
+    result = await session.execute(
+        select(func.sum(GambleLog.point)).where(GambleLog.user_id == user_id)
+    )
+    return result.scalar() or 0
+
+
+async def get_total_gamble_win_rate(session: AsyncSession, user_id: int) -> float:
+    result = await session.execute(
+        select(func.count()).where(GambleLog.user_id == user_id)
+    )
+    total = result.scalar() or 0
+    if total == 0:
+        return 0.0
+    result = await session.execute(
+        select(func.count()).where(GambleLog.user_id == user_id, GambleLog.point > 0)
+    )
+    wins = result.scalar() or 0
+    return round(wins / total * 100, 1)
