@@ -17,3 +17,4 @@ class User(Base):
     game_logs: Mapped[list["GameLog"]] = relationship(back_populates="user")
     gamble_logs: Mapped[list["GambleLog"]] = relationship(back_populates="user")
     point_histories: Mapped[list["PointHistory"]] = relationship(back_populates="user")
+    riot_favorites: Mapped[list["RiotFavorite"]] = relationship(back_populates="user")
