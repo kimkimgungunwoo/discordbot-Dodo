@@ -2,13 +2,22 @@ import discord
 from discord.ext import commands
 import random
 
+from api.database import SessionLocal
+from api.crud.user_crud import get_user
+from api.crud.game_log_crud import create_game_log
+from api.models.enums import GameType
+
 MOVES = ("가위", "바위", "보")
 IDX = {m: i for i, m in enumerate(MOVES)}
 RPSRESULT = {
-    0: ("비김", discord.Color.light_gray()),
-    1: ("승리", discord.Color.blue()),
-    2: ("패", discord.Color.red()),
+    0: ("비김",  discord.Color.light_gray(), 0),
+    1: ("승리",  discord.Color.blue(),       100),
+    2: ("패배",  discord.Color.red(),        -100),
 }
+
+WIN_POOL  = [100, 200, 300, 400, 500]
+LOSE_POOL = [-100, -200, -300, -400, -500, -600, -700]
+WIN_RATE  = 0.6
 
 
 class GameSelectView(discord.ui.View):
@@ -21,8 +30,9 @@ class GameSelect(discord.ui.Select):
     def __init__(self, cog: "Game"):
         self.cog = cog
         options = [
-            discord.SelectOption(label="참참참", value="cham"),
+            discord.SelectOption(label="참참참",    value="cham"),
             discord.SelectOption(label="가위바위보", value="rps"),
+            discord.SelectOption(label="제비뽑기",  value="lotdraw"),
         ]
         super().__init__(placeholder="게임선택", min_values=1, max_values=1, options=options)
 
@@ -32,6 +42,8 @@ class GameSelect(discord.ui.Select):
             await self.cog.start_cham(interaction)
         elif v == "rps":
             await self.cog.start_rps(interaction)
+        else:
+            await self.cog.start_lotdraw(interaction)
 
 
 class ChamChamChamView(discord.ui.View):
@@ -66,6 +78,16 @@ class RPSView(discord.ui.View):
         await self.cog.play_rps(interaction, "보")
 
 
+class LotdrawView(discord.ui.View):
+    def __init__(self, cog: "Game"):
+        super().__init__(timeout=None)
+        self.cog = cog
+
+    @discord.ui.button(label="🎴 뽑기!", style=discord.ButtonStyle.primary)
+    async def draw(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog.play_lotdraw(interaction)
+
+
 class ChamResultView(discord.ui.View):
     def __init__(self, cog: "Game"):
         super().__init__(timeout=None)
@@ -86,6 +108,27 @@ class RPSResultView(discord.ui.View):
         await self.cog.start_rps(interaction)
 
 
+class LotdrawResultView(discord.ui.View):
+    def __init__(self, cog: "Game"):
+        super().__init__(timeout=None)
+        self.cog = cog
+
+    @discord.ui.button(label="다시하기", style=discord.ButtonStyle.primary)
+    async def retry(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog.start_lotdraw(interaction)
+
+
+async def _require_user(interaction: discord.Interaction, session) -> object | None:
+    user = await get_user(session, interaction.user.id)
+    if user is None:
+        await interaction.response.edit_message(
+            content="`!등록` 명령어로 먼저 등록해주세요.",
+            embed=None,
+            view=None,
+        )
+    return user
+
+
 class Game(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -95,53 +138,94 @@ class Game(commands.Cog):
         await ctx.send("게임을 선택하세요", view=GameSelectView(self))
 
     async def start_cham(self, interaction: discord.Interaction):
-        player = interaction.user
         embed = discord.Embed(
             title="참참참",
-            description=f"{player.mention}\n왼쪽/오른쪽 중 하나를 고르세요",
+            description=f"{interaction.user.mention}\n왼쪽/오른쪽 중 하나를 고르세요",
             color=discord.Color.brand_green(),
         )
         await interaction.response.send_message(embed=embed, view=ChamChamChamView(self))
 
     async def start_rps(self, interaction: discord.Interaction):
-        player = interaction.user
         embed = discord.Embed(
             title="가위바위보",
-            description=f"{player.mention}\n가위/바위/보 중 하나를 고르세요",
+            description=f"{interaction.user.mention}\n가위/바위/보 중 하나를 고르세요",
             color=discord.Color.brand_green(),
         )
         await interaction.response.send_message(embed=embed, view=RPSView(self))
 
-    async def play_cham(self, interaction: discord.Interaction, user_pick: str):
-        player = interaction.user
-        bot_pick = random.choice(["왼", "오"])
-        if user_pick == bot_pick:
-            res = "패배"
-            color = discord.Color.red()
-        else:
-            res = "승리"
-            color = discord.Color.blue()
-
+    async def start_lotdraw(self, interaction: discord.Interaction):
         embed = discord.Embed(
-            title="참참참 결과",
-            description=f"{player.mention}\n너: {user_pick}\n봇: {bot_pick}\n결과: {res}",
-            color=color,
+            title="🎴 제비뽑기",
+            description=f"{interaction.user.mention}\n제비를 뽑아보세요!",
+            color=discord.Color.og_blurple(),
         )
-        await interaction.response.edit_message(embed=embed, view=ChamResultView(self))
+        await interaction.response.send_message(embed=embed, view=LotdrawView(self))
+
+    async def play_cham(self, interaction: discord.Interaction, user_pick: str):
+        async with SessionLocal() as session:
+            user = await _require_user(interaction, session)
+            if user is None:
+                return
+
+            bot_pick = random.choice(["왼", "오"])
+            if user_pick == bot_pick:
+                result, color, delta = "패배", discord.Color.red(), -100
+            else:
+                result, color, delta = "승리", discord.Color.blue(), 100
+
+            await create_game_log(session, user, GameType.chamchamcham, result, delta)
+            new_point = user.point
+
+        point_str = f"+{delta}P" if delta > 0 else f"{delta}P"
+        embed = discord.Embed(title="참참참 결과", color=color)
+        embed.add_field(name="선택", value=f"{interaction.user.display_name}: **{user_pick}** | 봇: **{bot_pick}**", inline=False)
+        embed.add_field(name="결과", value=f"**{result}**", inline=True)
+        embed.add_field(name="포인트", value=f"{point_str} → **{new_point:,}P**", inline=True)
+        await interaction.response.edit_message(embed=embed, view=ChamResultView(self), attachments=[])
 
     async def play_rps(self, interaction: discord.Interaction, user_pick: str):
-        player = interaction.user
-        bot_pick = random.choice(MOVES)
-        u = IDX[user_pick]
-        b = IDX[bot_pick]
-        outcome = RPSRESULT[(u - b) % 3]
+        async with SessionLocal() as session:
+            user = await _require_user(interaction, session)
+            if user is None:
+                return
 
-        embed = discord.Embed(
-            title="가위바위보 결과",
-            description=f"{player.mention}\n너: {user_pick}\n봇: {bot_pick}\n결과: {outcome[0]}",
-            color=outcome[1],
-        )
-        await interaction.response.edit_message(embed=embed, view=RPSResultView(self))
+            bot_pick = random.choice(MOVES)
+            u, b = IDX[user_pick], IDX[bot_pick]
+            result, color, delta = RPSRESULT[(u - b) % 3]
+
+            await create_game_log(session, user, GameType.rsp, result, delta)
+            new_point = user.point
+
+        point_str = f"+{delta}P" if delta > 0 else (f"{delta}P" if delta < 0 else "±0P")
+        embed = discord.Embed(title="가위바위보 결과", color=color)
+        embed.add_field(name="선택", value=f"{interaction.user.display_name}: **{user_pick}** | 봇: **{bot_pick}**", inline=False)
+        embed.add_field(name="결과", value=f"**{result}**", inline=True)
+        embed.add_field(name="포인트", value=f"{point_str} → **{new_point:,}P**", inline=True)
+        await interaction.response.edit_message(embed=embed, view=RPSResultView(self), attachments=[])
+
+    async def play_lotdraw(self, interaction: discord.Interaction):
+        async with SessionLocal() as session:
+            user = await _require_user(interaction, session)
+            if user is None:
+                return
+
+            if random.random() < WIN_RATE:
+                delta  = random.choice(WIN_POOL)
+                result = "승리"
+                color  = discord.Color.blue()
+            else:
+                delta  = random.choice(LOSE_POOL)
+                result = "패배"
+                color  = discord.Color.red()
+
+            await create_game_log(session, user, GameType.lotdraw, result, delta)
+            new_point = user.point
+
+        point_str = f"+{delta}P" if delta > 0 else f"{delta}P"
+        embed = discord.Embed(title="🎴 제비뽑기 결과", color=color)
+        embed.add_field(name="결과", value=f"**{result}**", inline=True)
+        embed.add_field(name="포인트", value=f"{point_str} → **{new_point:,}P**", inline=True)
+        await interaction.response.edit_message(embed=embed, view=LotdrawResultView(self), attachments=[])
 
 
 async def setup(bot: commands.Bot):

@@ -1,5 +1,7 @@
 import discord
 from discord.ext import commands
+from watchfiles import awatch
+from pathlib import Path
 
 COGS = [
     "bot.cogs.basic",
@@ -9,7 +11,12 @@ COGS = [
     "bot.cogs.party",
     "bot.cogs.music",
     "bot.cogs.control",
+    "bot.cogs.user",
+    "bot.cogs.gamble",
+    "bot.cogs.riot",
 ]
+
+COGS_DIR = Path(__file__).parent.parent / "cogs"
 
 
 class MyBot(commands.Bot):
@@ -21,6 +28,22 @@ class MyBot(commands.Bot):
     async def setup_hook(self):
         for ext in COGS:
             await self.load_extension(ext)
+        self.loop.create_task(self._hot_reload())
+
+    async def _hot_reload(self):
+        async for changes in awatch(COGS_DIR):
+            for _, path in changes:
+                p = Path(path)
+                if p.suffix != ".py" or p.stem.startswith("_"):
+                    continue
+                ext = f"bot.cogs.{p.stem}"
+                if ext not in self.extensions:
+                    continue
+                try:
+                    await self.reload_extension(ext)
+                    print(f"[HotReload] {ext} reloaded")
+                except Exception as e:
+                    print(f"[HotReload] {ext} failed: {e}")
 
 
 def create_bot():

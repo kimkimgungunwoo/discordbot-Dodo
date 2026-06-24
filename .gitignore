@@ -2,7 +2,14 @@
 
 __pycache__/
 discordvenv
-test.py 
+test.py
 
 requirements_backup.txt
 requirements.txt
+
+# Claude Code
+CLAUDE.md
+.claude/
+
+# 개인 문서
+docs/

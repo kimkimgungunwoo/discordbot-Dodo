@@ -6,26 +6,6 @@ class Control(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @commands.command(name="bot")
-    async def join(self, ctx: commands.Context):
-        """봇을 현재 음성 채널에 입장시킵니다."""
-        if ctx.author.voice is None:
-            await ctx.send("먼저 음성 채널에 입장하세요!")
-            return
-
-        channel = ctx.author.voice.channel
-        vc: discord.VoiceClient | None = ctx.voice_client
-
-        if vc is not None:
-            if vc.channel == channel:
-                await ctx.send("이미 해당 음성 채널에 있습니다.")
-                return
-            await vc.move_to(channel)
-        else:
-            await channel.connect()
-
-        await ctx.send(f"🎙️ **{channel.name}** 채널에 입장했습니다.")
-
     @commands.command(name="help", aliases=["도움말", "명령어"])
     async def help(self, ctx: commands.Context):
         """사용 가능한 명령어 목록을 보여줍니다."""
@@ -57,8 +37,35 @@ class Control(commands.Cog):
         )
 
         embed.add_field(
+            name="👤 유저",
+            value=(
+                "`!등록` — 유저 등록 (최초 1회, 1,000P 지급)\n"
+                "`!정보` — 내 정보 확인\n"
+                "`!출석` — 출석 체크 (1일 1회, 1,000P / 4% 확률로 2,000P)\n"
+                "`!게임기록` — 최근 게임 5판 전적 및 승률 확인"
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
             name="🎮 게임",
-            value="`!game` — 미니게임 (별칭: `!게임`)",
+            value=(
+                "`!game` — 미니게임 선택 (별칭: `!게임`)\n"
+                "┣ 참참참 — 봇과 방향이 다르면 승리 (+100P / -100P)\n"
+                "┣ 가위바위보 — 봇과 대결 (+100P / ±0P / -100P)\n"
+                "┗ 제비뽑기 — 운에 맡겨라! 승 60% (+100~+500P) / 패 40% (-100~-700P)"
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="🎰 도박",
+            value=(
+                "`!도박` — 도박 선택\n"
+                "┣ 홀짝 — 배팅 후 홀/짝 선택. 승리 시 순이익 100%, 패배 시 전액 소멸\n"
+                "┣ 경마 — 배팅 후 말 선택. 1등 순이익 150% / 2등 50% 손실 / 3등 전액 소멸\n"
+                "┗ `!도박기록` — 최근 도박 5판 전적 및 승률 확인"
+            ),
             inline=False,
         )
 
