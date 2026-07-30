@@ -5,10 +5,13 @@ from typing import TYPE_CHECKING, Callable, Awaitable
 if TYPE_CHECKING:
     from bot.cogs.riot import RiotCog
 
+import discord
 from api.database import SessionLocal
 from api.crud.riot_crud import get_favorites, get_favorite, add_favorite, remove_favorite
 from api.services.riot_api import fetch_profile, fetch_match_history, RiotAPIError
-from bot.cogs.riot.embeds import build_profile_embeds, build_match_embeds
+from api.services.riot_stats import analyze_matches
+from bot.cogs.riot.renderer import render_profile_card, render_match_card, render_stats_card
+
 
 InteractionCallback = Callable[["RiotCog", discord.Interaction, str, str], Awaitable[None]]
 
@@ -27,9 +30,11 @@ async def do_fetch_profile(
     except Exception as e:
         await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
         return
-    embeds = build_profile_embeds(profile)
-    view   = ProfileView(cog, profile.puuid, profile.game_name, profile.tag_line)
-    await interaction.followup.send(embeds=embeds, view=view)
+    img  = await render_profile_card(profile)
+    view = ProfileView(cog, profile.puuid, profile.game_name, profile.tag_line)
+    await interaction.followup.send(
+        file=discord.File(img, "profile.png"), view=view
+    )
 
 
 async def do_fetch_history(
@@ -47,13 +52,33 @@ async def do_fetch_history(
         await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
         return
 
-    embed = discord.Embed(
-        title=f"🎮 {profile.game_name}#{profile.tag_line}",
-        description="어떤 큐의 전적을 볼까요?",
-        color=0x5865F2,
-    )
     view = QueueSelectView(cog, profile.puuid, profile.game_name, profile.tag_line)
-    await interaction.followup.send(embed=embed, view=view)
+    await interaction.followup.send(
+        f"**{profile.game_name}#{profile.tag_line}** — 어떤 큐의 전적을 볼까요?",
+        view=view,
+    )
+
+
+async def do_fetch_stats(
+    cog: RiotCog,
+    interaction: discord.Interaction,
+    game_name: str,
+    tag_line: str,
+):
+    try:
+        profile = await fetch_profile(game_name, tag_line)
+    except RiotAPIError as e:
+        await interaction.followup.send(f"❌ {e}", ephemeral=True)
+        return
+    except Exception as e:
+        await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
+        return
+
+    view = StatsQueueSelectView(cog, profile.puuid, profile.game_name, profile.tag_line)
+    await interaction.followup.send(
+        f"**{profile.game_name}#{profile.tag_line}** — 어떤 큐를 분석할까요?",
+        view=view,
+    )
 
 
 class SearchModal(discord.ui.Modal, title="소환사 검색"):
@@ -189,14 +214,8 @@ class QueueSelectView(discord.ui.View):
             await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
             return
 
-        embeds = build_match_embeds(matches, self.game_name, self.tag_line, queue_label)
-        header = discord.Embed(
-            title=f"📜 {self.game_name}#{self.tag_line}  —  {queue_label} 최근 {len(matches)}게임",
-            color=0x5865F2,
-        )
-        await interaction.followup.send(embeds=[header] + embeds[:9])
-        if len(embeds) > 9:
-            await interaction.followup.send(embeds=embeds[9:])
+        img = await render_match_card(matches, self.game_name, self.tag_line, queue_label)
+        await interaction.followup.send(file=discord.File(img, "matches.png"))
 
     @discord.ui.button(label="🏆 솔로랭크", style=discord.ButtonStyle.primary)
     async def solo(self, interaction: discord.Interaction, _button: discord.ui.Button):
@@ -205,3 +224,44 @@ class QueueSelectView(discord.ui.View):
     @discord.ui.button(label="🏅 자유랭크", style=discord.ButtonStyle.secondary)
     async def flex(self, interaction: discord.Interaction, _button: discord.ui.Button):
         await self._send_history(interaction, 440, "자유랭크")
+
+
+class StatsQueueSelectView(discord.ui.View):
+    def __init__(self, cog: RiotCog, puuid: str, game_name: str, tag_line: str):
+        super().__init__(timeout=120)
+        self.cog       = cog
+        self.puuid     = puuid
+        self.game_name = game_name
+        self.tag_line  = tag_line
+
+    async def _send_stats(
+        self,
+        interaction: discord.Interaction,
+        queue_id: int,
+        queue_label: str,
+    ):
+        await interaction.response.defer()
+        try:
+            matches = await fetch_match_history(self.puuid, queue_id, count=10)
+        except RiotAPIError as e:
+            await interaction.followup.send(f"❌ {e}", ephemeral=True)
+            return
+        except Exception as e:
+            await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
+            return
+
+        stats = analyze_matches(matches)
+        if stats is None:
+            await interaction.followup.send("최근 게임 기록이 없습니다.", ephemeral=True)
+            return
+
+        img = await render_stats_card(stats, self.game_name, self.tag_line, queue_label)
+        await interaction.followup.send(file=discord.File(img, "stats.png"))
+
+    @discord.ui.button(label="🏆 솔로랭크", style=discord.ButtonStyle.primary)
+    async def solo(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await self._send_stats(interaction, 420, "솔로랭크")
+
+    @discord.ui.button(label="🏅 자유랭크", style=discord.ButtonStyle.secondary)
+    async def flex(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await self._send_stats(interaction, 440, "자유랭크")

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:#1a1d23;
+    border-radius:14px;
+    overflow:hidden;
+    width:800px;
+    display:inline-block;
+  }
+
+  .header {
+    padding:13px 18px;
+    background:#20242e;
+    border-bottom:1px solid #2a2f3e;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .h-name { font-size:15px; font-weight:700; color:#e4e8f2; }
+  .h-sub  { font-size:12px; color:#5c6278; }
+
+  .row {
+    display:flex;
+    align-items:center;
+    padding:11px 18px;
+    gap:13px;
+    border-bottom:1px solid #21252f;
+  }
+  .row:last-child { border-bottom:none; }
+
+  .side-bar { width:4px; height:56px; border-radius:2px; flex-shrink:0; }
+
+  .champ-wrap { position:relative; flex-shrink:0; }
+  .champ-icon {
+    width:48px; height:48px;
+    border-radius:8px;
+    object-fit:cover;
+    display:block;
+    background:#2a2f3e;
+  }
+
+  .info { flex:1; min-width:0; }
+
+  .top-line {
+    display:flex;
+    align-items:center;
+    gap:7px;
+    margin-bottom:5px;
+    flex-wrap:nowrap;
+  }
+
+  .result-badge {
+    font-size:10px; font-weight:800;
+    padding:2px 6px; border-radius:3px;
+    letter-spacing:.4px; flex-shrink:0;
+  }
+
+  .champ-name { font-size:14px; font-weight:700; color:#dce1f0; white-space:nowrap; }
+  .multikill  { font-size:11px; color:#faa61a; white-space:nowrap; }
+  .grade      { font-size:12px; color:#9ba3be; white-space:nowrap; }
+
+  .score-chip {
+    font-size:11px; font-weight:700;
+    padding:2px 7px; border-radius:10px;
+    white-space:nowrap; flex-shrink:0;
+  }
+
+  .pos {
+    margin-left:auto;
+    font-size:11px; color:#3d4259;
+    white-space:nowrap;
+  }
+
+  .stat-line {
+    display:flex; align-items:center;
+    gap:0; flex-wrap:nowrap;
+    font-size:12px; color:#5c6278;
+  }
+  .stat-line .v  { color:#bec5d9; font-weight:500; }
+  .stat-line .dot { margin:0 7px; color:#2a2f3e; }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <div class="header">
+    <span class="h-name">{{ game_name }}<span style="color:#3d4259;font-weight:400">#{{ tag_line }}</span></span>
+    <span class="h-sub">— {{ queue_label }} 최근 {{ matches|length }}게임</span>
+  </div>
+
+  {% set mk_map = {2:'더블킬',3:'트리플킬',4:'쿼드라킬',5:'펜타킬'} %}
+  {% for m in matches %}
+  {% set sc = m.score|score_color %}
+  {% set win = m.win %}
+  <div class="row">
+    <div class="side-bar" style="background:{{ '#3ba55c' if win else '#c94d47' }}"></div>
+
+    <div class="champ-wrap">
+      <img class="champ-icon" src="{{ m.champ_icon_url }}" onerror="this.style.opacity=0" alt="">
+    </div>
+
+    <div class="info">
+      <div class="top-line">
+        <span class="result-badge"
+          style="background:{{ '#1b3d27' if win else '#3d1b1b' }};
+                 color:{{ '#3ba55c' if win else '#c94d47' }}">
+          {{ '승' if win else '패' }}
+        </span>
+        <span class="champ-name">{{ m.champion_name }}</span>
+        {% if m.multikill >= 2 %}
+        <span class="multikill">🎯 {{ mk_map[m.multikill] }}</span>
+        {% endif %}
+        <span class="grade">{{ m.grade }}</span>
+        <span class="score-chip"
+          style="background:{{ sc }}18; color:{{ sc }}; border:1px solid {{ sc }}40">
+          {{ m.score }}점
+        </span>
+        <span class="pos">{{ m.position_kr if m.position_kr != '-' else '' }}</span>
+      </div>
+
+      <div class="stat-line">
+        <span class="v">{{ m.kills }}/{{ m.deaths }}/{{ m.assists }}</span>
+        <span class="dot">·</span>
+        <span>KDA <span class="v">{{ m.kda }}</span></span>
+        <span class="dot">·</span>
+        <span>관여 <span class="v">{{ m.kill_participation }}%</span></span>
+        <span class="dot">·</span>
+        <span>딜 <span class="v">{{ m.damage_str }}</span></span>
+        <span class="dot">·</span>
+        <span>CS <span class="v">{{ m.cs }}</span></span>
+        <span class="dot">·</span>
+        <span>{{ m.duration_str }}</span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+</body>
+</html>

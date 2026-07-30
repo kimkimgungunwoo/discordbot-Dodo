@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:#1a1d23;
+    border-radius:14px;
+    overflow:hidden;
+    width:800px;
+    display:inline-block;
+  }
+
+  .section-label {
+    font-size:10px; font-weight:700; letter-spacing:1px;
+    text-transform:uppercase; color:#3d4259;
+    margin-bottom:10px;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding:15px 20px 14px;
+    background:#20242e;
+    border-bottom:1px solid #2a2f3e;
+  }
+  .h-top { display:flex; align-items:baseline; gap:10px; margin-bottom:6px; }
+  .h-name { font-size:16px; font-weight:700; color:#e4e8f2; }
+  .h-sub  { font-size:12px; color:#3d4259; }
+  .avg-score-row { display:flex; align-items:center; gap:8px; }
+  .avg-score-num {
+    font-size:26px; font-weight:700;
+  }
+  .avg-score-label { font-size:12px; color:#5c6278; }
+
+  /* ── Summary row ── */
+  .summary {
+    display:flex;
+    border-bottom:1px solid #2a2f3e;
+  }
+  .stat-box {
+    flex:1; padding:14px 20px;
+    border-right:1px solid #2a2f3e;
+  }
+  .stat-box:last-child { border-right:none; }
+  .stat-label { font-size:10px; color:#3d4259; font-weight:600; letter-spacing:.8px; text-transform:uppercase; margin-bottom:5px; }
+  .stat-val   { font-size:18px; font-weight:700; color:#dce1f0; }
+  .stat-sub   { font-size:11px; color:#5c6278; margin-top:2px; }
+
+  /* ── Grade distribution ── */
+  .grades { padding:14px 20px; border-bottom:1px solid #2a2f3e; }
+  .grade-boxes { display:flex; gap:6px; }
+  .grade-box {
+    flex:1; padding:8px 10px;
+    border-radius:8px; text-align:center;
+  }
+  .grade-box .g-emoji { font-size:18px; }
+  .grade-box .g-count { font-size:17px; font-weight:700; color:#dce1f0; margin-top:3px; }
+  .grade-box .g-label { font-size:10px; color:#5c6278; margin-top:2px; }
+
+  /* ── Two column section ── */
+  .two-col { display:flex; border-bottom:1px solid #2a2f3e; }
+  .col { flex:1; padding:14px 20px; border-right:1px solid #2a2f3e; }
+  .col:last-child { border-right:none; }
+
+  /* ── Team luck ── */
+  .luck-title { font-size:14px; font-weight:700; color:#dce1f0; margin-bottom:10px; }
+  .luck-row { display:flex; justify-content:space-between; margin-bottom:6px; }
+  .luck-key { font-size:12px; color:#5c6278; }
+  .luck-val { font-size:12px; color:#bec5d9; font-weight:500; }
+  .bus-row {
+    display:flex; gap:16px; margin-top:10px;
+    padding-top:10px; border-top:1px solid #21252f;
+  }
+  .bus-item { font-size:12px; color:#5c6278; }
+  .bus-item span { font-weight:700; color:#dce1f0; }
+
+  /* ── Trend ── */
+  .trend-val { font-size:13px; font-weight:700; color:#dce1f0; margin-bottom:10px; }
+  .trend-row { display:flex; justify-content:space-between; margin-bottom:5px; }
+  .trend-key { font-size:12px; color:#5c6278; }
+  .trend-num { font-size:12px; color:#bec5d9; font-weight:500; }
+
+  /* ── Bottom ── */
+  .bottom { padding:14px 20px; }
+  .pos-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .pos-name { font-size:13px; font-weight:600; color:#dce1f0; }
+  .pos-sub  { font-size:12px; color:#5c6278; }
+  .champ-chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .champ-chip {
+    font-size:11px; color:#bec5d9;
+    background:#252932; border-radius:6px;
+    padding:4px 10px;
+  }
+  .champ-chip .cn { font-weight:600; }
+  .champ-chip .cw { color:#5c6278; }
+</style>
+</head>
+<body>
+<div id="card">
+
+  {% set sc = (s.avg_score)|score_color %}
+
+  <!-- Header -->
+  <div class="header">
+    <div class="h-top">
+      <span class="h-name">{{ game_name }}<span style="color:#3d4259;font-weight:400">#{{ tag_line }}</span></span>
+      <span class="h-sub">— {{ queue_label }} 최근 {{ s.total }}게임</span>
+    </div>
+    <div class="avg-score-row">
+      <span class="avg-score-num" style="color:{{ sc }}">{{ s.avg_score }}점</span>
+      <span class="avg-score-label">포지션 보정 평균 점수</span>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary">
+    <div class="stat-box">
+      <div class="stat-label">승률</div>
+      <div class="stat-val" style="color:{{ '#3ba55c' if s.win_rate >= 50 else '#c94d47' }}">
+        {{ s.win_rate }}%
+      </div>
+      <div class="stat-sub">{{ s.wins }}승 {{ s.total - s.wins }}패</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">평균 KDA</div>
+      <div class="stat-val">{{ s.avg_kda }}</div>
+      <div class="stat-sub">KP {{ s.avg_kp }}%</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">평균 딜</div>
+      <div class="stat-val">{{ (s.avg_damage / 1000)|round(1) }}k</div>
+      <div class="stat-sub">딜 기여 {{ s.avg_damage_share }}% · 팀 {{ s.avg_dmg_rank|round(1) }}위</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">CS / 분</div>
+      <div class="stat-val">{{ s.avg_cs_per_min }}</div>
+    </div>
+  </div>
+
+  <!-- Grade distribution -->
+  <div class="grades">
+    <div class="section-label">판당 등급 분포</div>
+    <div class="grade-boxes">
+      <div class="grade-box" style="background:#ff8c001a;border:1px solid #ff8c0040">
+        <div class="g-emoji">🔥</div>
+        <div class="g-count" style="color:#ff8c00">{{ s.carry_count }}</div>
+        <div class="g-label">캐리/혼자함</div>
+      </div>
+      <div class="grade-box" style="background:#3ba55c1a;border:1px solid #3ba55c40">
+        <div class="g-emoji">✅</div>
+        <div class="g-count" style="color:#3ba55c">{{ s.good_count }}</div>
+        <div class="g-label">활약/선방</div>
+      </div>
+      <div class="grade-box" style="background:#5c62781a;border:1px solid #5c627840">
+        <div class="g-emoji">😐</div>
+        <div class="g-count" style="color:#9ba3be">{{ s.normal_count }}</div>
+        <div class="g-label">평범</div>
+      </div>
+      <div class="grade-box" style="background:#c94d471a;border:1px solid #c94d4740">
+        <div class="g-emoji">💀</div>
+        <div class="g-count" style="color:#c94d47">{{ s.bad_count }}</div>
+        <div class="g-label">발목/트롤</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Team luck + Trend -->
+  <div class="two-col">
+    <div class="col">
+      <div class="luck-title">🍀 팀운 — {{ s.luck_score }}</div>
+      <div class="luck-row">
+        <span class="luck-key">잘한 판 ({{ s.good_game_total }}판)</span>
+        {% if s.good_game_total %}
+        <span class="luck-val">{{ s.good_game_wins }}승 {{ s.good_game_total - s.good_game_wins }}패  {{ s.good_win_rate }}%</span>
+        {% else %}
+        <span class="luck-val">기록 없음</span>
+        {% endif %}
+      </div>
+      <div class="luck-row">
+        <span class="luck-key">못한 판 ({{ s.bad_game_total }}판)</span>
+        {% if s.bad_game_total %}
+        <span class="luck-val">{{ s.bad_game_wins }}승 {{ s.bad_game_total - s.bad_game_wins }}패  {{ s.bad_win_rate }}%</span>
+        {% else %}
+        <span class="luck-val">기록 없음</span>
+        {% endif %}
+      </div>
+      <div class="bus-row">
+        <div class="bus-item">통나무 <span>{{ s.carry_loss }}판</span></div>
+        <div class="bus-item">버스 <span>{{ s.bad_win }}판</span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="trend-val">📈 트렌드 — {{ s.trend_arrow }}</div>
+      <div class="trend-row">
+        <span class="trend-key">최근 5판</span>
+        <span class="trend-num">{{ s.recent_wins }}승 {{ 5 - s.recent_wins }}패 · KDA {{ s.recent_avg_kda }}</span>
+      </div>
+      {% if s.total >= 6 %}
+      <div class="trend-row">
+        <span class="trend-key">이전 5판</span>
+        <span class="trend-num">{{ s.prev_wins }}승 {{ (s.total - 5) - s.prev_wins }}패 · KDA {{ s.prev_avg_kda }}</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Position + Champs -->
+  <div class="bottom">
+    <div class="section-label">포지션 · 챔피언</div>
+    <div class="pos-row">
+      <span class="pos-name">
+        {{ {'TOP':'탑','JUNGLE':'정글','MIDDLE':'미드','BOTTOM':'원딜','UTILITY':'서포터'}.get(s.main_position, s.main_position) }}
+      </span>
+      <span class="pos-sub">{{ s.main_pos_total }}판 · {{ s.main_pos_win_rate }}% 승률</span>
+    </div>
+    <div class="champ-chips">
+      {% for name, total, wins in s.top_champs %}
+      <div class="champ-chip">
+        <span class="cn">{{ name }}</span>
+        <span class="cw"> {{ total }}판 {{ wins }}승</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

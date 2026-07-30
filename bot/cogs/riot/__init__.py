@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 
-from bot.cogs.riot.views import RiotMenuView, do_fetch_profile, do_fetch_history
+from bot.cogs.riot.views import RiotMenuView, do_fetch_profile, do_fetch_history, do_fetch_stats
 
 
 class RiotCog(commands.Cog):
@@ -21,6 +21,14 @@ class RiotCog(commands.Cog):
         await ctx.reply(
             "원하는 방식을 선택하세요:",
             view=RiotMenuView(self, do_fetch_history),
+            mention_author=False,
+        )
+
+    @commands.command(name="롤전적분석")
+    async def lol_stats(self, ctx: commands.Context):
+        await ctx.reply(
+            "원하는 방식을 선택하세요:",
+            view=RiotMenuView(self, do_fetch_stats),
             mention_author=False,
         )
 

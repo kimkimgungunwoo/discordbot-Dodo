@@ -4,7 +4,7 @@ import aiohttp
 from collections import Counter
 from dataclasses import dataclass
 from dotenv import load_dotenv
-from api.services.riot_analysis import grade_player
+from api.services.riot_analysis import score_and_grade
 
 load_dotenv()
 
@@ -112,7 +112,10 @@ class MatchResult:
     kill_participation: int   # 0–100
     damage: int               # totalDamageDealtToChampions
     multikill: int            # 0=없음 2=더블 3=트리플 4=쿼드라 5=펜타
-    grade: str                # 포지션 보정 등급 (🔥 캐리 / ✅ 활약 / 😐 평범 / 💀 발목)
+    grade: str                # 포지션 보정 등급
+    damage_share: float       # 팀 딜 기여율 (0–100)
+    dmg_rank: int             # 팀 내 딜 순위 (1–5)
+    score: int                # 포지션 보정 점수 (0–100)
 
     @property
     def kda(self) -> float:
@@ -342,8 +345,15 @@ async def fetch_match_history(puuid: str, queue_id: int, count: int = 5) -> list
 
         all_participants = match["info"]["participants"]
         team_id    = me["teamId"]
-        team_kills = sum(p["kills"] for p in all_participants if p["teamId"] == team_id)
+        team       = [p for p in all_participants if p["teamId"] == team_id]
+        team_kills = sum(p["kills"] for p in team)
         kp         = round((me["kills"] + me["assists"]) / max(team_kills, 1) * 100)
+
+        my_dmg       = me.get("totalDamageDealtToChampions", 0)
+        team_dmg     = sum(p.get("totalDamageDealtToChampions", 0) for p in team)
+        damage_share = round(my_dmg / max(team_dmg, 1) * 100, 1)
+        dmg_rank     = sum(1 for p in team if p.get("totalDamageDealtToChampions", 0) > my_dmg) + 1
+        _score, _grade = score_and_grade(me, all_participants, pos, me["win"])
 
         if me.get("pentaKills", 0):
             multikill = 5
@@ -369,9 +379,12 @@ async def fetch_match_history(puuid: str, queue_id: int, count: int = 5) -> list
                 position=pos,
                 ddragon_version=ddragon_ver,
                 kill_participation=kp,
-                damage=me.get("totalDamageDealtToChampions", 0),
+                damage=my_dmg,
                 multikill=multikill,
-                grade=grade_player(me, all_participants, pos, me["win"]),
+                damage_share=damage_share,
+                dmg_rank=dmg_rank,
+                score=_score,
+                grade=_grade,
             )
         )
     return results

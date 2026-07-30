@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:#1a1d23;
+    border-radius:14px;
+    overflow:hidden;
+    width:800px;
+    display:inline-block;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding:18px 20px;
+    background:#20242e;
+    border-bottom:1px solid #2a2f3e;
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+  .profile-icon {
+    width:60px; height:60px;
+    border-radius:50%;
+    object-fit:cover;
+    border:2px solid #2a2f3e;
+    background:#2a2f3e;
+    flex-shrink:0;
+  }
+  .summoner-name { font-size:21px; font-weight:700; color:#e4e8f2; }
+  .summoner-tag  { color:#3d4259; font-weight:400; }
+  .summoner-lv   { font-size:12px; color:#5c6278; margin-top:3px; }
+
+  /* ── Ranks ── */
+  .ranks { display:flex; border-bottom:1px solid #2a2f3e; }
+  .rank-block {
+    flex:1; padding:16px 20px;
+    border-right:1px solid #2a2f3e;
+  }
+  .rank-block:last-child { border-right:none; }
+
+  .section-label {
+    font-size:10px; font-weight:700; letter-spacing:1px;
+    text-transform:uppercase; color:#3d4259;
+    margin-bottom:12px;
+  }
+
+  .tier-row { display:flex; align-items:center; gap:9px; margin-bottom:9px; }
+  .tier-chip {
+    font-size:10px; font-weight:800;
+    padding:3px 7px; border-radius:3px; letter-spacing:.5px;
+  }
+  .tier-name { font-size:17px; font-weight:700; color:#dce1f0; }
+  .lp-val { margin-left:auto; font-size:12px; color:#5c6278; }
+
+  .bar-bg { height:5px; background:#252932; border-radius:3px; margin-bottom:9px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:3px; }
+
+  .rank-wl { font-size:12px; color:#5c6278; display:flex; gap:7px; }
+  .wr-val { font-weight:700; }
+
+  .unranked { font-size:14px; color:#3d4259; font-style:italic; }
+
+  /* ── Mastery ── */
+  .mastery { padding:16px 20px; }
+  .mastery-row {
+    display:flex; align-items:center;
+    gap:12px; padding:8px 0;
+    border-bottom:1px solid #21252f;
+  }
+  .mastery-row:last-child { border-bottom:none; }
+
+  .medal { font-size:16px; flex-shrink:0; }
+  .mastery-icon {
+    width:40px; height:40px;
+    border-radius:7px; object-fit:cover;
+    background:#2a2f3e; flex-shrink:0;
+  }
+  .mastery-name { font-size:13px; font-weight:600; color:#dce1f0; width:90px; flex-shrink:0; }
+
+  .mbar-bg { flex:1; height:5px; background:#252932; border-radius:3px; overflow:hidden; }
+  .mbar-fill { height:100%; border-radius:3px; background:#5865f2; }
+
+  .mastery-lv  { font-size:11px; color:#5c6278; width:38px; text-align:right; flex-shrink:0; }
+  .mastery-pts { font-size:11px; color:#3d4259; width:88px; text-align:right; flex-shrink:0; }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <!-- Header -->
+  <div class="header">
+    <img class="profile-icon" src="{{ p.profile_icon_url }}" onerror="this.style.opacity=0" alt="">
+    <div>
+      <div class="summoner-name">
+        {{ p.game_name }}<span class="summoner-tag">#{{ p.tag_line }}</span>
+      </div>
+      <div class="summoner-lv">Lv. {{ p.summoner_level }}</div>
+    </div>
+  </div>
+
+  <!-- Ranks -->
+  <div class="ranks">
+    {% for label, rank in [('🏆 솔로랭크', p.solo_rank), ('🏅 자유랭크', p.flex_rank)] %}
+    <div class="rank-block">
+      <div class="section-label">{{ label }}</div>
+      {% if rank %}
+      {% set tc = rank.tier|tier_color %}
+      <div class="tier-row">
+        <span class="tier-chip"
+          style="background:{{ tc }}20; color:{{ tc }}; border:1px solid {{ tc }}50">
+          {{ rank.tier[:3] }}
+        </span>
+        <span class="tier-name">{{ rank.tier_kr }}</span>
+        <span class="lp-val">{{ rank.lp }} LP</span>
+      </div>
+      <div class="bar-bg">
+        <div class="bar-fill" style="width:{{ rank.lp }}%; background:{{ tc }}"></div>
+      </div>
+      <div class="rank-wl">
+        <span>{{ rank.wins }}W {{ rank.losses }}L</span>
+        <span>·</span>
+        <span class="wr-val" style="color:{{ '#3ba55c' if rank.win_rate >= 50 else '#c94d47' }}">
+          {{ rank.win_rate }}%
+        </span>
+      </div>
+      {% else %}
+      <div class="unranked">언랭크</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Mastery -->
+  {% if p.top_champions %}
+  <div class="mastery">
+    <div class="section-label">챔피언 마스터리</div>
+    {% set medals = ['🥇','🥈','🥉'] %}
+    {% for c in p.top_champions %}
+    <div class="mastery-row">
+      <span class="medal">{{ medals[loop.index0] }}</span>
+      <img class="mastery-icon"
+        src="https://ddragon.leagueoflegends.com/cdn/{{ p.ddragon_version }}/img/champion/{{ c.champion_key }}.png"
+        onerror="this.style.opacity=0" alt="">
+      <span class="mastery-name">{{ c.champion_name }}</span>
+      <div class="mbar-bg">
+        <div class="mbar-fill" style="width:{{ [c.mastery_level / 7 * 100, 100]|min }}%"></div>
+      </div>
+      <span class="mastery-lv">Lv.{{ c.mastery_level }}</span>
+      <span class="mastery-pts">{{ c.mastery_points|intfmt }} pt</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+</body>
+</html>
