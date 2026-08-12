@@ -1,5 +1,5 @@
 """
-10판 집계 분석 모듈.
+최근 N판 집계 분석 모듈.
 MatchResult 리스트를 받아 종합 성적·캐리력·팀운·트렌드·포지션/챔프를 집계한다.
 """
 
@@ -47,7 +47,8 @@ class MatchStats:
     carry_loss: int     # 잘했는데 진 판
     bad_win: int        # 못했는데 이긴 판
 
-    # 트렌드 (최근 5 vs 이전 5)
+    # 트렌드 (최근 절반 vs 이전 절반)
+    recent_n: int
     recent_wins: int
     prev_wins: int
     recent_avg_kda: float
@@ -77,13 +78,16 @@ class MatchStats:
         return round(self.bad_game_wins / max(self.bad_game_total, 1) * 100)
 
     @property
+    def prev_n(self) -> int:
+        return self.total - self.recent_n
+
+    @property
     def recent_win_rate(self) -> int:
-        return round(self.recent_wins / max(len_recent := min(self.total, 5), 1) * 100)
+        return round(self.recent_wins / max(self.recent_n, 1) * 100)
 
     @property
     def prev_win_rate(self) -> int:
-        prev_total = max(self.total - 5, 0)
-        return round(self.prev_wins / max(prev_total, 1) * 100) if prev_total else 0
+        return round(self.prev_wins / max(self.prev_n, 1) * 100) if self.prev_n else 0
 
     @property
     def main_pos_win_rate(self) -> int:
@@ -150,9 +154,10 @@ def analyze_matches(matches: list) -> MatchStats | None:
     carry_loss     = sum(1 for m in good_games if not m.win)
     bad_win        = sum(1 for m in bad_games  if m.win)
 
-    # ── 트렌드 ─────────────────────────────────────────
-    recent = matches[:5]
-    prev   = matches[5:] if total >= 6 else []
+    # ── 트렌드 (최근 절반 vs 이전 절반, 최소 5판씩) ────────
+    recent_n = max(total // 2, min(5, total))
+    recent = matches[:recent_n]
+    prev   = matches[recent_n:] if total >= 6 else []
 
     recent_wins    = sum(1 for m in recent if m.win)
     prev_wins      = sum(1 for m in prev   if m.win)
@@ -190,7 +195,7 @@ def analyze_matches(matches: list) -> MatchStats | None:
         good_game_total=len(good_games), good_game_wins=good_game_wins,
         bad_game_total=len(bad_games),   bad_game_wins=bad_game_wins,
         carry_loss=carry_loss, bad_win=bad_win,
-        recent_wins=recent_wins, prev_wins=prev_wins,
+        recent_n=recent_n, recent_wins=recent_wins, prev_wins=prev_wins,
         recent_avg_kda=recent_avg_kda, prev_avg_kda=prev_avg_kda,
         main_position=main_pos, main_pos_total=main_pos_total,
         main_pos_wins=main_pos_wins,

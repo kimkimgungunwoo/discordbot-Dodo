@@ -43,7 +43,10 @@ async def _render(template_name: str, ctx: dict, width: int = 800) -> io.BytesIO
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         try:
-            page = await browser.new_page(viewport={"width": width, "height": 1200})
+            page = await browser.new_page(
+                viewport={"width": width, "height": 1400},
+                device_scale_factor=3,
+            )
             await page.set_content(html, wait_until="networkidle")
             png = await page.locator("#card").screenshot()
         finally:
@@ -63,15 +66,27 @@ async def render_match_card(
         "game_name": game_name,
         "tag_line": tag_line,
         "queue_label": queue_label,
-    })
+    }, width=1300)
 
 
 async def render_stats_card(
-    stats, game_name: str, tag_line: str, queue_label: str
+    stats, game_name: str, tag_line: str, queue_label: str, matches=None
 ) -> io.BytesIO:
     return await _render("stats.html", {
         "s": stats,
+        "matches": matches,
         "game_name": game_name,
         "tag_line": tag_line,
         "queue_label": queue_label,
-    })
+    }, width=1300)
+
+
+async def render_game_analysis_card(
+    detail, game_name: str, tag_line: str, queue_label: str
+) -> io.BytesIO:
+    return await _render("game_analysis.html", {
+        "d": detail,
+        "game_name": game_name,
+        "tag_line": tag_line,
+        "queue_label": queue_label,
+    }, width=1300)

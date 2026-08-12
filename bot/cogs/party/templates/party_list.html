@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:920px;
+    display:inline-block;
+  }
+
+  .header {
+    padding:20px 28px;
+    background:var(--header-bg);
+    border-bottom:1px solid var(--border);
+  }
+  .h-title { font-size:20px; font-weight:800; color:var(--text-primary); }
+  .h-sub   { font-size:14px; font-weight:600; color:var(--text-muted); margin-top:4px; }
+
+  .row {
+    display:flex; align-items:center; gap:18px;
+    padding:20px 28px;
+    border-bottom:1px solid var(--bg-surface-2);
+  }
+  .row:last-child { border-bottom:none; }
+
+  .idx-chip {
+    flex-shrink:0; width:40px; height:40px; border-radius:10px;
+    background:var(--bg-surface-2); color:var(--text-secondary);
+    display:flex; align-items:center; justify-content:center;
+    font-size:17px; font-weight:800;
+  }
+
+  .row-info { flex:1; min-width:0; }
+  .row-title {
+    font-size:19px; font-weight:800; color:var(--text-strong);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .row-meta { display:flex; gap:16px; margin-top:8px; flex-wrap:wrap; }
+  .row-meta-item { font-size:14px; font-weight:600; color:var(--text-muted); white-space:nowrap; }
+  .row-meta-item .v { color:var(--text-secondary); font-weight:700; }
+
+  .member-chip {
+    flex-shrink:0; font-size:15px; font-weight:800; color:var(--chart-accent);
+    background:#8b7cf61a; border:1px solid #8b7cf650;
+    border-radius:12px; padding:8px 16px;
+    white-space:nowrap;
+  }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <div class="header">
+    <div class="h-title">👥 파티 목록</div>
+    <div class="h-sub">총 {{ rows|length }}개</div>
+  </div>
+
+  {% for r in rows %}
+  <div class="row">
+    <div class="idx-chip">{{ r.index }}</div>
+    <div class="row-info">
+      <div class="row-title">{{ r.title }}</div>
+      <div class="row-meta">
+        <span class="row-meta-item">👑 <span class="v">{{ r.host_name }}</span></span>
+        <span class="row-meta-item">🕐 <span class="v">{{ r.time_str }}</span></span>
+      </div>
+    </div>
+    <div class="member-chip">👥 {{ r.member_count }}명</div>
+  </div>
+  {% endfor %}
+
+</div>
+</body>
+</html>

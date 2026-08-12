@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:900px;
+    display:inline-block;
+  }
+
+  .header {
+    padding:18px 26px;
+    background:var(--header-bg);
+    border-bottom:1px solid var(--border);
+  }
+  .h-title { font-size:19px; font-weight:800; color:var(--text-primary); }
+  .h-sub   { font-size:14px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+
+  .section-label {
+    font-size:13px; font-weight:700; letter-spacing:.3px;
+    color:var(--text-secondary);
+    padding:16px 26px 0;
+  }
+
+  /* ── Now playing hero ── */
+  .now-playing {
+    display:flex; align-items:center; gap:20px;
+    padding:18px 26px; border-bottom:1px solid var(--border);
+  }
+  .np-thumb {
+    width:220px; height:124px; border-radius:12px;
+    object-fit:cover; background:var(--bg-track); flex-shrink:0;
+  }
+  .np-info { flex:1; min-width:0; }
+  .np-badge {
+    display:inline-block; font-size:12px; font-weight:800;
+    color:var(--win); background:#1b3d27; border-radius:5px;
+    padding:3px 9px; margin-bottom:8px;
+  }
+  .np-title { font-size:22px; font-weight:800; color:var(--text-primary); line-height:1.3; }
+  .np-sub   { font-size:15px; font-weight:600; color:var(--text-muted); margin-top:6px; }
+  .empty-note { font-size:15px; font-weight:600; color:var(--text-muted); padding:18px 26px; }
+
+  /* ── Upcoming list ── */
+  .upcoming { padding:14px 26px 20px; }
+  .up-row {
+    display:flex; align-items:center; gap:14px;
+    padding:10px 0; border-bottom:1px solid var(--bg-surface-2);
+  }
+  .up-row:last-child { border-bottom:none; }
+  .up-rank {
+    width:24px; flex-shrink:0; text-align:center;
+    font-size:14px; font-weight:800; color:var(--text-muted);
+  }
+  .up-thumb {
+    width:88px; height:50px; border-radius:8px;
+    object-fit:cover; background:var(--bg-track); flex-shrink:0;
+  }
+  .up-info { flex:1; min-width:0; }
+  .up-title {
+    font-size:15px; font-weight:700; color:var(--text-strong);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .up-sub { font-size:13px; font-weight:600; color:var(--text-muted); margin-top:2px; }
+  .up-dur {
+    flex-shrink:0; font-size:13px; font-weight:700; color:var(--text-secondary);
+    background:var(--bg-surface-2); border-radius:6px; padding:4px 10px;
+  }
+
+  .more-note {
+    font-size:13px; font-weight:600; color:var(--text-muted);
+    padding:4px 26px 20px;
+  }
+  .more-note span { color:var(--chart-accent); font-weight:800; }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <div class="header">
+    <div class="h-title">🎵 음악 대기열</div>
+    <div class="h-sub">대기 중 {{ upcoming|length + remaining }}곡</div>
+  </div>
+
+  {% if current %}
+  <div class="now-playing">
+    <img class="np-thumb" src="{{ current.thumbnail }}" onerror="this.style.opacity=0" alt="">
+    <div class="np-info">
+      <div class="np-badge">▶ 재생 중</div>
+      <div class="np-title">{{ current.title }}</div>
+      <div class="np-sub">{{ current.uploader }} · {{ current.duration_str }}</div>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-note">현재 재생 중인 곡이 없습니다.</div>
+  {% endif %}
+
+  <div class="section-label">⏳ 다음 곡</div>
+  <div class="upcoming">
+    {% if upcoming %}
+      {% for t in upcoming %}
+      <div class="up-row">
+        <div class="up-rank">{{ loop.index }}</div>
+        <img class="up-thumb" src="{{ t.thumbnail }}" onerror="this.style.opacity=0" alt="">
+        <div class="up-info">
+          <div class="up-title">{{ t.title }}</div>
+          <div class="up-sub">{{ t.uploader }}</div>
+        </div>
+        <div class="up-dur">{{ t.duration_str }}</div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-note" style="padding:6px 0;">대기 중인 곡이 없습니다.</div>
+    {% endif %}
+  </div>
+
+  {% if remaining > 0 %}
+  <div class="more-note"><span>+{{ remaining }}곡</span> 더 있음 — !음악 대기목록으로 전체 확인</div>
+  {% endif %}
+
+</div>
+</body>
+</html>
