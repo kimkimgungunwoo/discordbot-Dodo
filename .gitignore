@@ -5,7 +5,6 @@ discordvenv
 test.py
 
 requirements_backup.txt
-requirements.txt
 
 # Claude Code
 CLAUDE.md
