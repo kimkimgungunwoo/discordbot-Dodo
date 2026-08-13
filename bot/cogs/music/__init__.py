@@ -63,6 +63,15 @@ class Music(commands.Cog):
             return self.playlist_queues, self.playlist_current
         return self.queues, self.current
 
+    def _clear_guild_state(self, guild_id: int):
+        self.queues.pop(guild_id, None)
+        self.current.pop(guild_id, None)
+        self.playlist_queues.pop(guild_id, None)
+        self.playlist_current.pop(guild_id, None)
+        self.playlist_meta.pop(guild_id, None)
+        self.active_mode.pop(guild_id, None)
+        self._playing_mode.pop(guild_id, None)
+
     async def switch_mode(self, guild: discord.Guild, mode: str):
         """반대 모드가 재생/일시정지 중이면 멈추고 이 모드로 전환한다.
         멈춘 트랙은 잃어버리지 않도록 그 모드의 큐 맨 앞으로 되돌려 놓는다
@@ -126,6 +135,25 @@ class Music(commands.Cog):
             return
         await self.advance(player.guild, mode)
 
+    @commands.Cog.listener()
+    async def on_wavelink_inactive_player(self, player: wavelink.Player):
+        """wavelink가 자체적으로 추적한다 — 곡이 끝난 뒤(또는 애초에 아무것도 안 튼 채)
+        Node의 inactive_player_timeout(기본 300초) 동안 새로 재생을 시작하지 않으면 발생.
+        직접 타이머를 만들 필요 없이 이 이벤트에 맞춰 퇴장 + 상태 정리만 하면 된다."""
+        guild = player.guild
+        if guild is None:
+            return
+
+        home = getattr(player, "home", None)
+        await player.disconnect()
+        self._clear_guild_state(guild.id)
+
+        if home is not None:
+            try:
+                await home.send("⏰ 5분간 재생 활동이 없어 음성 채널에서 자동 퇴장했습니다.")
+            except Exception:
+                pass
+
     @commands.group(name="음악", invoke_without_command=True)
     async def music_group(self, ctx: commands.Context):
         await ctx.reply(embed=category_embed("music"), mention_author=False)
@@ -146,9 +174,24 @@ class Music(commands.Cog):
                 return
             await vc.move_to(channel)
         else:
-            await channel.connect(cls=wavelink.Player)
+            vc = await channel.connect(cls=wavelink.Player)
+
+        vc.home = ctx.channel  # 자동 퇴장 안내를 보낼 텍스트 채널 기억
 
         await ctx.reply(f"🎙️ **{channel.name}** 채널에 입장했습니다.", mention_author=False)
+
+    @music_group.command(name="퇴장")
+    async def leave(self, ctx: commands.Context):
+        """봇을 음성 채널에서 퇴장시키고 대기열/재생목록 상태를 전부 초기화합니다."""
+        vc: wavelink.Player | None = ctx.voice_client
+        if vc is None:
+            await ctx.reply("봇이 음성 채널에 연결되어 있지 않습니다.", mention_author=False)
+            return
+
+        await vc.disconnect()
+        self._clear_guild_state(ctx.guild.id)
+
+        await ctx.reply("👋 음성 채널에서 퇴장했습니다.", mention_author=False)
 
     @music_group.command(name="추가")
     async def add_music(self, ctx: commands.Context):
