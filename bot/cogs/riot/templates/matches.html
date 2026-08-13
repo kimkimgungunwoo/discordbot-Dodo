@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:1300px;
+    display:inline-block;
+  }
+
+  .header {
+    padding:16px 22px;
+    background:var(--header-bg);
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .h-name { font-size:19px; font-weight:800; color:var(--text-primary); }
+  .h-sub  { font-size:14px; font-weight:600; color:var(--text-muted); }
+
+  .summary { display:flex; background:var(--bg-surface); border-bottom:1px solid var(--border); }
+  .stat-box { flex:1; padding:14px 20px; border-right:1px solid var(--border); }
+  .stat-box:last-child { border-right:none; }
+  .stat-label { font-size:11px; color:var(--text-muted); font-weight:700; letter-spacing:.4px; margin-bottom:5px; }
+  .stat-val   { font-size:19px; font-weight:800; color:var(--text-strong); }
+  .stat-sub   { font-size:12px; font-weight:600; color:var(--text-muted); margin-top:2px; }
+
+  .rows-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+
+  .row {
+    display:flex;
+    align-items:center;
+    padding:14px 22px;
+    gap:14px;
+    min-width:0;
+    border-bottom:1px solid var(--bg-surface-2);
+  }
+  .row:nth-child(odd)  { border-right:1px solid var(--border); }
+  .row.no-border-bottom { border-bottom:none; }
+
+  .side-bar { width:5px; height:62px; border-radius:3px; flex-shrink:0; }
+
+  .champ-wrap { position:relative; flex-shrink:0; }
+  .champ-icon {
+    width:52px; height:52px;
+    border-radius:9px;
+    object-fit:cover;
+    display:block;
+    background:var(--border);
+  }
+
+  .info { flex:1; min-width:0; }
+
+  .top-line {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:7px;
+    flex-wrap:nowrap;
+  }
+
+  .result-badge {
+    font-size:12px; font-weight:800;
+    padding:3px 8px; border-radius:4px;
+    letter-spacing:.4px; flex-shrink:0;
+  }
+
+  .champ-name { font-size:16px; font-weight:800; color:var(--text-strong); white-space:nowrap; }
+  .multikill  { font-size:13px; font-weight:700; color:var(--warn); white-space:nowrap; }
+  .grade      { font-size:14px; font-weight:600; color:var(--text-secondary); white-space:nowrap; }
+
+  .score-chip {
+    font-size:13px; font-weight:800;
+    padding:3px 9px; border-radius:12px;
+    white-space:nowrap; flex-shrink:0;
+  }
+
+  .pos {
+    margin-left:auto;
+    font-size:13px; font-weight:600; color:var(--text-muted);
+    white-space:nowrap;
+  }
+
+  .stat-line {
+    display:flex; align-items:center;
+    gap:0; flex-wrap:nowrap;
+    font-size:13px; font-weight:600; color:var(--text-muted);
+  }
+  .stat-line .v  { color:var(--text-secondary); font-weight:700; }
+  .stat-line .dot { margin:0 8px; color:var(--border); }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <div class="header">
+    <span class="h-name">{{ game_name }}<span style="color:var(--text-muted);font-weight:600">#{{ tag_line }}</span></span>
+    <span class="h-sub">— {{ queue_label }} 최근 {{ matches|length }}게임</span>
+  </div>
+
+  {% if matches %}
+  {% set total = matches|length %}
+  {% set wins = matches|selectattr('win')|list|length %}
+  {% set win_rate = (wins / total * 100)|round %}
+  {% set avg_kda = (matches|sum(attribute='kda') / total)|round(2) %}
+  {% set avg_score = (matches|sum(attribute='score') / total)|round(1) %}
+  {% set avg_kp = (matches|sum(attribute='kill_participation') / total)|round %}
+  <div class="summary">
+    <div class="stat-box">
+      <div class="stat-label">승률</div>
+      <div class="stat-val" style="color:{{ 'var(--win)' if win_rate >= 50 else 'var(--lose)' }}">{{ win_rate }}%</div>
+      <div class="stat-sub">{{ wins }}승 {{ total - wins }}패</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">평균 KDA</div>
+      <div class="stat-val">{{ avg_kda }}</div>
+      <div class="stat-sub">KP {{ avg_kp }}%</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">평균 점수</div>
+      <div class="stat-val" style="color:{{ avg_score|score_color }}">{{ avg_score }}점</div>
+      <div class="stat-sub">포지션 보정</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% set mk_map = {2:'더블킬',3:'트리플킬',4:'쿼드라킬',5:'펜타킬'} %}
+  {% set total_rows = matches|length %}
+  {% set last_row_start = total_rows - (2 if total_rows % 2 == 0 else 1) %}
+  <div class="rows-grid">
+  {% for m in matches %}
+  {% set sc = m.score|score_color %}
+  {% set win = m.win %}
+  <div class="row {{ 'no-border-bottom' if loop.index0 >= last_row_start else '' }}">
+    <div class="side-bar" style="background:{{ 'var(--win)' if win else 'var(--lose)' }}"></div>
+
+    <div class="champ-wrap">
+      <img class="champ-icon" src="{{ m.champ_icon_url }}" onerror="this.style.opacity=0" alt="">
+    </div>
+
+    <div class="info">
+      <div class="top-line">
+        <span class="result-badge"
+          style="background:{{ '#1b3d27' if win else '#3d1b1b' }};
+                 color:{{ 'var(--win)' if win else 'var(--lose)' }}">
+          {{ '승' if win else '패' }}
+        </span>
+        <span class="champ-name">{{ m.champion_name }}</span>
+        {% if m.multikill >= 2 %}
+        <span class="multikill">🎯 {{ mk_map[m.multikill] }}</span>
+        {% endif %}
+        <span class="grade">{{ m.grade }}</span>
+        <span class="score-chip"
+          style="background:{{ sc }}33; color:{{ sc }}; border:1px solid {{ sc }}70">
+          {{ m.score }}점
+        </span>
+        <span class="pos">{{ m.position_kr if m.position_kr != '-' else '' }}</span>
+      </div>
+
+      <div class="stat-line">
+        <span class="v">{{ m.kills }}/{{ m.deaths }}/{{ m.assists }}</span>
+        <span class="dot">·</span>
+        <span>KDA <span class="v">{{ m.kda }}</span></span>
+        <span class="dot">·</span>
+        <span>관여 <span class="v">{{ m.kill_participation }}%</span></span>
+        <span class="dot">·</span>
+        <span>딜 <span class="v">{{ m.damage_str }}</span></span>
+        <span class="dot">·</span>
+        <span>CS <span class="v">{{ m.cs }}</span></span>
+        <span class="dot">·</span>
+        <span>{{ m.duration_str }}</span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+
+</div>
+</body>
+</html>

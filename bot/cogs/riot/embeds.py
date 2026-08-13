@@ -1,5 +1,6 @@
 import discord
-from api.services.riot_api import SummonerProfile, QueueStats, MatchResult
+from api.services.riot_api import SummonerProfile, QueueStats, MatchResult, POSITION_KR
+from api.services.riot_stats import MatchStats
 
 TIER_COLORS = {
     "IRON":        0x4A4A4A,
@@ -21,8 +22,16 @@ TIER_BADGE = {
     "CHALLENGER": "🌟",
 }
 
-WIN_COLOR  = 0x57F287
-LOSE_COLOR = 0xED4245
+WIN_COLOR  = 0x3BA55C  # Discord green (muted)
+LOSE_COLOR = 0xC94D47  # Muted red
+
+
+def _score_color(avg_score: float) -> int:
+    if avg_score >= 65:
+        return 0x3BA55C
+    if avg_score >= 45:
+        return 0xFAA61A  # amber
+    return 0xC94D47
 
 
 def _emblem_url(tier: str | None) -> str:
@@ -146,7 +155,7 @@ def build_match_embeds(
 
         author = f"{result}  —  {m.champion_name}" + (f"  🎯 {multi}" if multi else "")
         stats  = (
-            f"{m.grade}  ·  "
+            f"{m.grade}  **{m.score}점**  ·  "
             f"{m.kills}/{m.deaths}/{m.assists} ({m.kda})  ·  "
             f"관여 {m.kill_participation}%  ·  딜 {m.damage_str}  ·  "
             f"CS {m.cs}  ·  {m.duration_str}"
@@ -158,3 +167,83 @@ def build_match_embeds(
         embeds.append(e)
 
     return embeds
+
+
+def build_stats_embeds(
+    stats: MatchStats,
+    game_name: str,
+    tag_line: str,
+    queue_label: str,
+) -> list[discord.Embed]:
+    base_color = _score_color(stats.avg_score)
+
+    # ── Embed 1: 종합 성적 ──────────────────────────────
+    e1 = discord.Embed(
+        title=f"📊 {game_name}#{tag_line}  —  {queue_label} 최근 {stats.total}게임 분석",
+        description=f"평균 점수  **{stats.avg_score}점**  (포지션 보정)",
+        color=base_color,
+    )
+    e1.add_field(
+        name="승률",
+        value=f"{stats.wins}승 {stats.total - stats.wins}패\n**{stats.win_rate}%**",
+        inline=True,
+    )
+    e1.add_field(
+        name="평균 KDA",
+        value=f"**{stats.avg_kda}**\nKP {stats.avg_kp}%",
+        inline=True,
+    )
+    e1.add_field(
+        name="평균 딜 · CS/분",
+        value=f"{stats.avg_damage // 1000:.1f}k  ·  {stats.avg_cs_per_min}",
+        inline=True,
+    )
+
+    # ── Embed 2: 캐리력 ─────────────────────────────────
+    grade_line = (
+        f"🔥 {stats.carry_count}판  "
+        f"✅ {stats.good_count}판  "
+        f"😐 {stats.normal_count}판  "
+        f"💀🐀 {stats.bad_count}판"
+    )
+    e2 = discord.Embed(title="⚔️ 캐리력", color=base_color)
+    e2.add_field(
+        name="딜 기여율 · 팀 내 순위",
+        value=f"평균 **{stats.avg_damage_share}%**  ·  팀 내 평균 **{stats.avg_dmg_rank}위**",
+        inline=False,
+    )
+    e2.add_field(name="등급 분포", value=grade_line, inline=False)
+
+    # ── Embed 3: 팀운 ───────────────────────────────────
+    good_wr  = f"{stats.good_game_wins}승 {stats.good_game_total - stats.good_game_wins}패 ({stats.good_win_rate}%)" if stats.good_game_total else "기록 없음"
+    bad_wr   = f"{stats.bad_game_wins}승 {stats.bad_game_total - stats.bad_game_wins}패 ({stats.bad_win_rate}%)" if stats.bad_game_total else "기록 없음"
+
+    e3 = discord.Embed(title=f"🍀 팀운  —  {stats.luck_score}", color=base_color)
+    e3.add_field(name="잘한 판 (캐리·활약)", value=f"{stats.good_game_total}판 중\n{good_wr}", inline=True)
+    e3.add_field(name="못한 판 (발목·트롤)", value=f"{stats.bad_game_total}판 중\n{bad_wr}", inline=True)
+    e3.add_field(
+        name="통나무  ·  버스",
+        value=f"**{stats.carry_loss}판**  ·  **{stats.bad_win}판**",
+        inline=False,
+    )
+
+    # ── Embed 4: 트렌드 + 포지션/챔프 ───────────────────
+    pos_kr = POSITION_KR.get(stats.main_position, stats.main_position)
+    champ_lines = "  ".join(
+        f"{name} {total}판 {w}승" for name, total, w in stats.top_champs
+    ) or "기록 없음"
+
+    recent_label = f"{stats.recent_wins}승 {5 - stats.recent_wins}패 ({stats.recent_win_rate}%)  KDA {stats.recent_avg_kda}"
+    prev_label   = f"{stats.prev_wins}승 {(stats.total - 5) - stats.prev_wins}패 ({stats.prev_win_rate}%)  KDA {stats.prev_avg_kda}" if stats.total >= 6 else "데이터 부족"
+
+    e4 = discord.Embed(title=f"📈 트렌드  —  {stats.trend_arrow}", color=base_color)
+    e4.add_field(name="최근 5판", value=recent_label, inline=False)
+    e4.add_field(name="이전 5판", value=prev_label,   inline=False)
+    e4.add_field(
+        name="주 포지션",
+        value=f"{pos_kr}  ({stats.main_pos_total}판 · {stats.main_pos_win_rate}%)",
+        inline=True,
+    )
+    e4.add_field(name="주요 챔프", value=champ_lines, inline=True)
+
+    return [e1, e2, e3, e4]

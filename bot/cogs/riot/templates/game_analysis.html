@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:1300px;
+    display:inline-block;
+  }
+
+  .section-label {
+    font-size:14px; font-weight:700; letter-spacing:.3px;
+    color:var(--text-secondary);
+    margin-bottom:13px;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding:22px 26px;
+    background:var(--header-bg);
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    gap:18px;
+  }
+  .result-badge-lg {
+    font-size:20px; font-weight:800;
+    padding:10px 18px; border-radius:10px;
+    flex-shrink:0;
+  }
+  .h-champ-icon {
+    width:64px; height:64px; border-radius:14px;
+    object-fit:cover; background:var(--border); flex-shrink:0;
+  }
+  .h-info { flex:1; }
+  .h-name { font-size:20px; font-weight:800; color:var(--text-primary); }
+  .h-sub  { font-size:14px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+  .h-score-block { text-align:right; flex-shrink:0; }
+  .h-score-num { font-size:36px; font-weight:800; }
+  .h-score-label { font-size:13px; font-weight:600; color:var(--text-secondary); margin-top:2px; }
+
+  /* ── Personal stat row ── */
+  .summary { display:flex; border-bottom:1px solid var(--border); }
+  .stat-box { flex:1; padding:16px 26px; border-right:1px solid var(--border); }
+  .stat-box:last-child { border-right:none; }
+  .stat-label { font-size:12px; color:var(--text-muted); font-weight:700; letter-spacing:.4px; margin-bottom:6px; }
+  .stat-val   { font-size:21px; font-weight:800; color:var(--text-strong); }
+  .stat-sub   { font-size:12px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+
+  /* ── Team compare ── */
+  .compare-badges-row { display:flex; border-bottom:1px solid var(--border); }
+  .compare { flex:1.5; padding:20px 26px; border-right:1px solid var(--border); }
+  .compare-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
+  .compare-side { font-size:15px; font-weight:800; }
+  .compare-row { margin-bottom:12px; }
+  .compare-nums { display:flex; justify-content:space-between; font-size:13px; font-weight:700; color:var(--text-strong); margin-bottom:5px; }
+  .compare-bar { height:8px; border-radius:4px; background:var(--bg-track); overflow:hidden; display:flex; }
+  .compare-bar-mine  { height:100%; background:var(--accent); }
+  .compare-bar-enemy { height:100%; background:var(--lose); }
+  .compare-key { font-size:12px; font-weight:600; color:var(--text-muted); text-align:center; margin-top:4px; }
+  .compare-obj { display:flex; gap:18px; margin-top:16px; flex-wrap:wrap; }
+  .compare-obj-item { font-size:13px; font-weight:600; color:var(--text-muted); }
+  .compare-obj-item span { font-weight:800; color:var(--text-strong); }
+
+  /* ── Ace / Troll ── */
+  .badges { flex:1; display:flex; flex-direction:column; gap:10px; padding:20px 22px; }
+  .badge-card { border-radius:10px; padding:12px 14px; display:flex; align-items:center; gap:10px; }
+  .badge-card.ace   { background:#ffb02014; border:1px solid #ffb02050; }
+  .badge-card.troll { background:#c94d4714; border:1px solid #c94d4750; }
+  .badge-icon { width:38px; height:38px; border-radius:8px; object-fit:cover; background:var(--border); flex-shrink:0; }
+  .badge-title { font-size:11px; font-weight:700; letter-spacing:.3px; }
+  .badge-card.ace   .badge-title { color:var(--warn); }
+  .badge-card.troll .badge-title { color:var(--lose); }
+  .badge-name { font-size:14px; font-weight:800; color:var(--text-strong); margin-top:2px; }
+  .badge-sub  { font-size:12px; font-weight:600; color:var(--text-muted); }
+
+  /* ── Scoreboard ── */
+  .scoreboard { padding:18px 26px; }
+  .sb-row {
+    display:flex; align-items:center; gap:10px;
+    padding:9px 0; border-bottom:1px solid var(--bg-surface-2);
+  }
+  .sb-row:last-child { border-bottom:none; }
+  .sb-row.me { background:#5865f214; margin:0 -12px; padding:9px 12px; border-radius:8px; }
+  .sb-champ-wrap { position:relative; flex-shrink:0; width:40px; height:40px; }
+  .sb-champ-icon { width:40px; height:40px; border-radius:8px; object-fit:cover; background:var(--border); }
+  .sb-spells { display:flex; flex-direction:column; gap:2px; flex-shrink:0; }
+  .sb-spell { width:18px; height:18px; border-radius:4px; background:var(--border); }
+  .sb-name-wrap { width:150px; flex-shrink:0; min-width:0; }
+  .sb-name { font-size:13px; font-weight:700; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sb-pos  { font-size:11px; font-weight:600; color:var(--text-muted); }
+  .sb-kda-wrap { width:100px; flex-shrink:0; }
+  .sb-kda { font-size:13px; font-weight:700; color:var(--text-strong); }
+  .sb-kda-ratio { font-size:11px; font-weight:600; color:var(--text-muted); }
+  .sb-num { width:60px; flex-shrink:0; font-size:13px; font-weight:600; color:var(--text-secondary); text-align:center; }
+  .sb-items { display:flex; gap:2px; flex-shrink:0; }
+  .sb-item { width:22px; height:22px; border-radius:4px; background:var(--bg-track); object-fit:cover; }
+  .sb-score-chip {
+    margin-left:auto; flex-shrink:0;
+    font-size:12px; font-weight:800; padding:3px 9px; border-radius:10px;
+  }
+
+  /* ── Flow chart ── */
+  .flow-section { padding:20px 26px; border-top:1px solid var(--border); }
+  .flow-wrap { position:relative; margin-top:10px; }
+  .flow-legend { display:flex; gap:16px; margin-top:6px; font-size:12px; font-weight:600; color:var(--text-muted); }
+</style>
+</head>
+<body>
+<div id="card">
+
+  {% set my  = d.my_team_totals %}
+  {% set en  = d.enemy_team_totals %}
+  {% set gsc = d.me.score|score_color %}
+
+  <!-- Header -->
+  <div class="header">
+    <span class="result-badge-lg"
+      style="background:{{ '#1b3d27' if d.me.win else '#3d1b1b' }};
+             color:{{ 'var(--win)' if d.me.win else 'var(--lose)' }}">
+      {{ '승리' if d.me.win else '패배' }}
+    </span>
+    <img class="h-champ-icon" src="{{ d.me.champ_icon_url }}" onerror="this.style.opacity=0" alt="">
+    <div class="h-info">
+      <div class="h-name">{{ game_name }}<span style="color:var(--text-muted);font-weight:600">#{{ tag_line }}</span></div>
+      <div class="h-sub">{{ d.me.champion_name }} · {{ d.me.position_kr }} · {{ queue_label }} · {{ d.duration_str }}</div>
+    </div>
+    <div class="h-score-block">
+      <div class="h-score-num" style="color:{{ gsc }}">{{ d.me.score }}점</div>
+      <div class="h-score-label">{{ d.me.grade }}</div>
+    </div>
+  </div>
+
+  <!-- Personal stats -->
+  <div class="summary">
+    <div class="stat-box">
+      <div class="stat-label">KDA</div>
+      <div class="stat-val">{{ d.me.kills }}/{{ d.me.deaths }}/{{ d.me.assists }}</div>
+      <div class="stat-sub">평점 {{ d.me.kda }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">CS</div>
+      <div class="stat-val">{{ d.me.cs }}</div>
+      <div class="stat-sub">{{ (d.me.cs / (d.duration / 60))|round(1) }} / 분</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">딜량</div>
+      <div class="stat-val">{{ (d.me.damage / 1000)|round(1) }}k</div>
+      <div class="stat-sub">시야점수 {{ d.me.vision_score }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">골드</div>
+      <div class="stat-val">{{ (d.me.gold / 1000)|round(1) }}k</div>
+    </div>
+  </div>
+
+  <!-- Team compare + Ace/Troll -->
+  {% set kill_total = my.kills + en.kills %}
+  {% set kill_pct = (my.kills / kill_total * 100)|round(1) if kill_total else 50 %}
+  {% set gold_total = my.gold + en.gold %}
+  {% set gold_pct = (my.gold / gold_total * 100)|round(1) if gold_total else 50 %}
+  <div class="compare-badges-row">
+  <div class="compare">
+    <div class="compare-head">
+      <span class="compare-side" style="color:{{ 'var(--win)' if my.win else 'var(--lose)' }}">🔵 우리팀 {{ '승리' if my.win else '패배' }}</span>
+      <span class="compare-side" style="color:{{ 'var(--win)' if en.win else 'var(--lose)' }}">🔴 상대팀 {{ '승리' if en.win else '패배' }}</span>
+    </div>
+
+    <div class="compare-row">
+      <div class="compare-nums"><span>{{ my.kills }}킬</span><span>{{ en.kills }}킬</span></div>
+      <div class="compare-bar">
+        <div class="compare-bar-mine" style="width:{{ kill_pct }}%"></div>
+        <div class="compare-bar-enemy" style="width:{{ 100 - kill_pct }}%"></div>
+      </div>
+      <div class="compare-key">총 킬</div>
+    </div>
+
+    <div class="compare-row">
+      <div class="compare-nums"><span>{{ (my.gold / 1000)|round(1) }}k</span><span>{{ (en.gold / 1000)|round(1) }}k</span></div>
+      <div class="compare-bar">
+        <div class="compare-bar-mine" style="width:{{ gold_pct }}%"></div>
+        <div class="compare-bar-enemy" style="width:{{ 100 - gold_pct }}%"></div>
+      </div>
+      <div class="compare-key">총 골드</div>
+    </div>
+
+    <div class="compare-obj">
+      <div class="compare-obj-item">퍼스트 블러드 <span>{{ '우리팀' if my.first_blood else '상대팀' }}</span></div>
+      <div class="compare-obj-item">드래곤 <span>{{ my.dragons }} : {{ en.dragons }}</span></div>
+      <div class="compare-obj-item">바론 <span>{{ my.barons }} : {{ en.barons }}</span></div>
+      <div class="compare-obj-item">타워 <span>{{ my.towers }} : {{ en.towers }}</span></div>
+    </div>
+  </div>
+
+  <!-- Ace / Troll -->
+  <div class="badges">
+    <div class="badge-card ace">
+      <img class="badge-icon" src="{{ d.ace.champ_icon_url }}" onerror="this.style.opacity=0" alt="">
+      <div>
+        <div class="badge-title">🏆 이 게임의 에이스</div>
+        <div class="badge-name">{{ d.ace.summoner_name }}</div>
+        <div class="badge-sub">{{ d.ace.champion_name }} · {{ d.ace.score }}점 · {{ '우리팀' if d.ace.team_id == d.me.team_id else '상대팀' }}</div>
+      </div>
+    </div>
+    <div class="badge-card troll">
+      <img class="badge-icon" src="{{ d.troll.champ_icon_url }}" onerror="this.style.opacity=0" alt="">
+      <div>
+        <div class="badge-title">🐀 이 게임의 트롤</div>
+        <div class="badge-name">{{ d.troll.summoner_name }}</div>
+        <div class="badge-sub">{{ d.troll.champion_name }} · {{ d.troll.score }}점 · {{ '우리팀' if d.troll.team_id == d.me.team_id else '상대팀' }}</div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- Scoreboard -->
+  <div class="scoreboard">
+    <div class="section-label">🔵 우리팀 스코어보드</div>
+    {% for p in d.my_team %}
+    <div class="sb-row {{ 'me' if p.puuid == d.me.puuid else '' }}">
+      <div class="sb-champ-wrap">
+        <img class="sb-champ-icon" src="{{ p.champ_icon_url }}" onerror="this.style.opacity=0" alt="">
+      </div>
+      <div class="sb-spells">
+        {% for spell in p.spell_icon_urls %}
+        <img class="sb-spell" src="{{ spell }}" onerror="this.style.opacity=0" alt="">
+        {% endfor %}
+      </div>
+      <div class="sb-name-wrap">
+        <div class="sb-name">{{ p.summoner_name }}</div>
+        <div class="sb-pos">{{ p.position_kr }} · {{ p.champion_name }}</div>
+      </div>
+      <div class="sb-kda-wrap">
+        <div class="sb-kda">{{ p.kills }}/{{ p.deaths }}/{{ p.assists }}</div>
+        <div class="sb-kda-ratio">{{ p.kda }} 평점</div>
+      </div>
+      <div class="sb-num">{{ p.cs }} CS</div>
+      <div class="sb-num">{{ (p.gold / 1000)|round(1) }}k</div>
+      <div class="sb-items">
+        {% for item in p.item_icon_urls %}
+        <img class="sb-item" src="{{ item }}" onerror="this.style.opacity=0" alt="">
+        {% endfor %}
+        {% if p.trinket_icon_url %}
+        <img class="sb-item" src="{{ p.trinket_icon_url }}" onerror="this.style.opacity=0" alt="">
+        {% endif %}
+      </div>
+      {% set psc = p.score|score_color %}
+      <span class="sb-score-chip" style="background:{{ psc }}26; color:{{ psc }}; border:1px solid {{ psc }}55">{{ p.score }}점</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Game flow: gold diff over time -->
+  {% if d.gold_timeline %}
+  {% set cw = 1248 %}
+  {% set ch = 110 %}
+  {% set n = d.gold_timeline|length %}
+  {% set maxabs = d.max_gold_diff_abs %}
+  {% set ns = namespace(pts='', area='') %}
+  {% for minute, gdiff in d.gold_timeline %}
+    {% set x = ((loop.index0 / (n - 1)) * cw)|round(1) if n > 1 else (cw / 2)|round(1) %}
+    {% set y = (ch / 2 - (gdiff / maxabs * (ch / 2)))|round(1) %}
+    {% set ns.pts = ns.pts ~ x|string ~ ',' ~ y|string ~ ' ' %}
+  {% endfor %}
+  <div class="flow-section">
+    <div class="section-label">📈 게임 흐름 (골드 차이 — 위 = 우리팀 우세, 아래 = 상대팀 우세)</div>
+    <div class="flow-wrap">
+      <svg viewBox="0 0 {{ cw }} {{ ch }}" width="100%" height="{{ ch }}">
+        <line x1="0" y1="{{ ch / 2 }}" x2="{{ cw }}" y2="{{ ch / 2 }}"
+          style="stroke:var(--text-muted)" stroke-width="1" stroke-dasharray="4 4" />
+        <polyline points="{{ ns.pts }}" fill="none" style="stroke:var(--chart-accent)"
+          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        {% for minute, gdiff in d.gold_timeline %}
+          {% set x = ((loop.index0 / (n - 1)) * cw)|round(1) if n > 1 else (cw / 2)|round(1) %}
+          {% set y = (ch / 2 - (gdiff / maxabs * (ch / 2)))|round(1) %}
+        <circle cx="{{ x }}" cy="{{ y }}" r="3.5" style="fill:{{ 'var(--win)' if gdiff >= 0 else 'var(--lose)' }}" />
+        {% endfor %}
+      </svg>
+    </div>
+    <div class="flow-legend">
+      <span>{{ d.duration_str }} 경기</span>
+      <span>·</span>
+      <span>최대 격차 {{ (maxabs / 1000)|round(1) }}k</span>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+</body>
+</html>
