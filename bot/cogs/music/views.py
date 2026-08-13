@@ -360,7 +360,15 @@ class PlaylistControlView(discord.ui.View):
             await interaction.response.send_modal(PlaylistSearchModal(self.cog))
             return
 
-        if self.cog.active_mode.get(guild_id) == "playlist" and (vc.playing or vc.paused):
+        # paused를 playing보다 먼저 체크 — wavelink는 일시정지 중에도 곡이 로드돼 있으면
+        # playing이 True라서, 순서가 바뀌면 일시정지된 재생목록을 다시 재생 눌러도
+        # "이미 재생 중"으로 잘못 걸려서 영영 재개가 안 된다.
+        if self.cog.active_mode.get(guild_id) == "playlist" and vc.paused:
+            await vc.pause(False)
+            await interaction.response.send_message("▶️ 재생목록을 재개합니다.", ephemeral=True)
+            return
+
+        if self.cog.active_mode.get(guild_id) == "playlist" and vc.playing:
             await interaction.response.send_message("이미 재생목록이 재생 중입니다.", ephemeral=True)
             return
 
@@ -408,6 +416,9 @@ class PlaylistControlView(discord.ui.View):
         if self.cog.active_mode.get(guild_id) == "playlist" and vc is not None and (vc.playing or vc.paused):
             await vc.stop()
             self.cog.active_mode.pop(guild_id, None)
+            # 이걸 안 지우면 advance()가 이후 계속 "재생 중"이라고 착각해서
+            # 일반 재생이든 재생목록이든 아무것도 새로 안 틀리는 상태가 된다.
+            self.cog._playing_mode.pop(guild_id, None)
 
         self.cog.playlist_queues.pop(guild_id, None)
         self.cog.playlist_current.pop(guild_id, None)
