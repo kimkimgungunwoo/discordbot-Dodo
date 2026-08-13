@@ -1,4 +1,5 @@
 import asyncio
+import os
 import discord
 from discord.ext import commands
 
@@ -29,7 +30,14 @@ class Music(commands.Cog):
         self._advance_locks: dict[int, asyncio.Lock] = {}
 
         if not discord.opus.is_loaded():
-            discord.opus.load_opus("/opt/homebrew/lib/libopus.dylib")
+            # discord.py는 임포트 시점에 ctypes.util.find_library("opus")로 자동 로드를 시도한다.
+            # 리눅스(Dockerfile에서 apt로 libopus0 설치)는 이걸로 충분하지만, macOS Homebrew는
+            # 라이브러리가 표준 검색 경로 밖(/opt/homebrew, /usr/local)에 있어서 자동 로드가 실패함
+            # — 존재하는 경로만 골라서 수동 로드하는 폴백.
+            for candidate in ("/opt/homebrew/lib/libopus.dylib", "/usr/local/lib/libopus.dylib"):
+                if os.path.exists(candidate):
+                    discord.opus.load_opus(candidate)
+                    break
 
     async def cog_unload(self):
         """Cog가 내려갈 때(핫리로드 포함) 호출된다. 여기서 정리하지 않으면
