@@ -6,7 +6,6 @@ from pathlib import Path
 COGS = [
     "bot.cogs.basic",
     "bot.cogs.util",
-    "bot.cogs.test",
     "bot.cogs.game",
     "bot.cogs.party",
     "bot.cogs.music",
