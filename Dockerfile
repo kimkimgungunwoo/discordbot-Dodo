@@ -1,10 +1,6 @@
 FROM python:3.13-slim
 
-# ffmpeg: 음악 재생(yt-dlp)에 필요 / libopus0: 음성 전송(discord.py voice) 인코딩에 필요
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    libopus0 \
-    && rm -rf /var/lib/apt/lists/*
+# 음악 재생/음성 인코딩은 전부 Lavalink(별도 컨테이너)가 담당 — ffmpeg/libopus 불필요.
 
 WORKDIR /app
 

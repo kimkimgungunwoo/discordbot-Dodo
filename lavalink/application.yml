@@ -1,0 +1,46 @@
+server:
+  port: 2333
+  address: 0.0.0.0
+
+lavalink:
+  server:
+    password: "${LAVALINK_SERVER_PASSWORD}"
+    sources:
+      youtube: false   # 내장 소스 대신 아래 youtube-plugin 사용 (OAuth/PO토큰 지원)
+      soundcloud: true
+      bandcamp: true
+      twitch: true
+      vimeo: true
+      http: true
+      local: false
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
+      snapshot: false
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    clients:
+      - TV          # OAuth를 실제로 쓰는 유일한 클라이언트 — 이게 없으면 OAuth 설정이 무시된다
+      - MUSIC
+      - ANDROID_VR
+      - WEB
+      - WEBEMBEDDED
+    oauth:
+      enabled: true
+      # 최초엔 비워두고 기동 → 로그(docker compose logs lavalink)에 뜨는 기기 코드 로그인 링크로
+      # 부계정 인증 → 로그에 찍히는 refresh token을 .env의 YOUTUBE_OAUTH_REFRESH_TOKEN에 저장 후 재기동.
+      refreshToken: "${YOUTUBE_OAUTH_REFRESH_TOKEN:}"
+      skipInitialization: false
+
+metrics:
+  prometheus:
+    enabled: false
+
+logging:
+  level:
+    root: INFO
+    lavalink: INFO
