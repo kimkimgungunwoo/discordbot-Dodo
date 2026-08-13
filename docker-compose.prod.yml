@@ -4,10 +4,13 @@ services:
     restart: unless-stopped
     env_file: .env
     depends_on:
-      - pot-provider
+      - lavalink
 
-  # 유튜브 "Sign in to confirm you're not a bot" 우회용 PO 토큰 발급 사이드카.
-  # bot 컨테이너가 같은 컴포즈 네트워크 안에서 http://pot-provider:4416 으로 접근한다.
-  pot-provider:
-    image: brainicism/bgutil-ytdlp-pot-provider:latest
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
     restart: unless-stopped
+    environment:
+      LAVALINK_SERVER_PASSWORD: ${LAVALINK_PASSWORD}
+      YOUTUBE_OAUTH_REFRESH_TOKEN: ${YOUTUBE_OAUTH_REFRESH_TOKEN:-}
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro

@@ -1,52 +1,12 @@
 from __future__ import annotations
-import asyncio
-import os
 import discord
+import wavelink
 from typing import TYPE_CHECKING
-import yt_dlp
 
 from bot.cogs.music.renderer import render_playlist_card
 
 if TYPE_CHECKING:
     from bot.cogs.music import Music
-
-# 클라우드 서버 IP(AWS 등)는 유튜브가 "Sign in to confirm you're not a bot"으로 막는 경우가 많다.
-# 1) YTDLP_POT_PROVIDER_URL — bgutil-ytdlp-pot-provider 사이드카(docker-compose.prod.yml의
-#    pot-provider 서비스) 주소를 넣으면 PO 토큰을 자동 발급받아 우회. 쿠키 수동 교체가 필요없는 방법.
-# 2) YTDLP_COOKIES_FILE — 그래도 막히면 로그인된 브라우저에서 내보낸 cookies.txt 경로로 폴백.
-# 로컬(집 IP)은 대부분 안 걸려서 둘 다 비워둬도 됨 — 값 없으면 그냥 기존 동작 그대로.
-_COOKIES_FILE = os.getenv("YTDLP_COOKIES_FILE")
-_COOKIE_OPT = {"cookiefile": _COOKIES_FILE} if _COOKIES_FILE and os.path.exists(_COOKIES_FILE) else {}
-
-_POT_PROVIDER_URL = os.getenv("YTDLP_POT_PROVIDER_URL")
-_POT_EXTRACTOR_ARGS = {"youtubepot-bgutilhttp": {"base_url": [_POT_PROVIDER_URL]}} if _POT_PROVIDER_URL else {}
-
-# 검색 전용 옵션: 메타데이터만 빠르게 수집
-YTDL_SEARCH_OPTS = {
-    "quiet": True,
-    "no_warnings": True,
-    "extract_flat": True,   # 각 항목을 완전히 처리하지 않고 메타데이터만
-    "noplaylist": False,    # 검색 결과(플레이리스트 형태)를 허용
-    "extractor_args": {**_POT_EXTRACTOR_ARGS},
-    **_COOKIE_OPT,
-}
-
-# 실제 스트리밍 URL 추출 옵션
-# player_client를 android_vr 등 자동 선택에 맡기면 종종 재생 시점에 403이 나는 URL을 준다 —
-# android/web 클라이언트로 고정해 좀 더 안정적인 URL을 받는다.
-YTDL_STREAM_OPTS = {
-    "format": "bestaudio/best",
-    "quiet": True,
-    "no_warnings": True,
-    "noplaylist": True,
-    "extractor_args": {"youtube": {"player_client": ["android", "web"]}, **_POT_EXTRACTOR_ARGS},
-    **_COOKIE_OPT,
-}
-
-FFMPEG_OPTS = {
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options": "-vn",
-}
 
 
 def format_duration(seconds) -> str:
@@ -59,85 +19,42 @@ def format_duration(seconds) -> str:
 
 
 class Track:
-    """재생할 곡 정보를 담는 클래스.
-    url이 없으면 '미해석' 상태 — 재생목록에서 가볍게 메타데이터만 가져온 경우로,
-    재생 직전에 resolve()로 실제 스트리밍 URL을 해석한다 (한꺼번에 수십 곡을 미리 해석하면
-    느리고, 큐에 오래 묵혀두면 URL이 만료돼 403이 날 수 있어서)."""
-    def __init__(self, data: dict, requester: discord.Member):
-        self.title: str = data.get("title", "알 수 없는 제목")
-        self.url: str | None = data.get("url")          # 스트리밍 URL, 미해석이면 None
-        self.webpage_url: str = data.get("webpage_url") or data.get("url") or ""
-        self.uploader: str = data.get("uploader") or data.get("channel", "알 수 없음")
-        self.duration: int = data.get("duration", 0) or 0
-        self.thumbnail: str = data.get("thumbnail", "")
-        self.http_headers: dict = data.get("http_headers") or {}
+    """wavelink.Playable를 감싸는 얇은 래퍼.
+    title/uploader/thumbnail/duration_str 인터페이스를 유지해서 renderer.py/HTML 템플릿을
+    그대로 재사용한다. wavelink.Playable은 검색 시점에 이미 재생 가능한 상태라
+    (구 yt-dlp 버전처럼) 재생 직전 별도 resolve() 단계가 필요없다."""
+    def __init__(self, playable: wavelink.Playable, requester: discord.Member):
+        self.playable = playable
         self.requester = requester
 
     def __str__(self) -> str:
         return self.title
 
     @property
-    def is_resolved(self) -> bool:
-        return bool(self.url)
-
-    async def resolve(self):
-        """미해석 상태라면 실제 스트리밍 URL과 헤더를 가져와 채운다."""
-        if self.is_resolved:
-            return
-        loop = asyncio.get_running_loop()
-
-        def _fetch():
-            with yt_dlp.YoutubeDL(YTDL_STREAM_OPTS) as ydl:
-                return ydl.extract_info(self.webpage_url, download=False)
-
-        data = await asyncio.wait_for(loop.run_in_executor(None, _fetch), timeout=30)
-        self.url = data["url"]
-        self.http_headers = data.get("http_headers") or {}
+    def title(self) -> str:
+        return self.playable.title or "알 수 없는 제목"
 
     @property
-    def ffmpeg_options(self) -> dict:
-        """스트리밍 URL을 발급한 요청과 동일한 헤더(특히 User-Agent)를 실어 보내지 않으면
-        구글 CDN이 403을 반환한다 — yt-dlp가 알려주는 http_headers를 ffmpeg -headers로 그대로 전달."""
-        opts = dict(FFMPEG_OPTS)
-        if self.http_headers:
-            header_block = "".join(f"{k}: {v}\r\n" for k, v in self.http_headers.items())
-            opts["before_options"] = f'{opts["before_options"]} -headers "{header_block}"'
-        return opts
+    def uploader(self) -> str:
+        return self.playable.author or "알 수 없음"
+
+    @property
+    def thumbnail(self) -> str:
+        return self.playable.artwork or ""
 
     @property
     def duration_str(self) -> str:
-        return format_duration(self.duration)
+        return format_duration((self.playable.length or 0) // 1000)
 
 
-async def search_youtube(query: str, count: int = 10) -> list[dict]:
-    """유튜브에서 count개의 검색 결과를 반환 (메타데이터만)"""
-    loop = asyncio.get_running_loop()
-
-    def _search():
-        with yt_dlp.YoutubeDL(YTDL_SEARCH_OPTS) as ydl:
-            result = ydl.extract_info(f"ytsearch{count}:{query}", download=False)
-            return result.get("entries", []) if result else []
-
-    return await asyncio.wait_for(
-        loop.run_in_executor(None, _search),
-        timeout=30,
-    )
-
-
-async def fetch_track(entry: dict, requester: discord.Member) -> Track:
-    """선택된 항목에서 실제 스트리밍 URL을 포함한 Track을 가져옵니다."""
-    loop = asyncio.get_running_loop()
-    url = entry.get("url") or entry.get("webpage_url") or entry.get("id")
-
-    def _fetch():
-        with yt_dlp.YoutubeDL(YTDL_STREAM_OPTS) as ydl:
-            return ydl.extract_info(url, download=False)
-
-    data = await asyncio.wait_for(
-        loop.run_in_executor(None, _fetch),
-        timeout=30,
-    )
-    return Track(data, requester)
+async def search_youtube(query: str, count: int = 10) -> list[wavelink.Playable]:
+    """유튜브에서 count개의 검색 결과를 반환. 이미 재생 가능한 완전한 Playable들이라
+    선택 시점에 추가 네트워크 호출이 필요없다.
+    source는 기본값(YouTubeMusic/ytmsearch:)이 아니라 명시적으로 YouTube(ytsearch:)를 쓴다 —
+    지금 설정된 클라이언트 조합(TV/WEB/ANDROID_VR 등)에서 ytmsearch:는 항상 빈 결과를 준다."""
+    results = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTube)
+    tracks = results.tracks if isinstance(results, wavelink.Playlist) else results
+    return list(tracks[:count])
 
 
 async def run_music_search(cog: "Music", interaction: discord.Interaction, query: str):
@@ -154,11 +71,10 @@ async def run_music_search(cog: "Music", interaction: discord.Interaction, query
         color=discord.Color.red(),
     )
     for i, e in enumerate(entries, 1):
-        dur = format_duration(e.get("duration") or 0)
-        uploader = e.get("uploader") or e.get("channel") or "알 수 없음"
+        dur = format_duration((e.length or 0) // 1000)
         embed.add_field(
-            name=f"{i}. {e.get('title', '제목 없음')[:50]}",
-            value=f"{uploader} • {dur}",
+            name=f"{i}. {(e.title or '제목 없음')[:50]}",
+            value=f"{e.author or '알 수 없음'} • {dur}",
             inline=False,
         )
 
@@ -193,17 +109,16 @@ class MusicSearchPromptView(discord.ui.View):
 
 
 class MusicSelect(discord.ui.Select):
-    def __init__(self, entries: list[dict], requester: discord.Member):
+    def __init__(self, entries: list[wavelink.Playable], requester: discord.Member):
         self.entries = entries
         self.requester = requester
         options = []
         for i, e in enumerate(entries):
-            dur = format_duration(e.get("duration") or 0)
-            uploader = e.get("uploader") or e.get("channel") or "알 수 없음"
+            dur = format_duration((e.length or 0) // 1000)
             options.append(
                 discord.SelectOption(
-                    label=e.get("title", "제목 없음")[:100],
-                    description=f"{uploader} • {dur}"[:100],
+                    label=(e.title or "제목 없음")[:100],
+                    description=f"{e.author or '알 수 없음'} • {dur}"[:100],
                     value=str(i),
                 )
             )
@@ -220,21 +135,14 @@ class MusicSelect(discord.ui.Select):
         await interaction.response.defer()
         await interaction.edit_original_response(content="🔍 곡 정보를 불러오는 중...", embed=None, view=None)
 
-        vc: discord.VoiceClient | None = interaction.guild.voice_client
+        vc: wavelink.Player | None = interaction.guild.voice_client
         if vc is None:
             await interaction.edit_original_response(
                 content="`!음악 입장` 명령어로 봇을 음성 채널에 먼저 입장시켜주세요."
             )
             return
 
-        try:
-            track = await fetch_track(self.entries[int(self.values[0])], interaction.user)
-        except asyncio.TimeoutError:
-            await interaction.edit_original_response(content="⏱️ 곡 정보를 불러오는 데 너무 오래 걸렸습니다. 다시 시도해주세요.")
-            return
-        except Exception as e:
-            await interaction.edit_original_response(content=f"❌ 곡 정보를 불러오지 못했습니다: {e}")
-            return
+        track = Track(self.entries[int(self.values[0])], interaction.user)
 
         cog: "Music" = interaction.client.cogs.get("Music")
         guild_id = interaction.guild.id
@@ -255,7 +163,7 @@ class MusicSelect(discord.ui.Select):
 
 
 class MusicView(discord.ui.View):
-    def __init__(self, entries: list[dict], requester: discord.Member):
+    def __init__(self, entries: list[wavelink.Playable], requester: discord.Member):
         super().__init__(timeout=30)
         self.add_item(MusicSelect(entries, requester))
 
@@ -269,7 +177,7 @@ class RemoveSelect(discord.ui.Select):
         options = [
             discord.SelectOption(
                 label=t.title[:100],
-                description=f"{t.uploader} • {format_duration(t.duration)}"[:100],
+                description=f"{t.uploader} • {t.duration_str}"[:100],
                 value=str(i),
             )
             for i, t in enumerate(queue[:self.MAX_OPTIONS])
@@ -364,45 +272,20 @@ PLAYLIST_MAX = 50  # 재생목록 전체를 무제한으로 받으면 느리고 
 
 
 async def extract_playlist(url: str, requester: discord.Member) -> tuple[list[Track], str, str]:
-    """재생목록 URL에서 최대 PLAYLIST_MAX곡의 메타데이터만 가볍게 가져온다.
-    (제목, 썸네일, 곡 목록) 반환. 각 곡의 실제 스트리밍 URL은 재생 직전에 해석된다."""
-    loop = asyncio.get_running_loop()
-
-    def _extract():
-        opts = {**YTDL_SEARCH_OPTS, "playlistend": PLAYLIST_MAX}
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            return ydl.extract_info(url, download=False)
-
-    data = await asyncio.wait_for(loop.run_in_executor(None, _extract), timeout=60)
-    if not data or "entries" not in data:
+    """재생목록 URL에서 최대 PLAYLIST_MAX곡을 가져온다. (제목, 썸네일, 곡 목록) 반환."""
+    result = await wavelink.Playable.search(url)
+    if not isinstance(result, wavelink.Playlist):
         raise ValueError("재생목록 링크가 아닌 것 같습니다.")
 
-    entries = [e for e in data.get("entries") or [] if e][:PLAYLIST_MAX]
-    fallback_uploader = data.get("channel") or data.get("uploader") or "알 수 없음"
-
-    tracks = []
-    for e in entries:
-        vid = e.get("id", "")
-        tracks.append(Track({
-            "title": e.get("title", "알 수 없는 제목"),
-            "webpage_url": e.get("url") or (f"https://www.youtube.com/watch?v={vid}" if vid else ""),
-            "duration": e.get("duration") or 0,
-            "uploader": e.get("uploader") or e.get("channel") or fallback_uploader,
-            "thumbnail": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if vid else "",
-        }, requester))
-
-    title = data.get("title") or "재생목록"
-    thumbs = data.get("thumbnails") or []
-    thumbnail = thumbs[-1]["url"] if thumbs else (tracks[0].thumbnail if tracks else "")
+    tracks = [Track(p, requester) for p in list(result.tracks[:PLAYLIST_MAX])]
+    title = result.name or "재생목록"
+    thumbnail = result.artwork or (tracks[0].thumbnail if tracks else "")
     return tracks, title, thumbnail
 
 
 async def load_playlist(cog: "Music", interaction: discord.Interaction, url: str):
     try:
         tracks, title, thumbnail = await extract_playlist(url, interaction.user)
-    except asyncio.TimeoutError:
-        await interaction.followup.send("⏱️ 재생목록을 불러오는 데 너무 오래 걸렸습니다. 다시 시도해주세요.", ephemeral=True)
-        return
     except Exception as e:
         await interaction.followup.send(f"❌ 재생목록을 불러오지 못했습니다: {e}", ephemeral=True)
         return
@@ -410,7 +293,7 @@ async def load_playlist(cog: "Music", interaction: discord.Interaction, url: str
         await interaction.followup.send("재생목록에서 곡을 찾지 못했습니다.", ephemeral=True)
         return
 
-    vc: discord.VoiceClient | None = interaction.guild.voice_client
+    vc: wavelink.Player | None = interaction.guild.voice_client
     if vc is None:
         await interaction.followup.send(
             "`!음악 입장` 명령어로 봇을 음성 채널에 먼저 입장시켜주세요.", ephemeral=True
@@ -462,7 +345,7 @@ class PlaylistControlView(discord.ui.View):
     @discord.ui.button(label="▶️ 재생", style=discord.ButtonStyle.success)
     async def play(self, interaction: discord.Interaction, _button: discord.ui.Button):
         guild_id = interaction.guild.id
-        vc: discord.VoiceClient | None = interaction.guild.voice_client
+        vc: wavelink.Player | None = interaction.guild.voice_client
         if vc is None:
             await interaction.response.send_message(
                 "`!음악 입장` 명령어로 봇을 음성 채널에 먼저 입장시켜주세요.", ephemeral=True
@@ -477,7 +360,7 @@ class PlaylistControlView(discord.ui.View):
             await interaction.response.send_modal(PlaylistSearchModal(self.cog))
             return
 
-        if self.cog.active_mode.get(guild_id) == "playlist" and (vc.is_playing() or vc.is_paused()):
+        if self.cog.active_mode.get(guild_id) == "playlist" and (vc.playing or vc.paused):
             await interaction.response.send_message("이미 재생목록이 재생 중입니다.", ephemeral=True)
             return
 
@@ -499,15 +382,15 @@ class PlaylistControlView(discord.ui.View):
     @discord.ui.button(label="⏸️ 중지", style=discord.ButtonStyle.secondary)
     async def stop(self, interaction: discord.Interaction, _button: discord.ui.Button):
         guild_id = interaction.guild.id
-        vc: discord.VoiceClient | None = interaction.guild.voice_client
-        if vc is None or self.cog.active_mode.get(guild_id) != "playlist" or not vc.is_playing():
-            if vc is not None and vc.is_paused() and self.cog.active_mode.get(guild_id) == "playlist":
+        vc: wavelink.Player | None = interaction.guild.voice_client
+        if vc is None or self.cog.active_mode.get(guild_id) != "playlist" or not vc.playing:
+            if vc is not None and vc.paused and self.cog.active_mode.get(guild_id) == "playlist":
                 await interaction.response.send_message("이미 일시정지 상태입니다.", ephemeral=True)
             else:
                 await interaction.response.send_message("재생 중인 재생목록이 없습니다.", ephemeral=True)
             return
 
-        vc.pause()
+        await vc.pause(True)
         await interaction.response.send_message("⏸️ 재생목록을 일시정지했습니다.", ephemeral=True)
 
     @discord.ui.button(label="🗑️ 제거", style=discord.ButtonStyle.danger)
@@ -521,9 +404,9 @@ class PlaylistControlView(discord.ui.View):
             await interaction.response.send_message("불러온 재생목록이 없습니다.", ephemeral=True)
             return
 
-        vc: discord.VoiceClient | None = interaction.guild.voice_client
-        if self.cog.active_mode.get(guild_id) == "playlist" and vc is not None and (vc.is_playing() or vc.is_paused()):
-            vc.stop()
+        vc: wavelink.Player | None = interaction.guild.voice_client
+        if self.cog.active_mode.get(guild_id) == "playlist" and vc is not None and (vc.playing or vc.paused):
+            await vc.stop()
             self.cog.active_mode.pop(guild_id, None)
 
         self.cog.playlist_queues.pop(guild_id, None)

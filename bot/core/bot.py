@@ -1,4 +1,6 @@
+import os
 import discord
+import wavelink
 from discord.ext import commands
 from watchfiles import awatch
 from pathlib import Path
@@ -25,6 +27,9 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents, help_command=None)
 
     async def setup_hook(self):
+        node = wavelink.Node(uri=os.environ["LAVALINK_URI"], password=os.environ["LAVALINK_PASSWORD"])
+        await wavelink.Pool.connect(nodes=[node], client=self)
+
         for ext in COGS:
             await self.load_extension(ext)
         self.loop.create_task(self._hot_reload())
