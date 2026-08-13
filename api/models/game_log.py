@@ -1,20 +1,12 @@
-from sqlalchemy import BigInteger, Integer, String, DateTime, ForeignKey, Enum as SAEnum, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from api.database import Base
-from api.models.enums import GameType
+from dataclasses import dataclass
 import datetime
+from api.models.enums import GameType
 
 
-class GameLog(Base):
-    __tablename__ = "game_log"
-
-    game_log_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("user.user_id"), nullable=False)
-    game_type: Mapped[GameType] = mapped_column(SAEnum(GameType), nullable=False)
-    result: Mapped[str] = mapped_column(String, nullable=False)
-    point: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=False), server_default=func.now()
-    )
-
-    user: Mapped["User"] = relationship(back_populates="game_logs")
+@dataclass
+class GameLog:
+    user_id: int
+    game_type: GameType
+    result: str
+    point: int
+    created_at: datetime.datetime | None = None

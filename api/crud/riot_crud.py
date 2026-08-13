@@ -1,53 +1,62 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+import datetime
+from boto3.dynamodb.conditions import Key
+from api.database import DynamoSession
 from api.models.riot_favorite import RiotFavorite
 
 
-async def get_favorites(session: AsyncSession, discord_user_id: int) -> list[RiotFavorite]:
-    result = await session.execute(
-        select(RiotFavorite)
-        .where(RiotFavorite.discord_user_id == discord_user_id)
-        .order_by(RiotFavorite.created_at.desc())
+def _row_to_favorite(item: dict) -> RiotFavorite:
+    return RiotFavorite(
+        discord_user_id=int(item["discord_user_id"]),
+        puuid=item["puuid"],
+        game_name=item["game_name"],
+        tag_line=item["tag_line"],
+        created_at=datetime.datetime.fromisoformat(item["created_at"]),
     )
-    return list(result.scalars().all())
 
 
-async def get_favorite(
-    session: AsyncSession, discord_user_id: int, puuid: str
-) -> RiotFavorite | None:
-    result = await session.execute(
-        select(RiotFavorite).where(
-            RiotFavorite.discord_user_id == discord_user_id,
-            RiotFavorite.puuid == puuid,
-        )
+async def get_favorites(session: DynamoSession, discord_user_id: int) -> list[RiotFavorite]:
+    table = await session.table("riot_favorite")
+    resp = await table.query(
+        KeyConditionExpression=Key("discord_user_id").eq(discord_user_id),
     )
-    return result.scalar_one_or_none()
+    items = sorted(resp.get("Items", []), key=lambda i: i["created_at"], reverse=True)
+    return [_row_to_favorite(i) for i in items]
+
+
+async def get_favorite(session: DynamoSession, discord_user_id: int, puuid: str) -> RiotFavorite | None:
+    table = await session.table("riot_favorite")
+    resp = await table.get_item(
+        Key={"discord_user_id": discord_user_id, "puuid": puuid}
+    )
+    item = resp.get("Item")
+    return _row_to_favorite(item) if item else None
 
 
 async def add_favorite(
-    session: AsyncSession,
+    session: DynamoSession,
     discord_user_id: int,
     puuid: str,
     game_name: str,
     tag_line: str,
 ) -> RiotFavorite:
-    fav = RiotFavorite(
-        discord_user_id=discord_user_id,
-        puuid=puuid,
-        game_name=game_name,
-        tag_line=tag_line,
+    now = datetime.datetime.utcnow()
+    table = await session.table("riot_favorite")
+    await table.put_item(Item={
+        "discord_user_id": discord_user_id,
+        "puuid": puuid,
+        "game_name": game_name,
+        "tag_line": tag_line,
+        "created_at": now.isoformat(),
+    })
+    return RiotFavorite(
+        discord_user_id=discord_user_id, puuid=puuid, game_name=game_name, tag_line=tag_line, created_at=now,
     )
-    session.add(fav)
-    await session.commit()
-    return fav
 
 
-async def remove_favorite(
-    session: AsyncSession, discord_user_id: int, puuid: str
-) -> bool:
-    fav = await get_favorite(session, discord_user_id, puuid)
-    if fav is None:
-        return False
-    await session.delete(fav)
-    await session.commit()
-    return True
+async def remove_favorite(session: DynamoSession, discord_user_id: int, puuid: str) -> bool:
+    table = await session.table("riot_favorite")
+    resp = await table.delete_item(
+        Key={"discord_user_id": discord_user_id, "puuid": puuid},
+        ReturnValues="ALL_OLD",
+    )
+    return "Attributes" in resp

@@ -10,6 +10,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
 MAX_CHAT = 10
 
+GEMINI_DISABLED = True  # 임시 차단 — 재활성화하려면 False로 변경
+GEMINI_DISABLED_MSG = "🚧 AI 챗봇 기능은 현재 일시적으로 사용할 수 없습니다."
+
 load_dotenv(ENV_PATH)
 apiKey = os.getenv("GEMINI_API_KEY")
 gemini_prompt=os.getenv("gemini_prompt")
@@ -125,6 +128,9 @@ class Util(commands.Cog):
 
     @commands.command(name="g", aliases=["ㅎ", "AI", "ai"])
     async def gemini(self, ctx, *, message):
+        if GEMINI_DISABLED:
+            await ctx.reply(GEMINI_DISABLED_MSG, mention_author=False)
+            return
         loop = asyncio.get_running_loop()
         full_message = gemini_prompt + message
         response = await loop.run_in_executor(None, model.generate_content, full_message)
@@ -132,6 +138,9 @@ class Util(commands.Cog):
 
     @commands.command(name="c", aliases=["chat", "chatbot", "챗봇", "gemini", "ㅊ"])
     async def geminiChat(self, ctx: commands.Context):
+        if GEMINI_DISABLED:
+            await ctx.reply(GEMINI_DISABLED_MSG, mention_author=False)
+            return
         chat = model.start_chat(history=[])
         chat.send_message(chatbot_prompt)
 
@@ -174,6 +183,11 @@ class Util(commands.Cog):
             return
 
         if st["remaining"] <= 0:
+            return
+
+        if GEMINI_DISABLED:
+            await channel.send(GEMINI_DISABLED_MSG)
+            await _end_session(channel, self.state, self.chats)
             return
 
         chat = self.chats.get(channel.id)

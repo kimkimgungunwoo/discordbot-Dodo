@@ -1,0 +1,8 @@
+discordvenv/
+docs/
+.git/
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+requirements_backup.txt

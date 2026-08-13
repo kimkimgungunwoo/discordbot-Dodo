@@ -1,19 +1,11 @@
-from sqlalchemy import BigInteger, Integer, DateTime, ForeignKey, Enum as SAEnum, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from api.database import Base
-from api.models.enums import PointReason
+from dataclasses import dataclass
 import datetime
+from api.models.enums import PointReason
 
 
-class PointHistory(Base):
-    __tablename__ = "point_history"
-
-    point_history_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("user.user_id"), nullable=False)
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)
-    reason: Mapped[PointReason] = mapped_column(SAEnum(PointReason), nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=False), server_default=func.now()
-    )
-
-    user: Mapped["User"] = relationship(back_populates="point_histories")
+@dataclass
+class PointHistory:
+    user_id: int
+    amount: int
+    reason: PointReason
+    created_at: datetime.datetime | None = None
