@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import os
 import discord
 from typing import TYPE_CHECKING
 import yt_dlp
@@ -9,12 +10,25 @@ from bot.cogs.music.renderer import render_playlist_card
 if TYPE_CHECKING:
     from bot.cogs.music import Music
 
+# 클라우드 서버 IP(AWS 등)는 유튜브가 "Sign in to confirm you're not a bot"으로 막는 경우가 많다.
+# 1) YTDLP_POT_PROVIDER_URL — bgutil-ytdlp-pot-provider 사이드카(docker-compose.prod.yml의
+#    pot-provider 서비스) 주소를 넣으면 PO 토큰을 자동 발급받아 우회. 쿠키 수동 교체가 필요없는 방법.
+# 2) YTDLP_COOKIES_FILE — 그래도 막히면 로그인된 브라우저에서 내보낸 cookies.txt 경로로 폴백.
+# 로컬(집 IP)은 대부분 안 걸려서 둘 다 비워둬도 됨 — 값 없으면 그냥 기존 동작 그대로.
+_COOKIES_FILE = os.getenv("YTDLP_COOKIES_FILE")
+_COOKIE_OPT = {"cookiefile": _COOKIES_FILE} if _COOKIES_FILE and os.path.exists(_COOKIES_FILE) else {}
+
+_POT_PROVIDER_URL = os.getenv("YTDLP_POT_PROVIDER_URL")
+_POT_EXTRACTOR_ARGS = {"youtubepot-bgutilhttp": {"base_url": [_POT_PROVIDER_URL]}} if _POT_PROVIDER_URL else {}
+
 # 검색 전용 옵션: 메타데이터만 빠르게 수집
 YTDL_SEARCH_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "extract_flat": True,   # 각 항목을 완전히 처리하지 않고 메타데이터만
     "noplaylist": False,    # 검색 결과(플레이리스트 형태)를 허용
+    "extractor_args": {**_POT_EXTRACTOR_ARGS},
+    **_COOKIE_OPT,
 }
 
 # 실제 스트리밍 URL 추출 옵션
@@ -25,7 +39,8 @@ YTDL_STREAM_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "noplaylist": True,
-    "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+    "extractor_args": {"youtube": {"player_client": ["android", "web"]}, **_POT_EXTRACTOR_ARGS},
+    **_COOKIE_OPT,
 }
 
 FFMPEG_OPTS = {

@@ -3,3 +3,11 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    depends_on:
+      - pot-provider
+
+  # 유튜브 "Sign in to confirm you're not a bot" 우회용 PO 토큰 발급 사이드카.
+  # bot 컨테이너가 같은 컴포즈 네트워크 안에서 http://pot-provider:4416 으로 접근한다.
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    restart: unless-stopped
