@@ -10,6 +10,12 @@ from bot.cogs.music.views import (
     MusicSearchPromptView, RemoveView, QueuePaginatorView, PlaylistControlView,
 )
 
+# 원인 불명 버그(재생목록 로드 시 전체 트랙이 수백ms 안에 연쇄적으로 재생/종료됨)로 임시 차단.
+# 재활성화하려면 False로. views.py의 PlaylistControlView 등 관련 코드는 그대로 남겨둠 — 이 명령어
+# 진입점 하나만 막으면 재생목록 관련 View/버튼은 애초에 사용자에게 노출되지 않는다.
+PLAYLIST_DISABLED = True
+PLAYLIST_DISABLED_MSG = "🚧 재생목록 기능은 원인 불명 버그로 현재 일시적으로 사용할 수 없습니다."
+
 
 class Music(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -80,12 +86,19 @@ class Music(commands.Cog):
         guild_id = guild.id
         old_mode = self.active_mode.get(guild_id)
 
-        if old_mode is not None and old_mode != mode and vc is not None and (vc.playing or vc.paused):
+        if old_mode is not None and old_mode != mode:
+            # _playing_mode 판단이 어떤 이유로든 어긋나 있어도 대기열을 잃어버리면 안 되니,
+            # "재생 중이라고 믿는지"와 무관하게 이전 모드의 current는 항상 큐 맨 앞으로 되돌린다.
             old_queue, old_current = self._state(old_mode)
             interrupted = old_current.pop(guild_id, None)
             if interrupted is not None:
                 old_queue.setdefault(guild_id, []).insert(0, interrupted)
-            await vc.stop()  # on_wavelink_track_end이 old_mode로 advance를 다시 부르지만, active_mode가 이미 바뀌어 있어 아무 것도 안 함
+
+            if vc is not None and self._playing_mode.get(guild_id) is not None:
+                await vc.stop()  # on_wavelink_track_end이 old_mode로 advance를 다시 부르지만, active_mode가 이미 바뀌어 있어 아무 것도 안 함
+            # wavelink의 vc.playing/paused는 stop() 직후에도 잠깐 stale하게 True로 남는다
+            # (공식 문서에 명시된 동작) — 그래서 "재생 중인지"는 이 딕셔너리로 직접 관리한다.
+            self._playing_mode.pop(guild_id, None)
 
         self.active_mode[guild_id] = mode
 
@@ -100,7 +113,9 @@ class Music(commands.Cog):
                 return
 
             # 락을 기다리는 동안 다른 경로가 이미 다음 곡을 재생 시작했을 수 있다 — 중복 재생 방지.
-            if vc.playing or vc.paused:
+            # vc.playing/paused 대신 우리가 직접 관리하는 _playing_mode를 쓴다 — wavelink의
+            # 프로퍼티는 stop() 직후 잠깐 stale하게 남아서 신뢰할 수 없다.
+            if self._playing_mode.get(guild.id) is not None:
                 return
 
             queues, currents = self._state(mode)
@@ -133,6 +148,7 @@ class Music(commands.Cog):
         mode = self._playing_mode.get(player.guild.id)
         if mode is None:
             return
+        self._playing_mode.pop(player.guild.id, None)
         await self.advance(player.guild, mode)
 
     @commands.Cog.listener()
@@ -291,12 +307,15 @@ class Music(commands.Cog):
 
         guild_id = ctx.guild.id
         if self.active_mode.get(guild_id) == "single":
-            if vc.playing:
-                await ctx.reply("이미 재생 중입니다.", mention_author=False)
-                return
+            # paused를 playing보다 먼저 체크해야 한다 — wavelink는 일시정지 중에도
+            # 곡이 로드돼 있으면 playing이 True다 (paused 상태도 "playing"으로 침).
+            # 순서가 바뀌면 정지 후 재생이 "이미 재생 중"으로 잘못 걸려 영영 재개가 안 된다.
             if vc.paused:
                 await vc.pause(False)
                 await ctx.reply("▶️ 재생을 재개합니다.", mention_author=False)
+                return
+            if vc.playing:
+                await ctx.reply("이미 재생 중입니다.", mention_author=False)
                 return
 
         # 재생목록이 재생/일시정지 중이었다면 여기서 선점된다 (트랙은 재생목록 큐 맨 앞으로 보존).
@@ -329,6 +348,10 @@ class Music(commands.Cog):
     @music_group.command(name="플레이리스트")
     async def playlist(self, ctx: commands.Context):
         """재생목록을 재생/제거/중지 버튼으로 관리합니다."""
+        if PLAYLIST_DISABLED:
+            await ctx.reply(PLAYLIST_DISABLED_MSG, mention_author=False)
+            return
+
         vc: wavelink.Player | None = ctx.voice_client
         if vc is None:
             await ctx.reply("`!음악 입장` 명령어로 봇을 음성 채널에 먼저 입장시켜주세요.", mention_author=False)
