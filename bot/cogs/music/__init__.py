@@ -145,6 +145,10 @@ class Music(commands.Cog):
         player = payload.player
         if player is None or player.guild is None:
             return
+        # 정상 종료(finished)가 아닌 이유로 끝나면(스트림 끊김/스터크/에러 등) 다음 곡으로
+        # 조용히 넘어가버려서 "가끔 강제스킵되는 것 같다"는 증상으로만 보인다 — 원인 파악용으로 남겨둠.
+        if payload.reason != "finished":
+            print(f"[Music] 비정상 종료: '{payload.track.title}' reason={payload.reason!r}", flush=True)
         mode = self._playing_mode.get(player.guild.id)
         if mode is None:
             return
