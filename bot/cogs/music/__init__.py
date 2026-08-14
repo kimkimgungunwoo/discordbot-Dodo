@@ -38,6 +38,9 @@ class Music(commands.Cog):
         # guild_id -> Lock: 곡 종료 이벤트와 "대기 중이면 즉시 재생" 경로가 동시에
         # advance를 부르면 current가 실제 재생곡과 어긋날 수 있어 직렬화한다.
         self._advance_locks: dict[int, asyncio.Lock] = {}
+        # guild_id -> True: !음악 스킵처럼 우리가 의도적으로 vc.stop()을 부른 경우 표시.
+        # reason='stopped'가 "내가 스킵 눌러서" 인지 "원인불명으로 중단됨"인지 구분하는 용도.
+        self._expected_stop: set[int] = set()
 
     async def cog_unload(self):
         """Cog가 내려갈 때(핫리로드 포함) 호출된다. 여기서 정리하지 않으면
@@ -77,6 +80,7 @@ class Music(commands.Cog):
         self.playlist_meta.pop(guild_id, None)
         self.active_mode.pop(guild_id, None)
         self._playing_mode.pop(guild_id, None)
+        self._expected_stop.discard(guild_id)
 
     async def switch_mode(self, guild: discord.Guild, mode: str):
         """반대 모드가 재생/일시정지 중이면 멈추고 이 모드로 전환한다.
@@ -145,9 +149,11 @@ class Music(commands.Cog):
         player = payload.player
         if player is None or player.guild is None:
             return
-        # 정상 종료(finished)가 아닌 이유로 끝나면(스트림 끊김/스터크/에러 등) 다음 곡으로
-        # 조용히 넘어가버려서 "가끔 강제스킵되는 것 같다"는 증상으로만 보인다 — 원인 파악용으로 남겨둠.
-        if payload.reason != "finished":
+        # 정상 종료(finished)도 아니고 우리가 !음악 스킵으로 의도한 stop도 아닌 경우만 남긴다
+        # (스트림 끊김/스터크/에러 등 — "가끔 강제스킵되는 것 같다"는 증상의 진짜 원인 파악용).
+        was_expected = player.guild.id in self._expected_stop
+        self._expected_stop.discard(player.guild.id)
+        if payload.reason != "finished" and not was_expected:
             print(f"[Music] 비정상 종료: '{payload.track.title}' reason={payload.reason!r}", flush=True)
         mode = self._playing_mode.get(player.guild.id)
         if mode is None:
@@ -343,6 +349,7 @@ class Music(commands.Cog):
         mode = self.active_mode.get(ctx.guild.id, "single")
         _, currents = self._state(mode)
         current = currents.get(ctx.guild.id)
+        self._expected_stop.add(ctx.guild.id)
         await vc.stop()  # on_wavelink_track_end이 자동으로 advance 호출
         await ctx.reply(
             f"⏭️ **{current.title if current else '곡'}** 을(를) 건너뜁니다.",
