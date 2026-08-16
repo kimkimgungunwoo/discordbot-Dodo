@@ -15,6 +15,8 @@ from bot.cogs.music.views import (
 # 진입점 하나만 막으면 재생목록 관련 View/버튼은 애초에 사용자에게 노출되지 않는다.
 PLAYLIST_DISABLED = True
 PLAYLIST_DISABLED_MSG = "🚧 재생목록 기능은 원인 불명 버그로 현재 일시적으로 사용할 수 없습니다."
+MIN_RESUME_MS = 5000
+RETRY_CHAIN_RESET_MS = 5000
 
 
 class Music(commands.Cog):
@@ -95,31 +97,27 @@ class Music(commands.Cog):
         self._retry_starts.pop(guild_id, None)
 
     def _track_key(self, track: Track) -> str:
-        playable = track.playable
-        return (
-            getattr(playable, "identifier", None)
-            or getattr(playable, "uri", None)
-            or getattr(playable, "title", None)
-            or repr(playable)
-        )
+        # 같은 유튜브 곡이라도 "나중에 새로 추가된 재생"은 새 체인으로 취급해야 하므로
+        # 곡 메타데이터가 아니라 현재 런타임 Track 인스턴스 자체를 기준으로 본다.
+        return str(id(track))
 
-    def _clear_retry(self, guild_id: int, track: Track | None):
+    def _clear_retry(self, guild_id: int, track: Track | None, *, clear_position: bool = False):
         if track is None:
             return
         retry_map = self._retry_counts.get(guild_id)
         if retry_map is None:
-            return
-        retry_map.pop(self._track_key(track), None)
-        if not retry_map:
-            self._retry_counts.pop(guild_id, None)
+            retry_map = None
+        else:
+            retry_map.pop(self._track_key(track), None)
+            if not retry_map:
+                self._retry_counts.pop(guild_id, None)
         retry_start_map = self._retry_starts.get(guild_id)
         if retry_start_map is not None:
             retry_start_map.pop(self._track_key(track), None)
             if not retry_start_map:
                 self._retry_starts.pop(guild_id, None)
         last_pos_map = self._last_positions.get(guild_id)
-        if last_pos_map is not None and guild_id not in self._playing_mode:
-            # 재생이 완전히 끝난 곡의 위치는 더 이상 보존할 필요가 없다.
+        if clear_position and last_pos_map is not None:
             last_pos_map.pop(self._track_key(track), None)
             if not last_pos_map:
                 self._last_positions.pop(guild_id, None)
@@ -189,7 +187,7 @@ class Music(commands.Cog):
                     await vc.play(track.playable, start=start)
                 except Exception as e:
                     print(f"[Music] '{track.title}' 재생 준비 실패: {e}")
-                    self._clear_retry(guild.id, track)
+                    self._clear_retry(guild.id, track, clear_position=True)
                     continue  # 재생 불가한 곡은 건너뛰고 다음 곡 시도
                 if start > 0:
                     print(f"[Music] 이어 재생 복구 성공: '{track.title}' start={start}ms", flush=True)
@@ -221,7 +219,7 @@ class Music(commands.Cog):
         self._playing_mode.pop(guild_id, None)
 
         if payload.reason == "finished" or was_expected:
-            self._clear_retry(guild_id, current)
+            self._clear_retry(guild_id, current, clear_position=True)
             await self.advance(player.guild, mode)
             return
 
@@ -235,7 +233,7 @@ class Music(commands.Cog):
         retry_no = self._consume_retry(guild_id, current)
         if retry_no <= 1:
             last_position = self._get_last_position(guild_id, current)
-            resume_from = last_position if last_position >= 5000 else 0
+            resume_from = last_position if last_position >= MIN_RESUME_MS else 0
             queues, currents = self._state(mode)
             currents.pop(guild_id, None)
             queues.setdefault(guild_id, []).insert(0, current)
@@ -247,7 +245,7 @@ class Music(commands.Cog):
             await self.advance(player.guild, mode)
             return
 
-        self._clear_retry(guild_id, current)
+        self._clear_retry(guild_id, current, clear_position=True)
         print(f"[Music] 재시도 후에도 실패하여 스킵: '{title}'", flush=True)
         await self.advance(player.guild, mode)
 
@@ -267,7 +265,17 @@ class Music(commands.Cog):
         if current is None:
             return
 
-        self._last_positions.setdefault(guild_id, {})[self._track_key(current)] = payload.position
+        track_key = self._track_key(current)
+        self._last_positions.setdefault(guild_id, {})[track_key] = payload.position
+
+        retry_count = self._retry_counts.get(guild_id, {}).get(track_key)
+        retry_start = self._retry_starts.get(guild_id, {}).get(track_key, 0)
+        if retry_count and payload.position >= max(RETRY_CHAIN_RESET_MS, retry_start + RETRY_CHAIN_RESET_MS):
+            print(
+                f"[Music] 재생 안정화로 실패 체인 초기화: '{current.title}' position={payload.position}ms",
+                flush=True,
+            )
+            self._clear_retry(guild_id, current, clear_position=False)
 
     @commands.Cog.listener()
     async def on_wavelink_inactive_player(self, player: wavelink.Player):
