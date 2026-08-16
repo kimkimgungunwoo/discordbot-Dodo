@@ -41,6 +41,12 @@ class Music(commands.Cog):
         # guild_id -> True: !음악 스킵처럼 우리가 의도적으로 vc.stop()을 부른 경우 표시.
         # reason='stopped'가 "내가 스킵 눌러서" 인지 "원인불명으로 중단됨"인지 구분하는 용도.
         self._expected_stop: set[int] = set()
+        # guild_id -> {track_key: retry_count}: 비정상 종료된 곡을 1회만 자동 재시도한다.
+        self._retry_counts: dict[int, dict[str, int]] = {}
+        # guild_id -> {track_key: position_ms}: 현재 곡의 마지막 재생 위치를 저장한다.
+        self._last_positions: dict[int, dict[str, int]] = {}
+        # guild_id -> {track_key: position_ms}: 다음 재시도에서 사용할 시작 위치를 저장한다.
+        self._retry_starts: dict[int, dict[str, int]] = {}
 
     async def cog_unload(self):
         """Cog가 내려갈 때(핫리로드 포함) 호출된다. 여기서 정리하지 않으면
@@ -62,6 +68,9 @@ class Music(commands.Cog):
         self.playlist_meta.clear()
         self.active_mode.clear()
         self._playing_mode.clear()
+        self._retry_counts.clear()
+        self._last_positions.clear()
+        self._retry_starts.clear()
 
     def _advance_lock(self, guild_id: int) -> asyncio.Lock:
         return self._advance_locks.setdefault(guild_id, asyncio.Lock())
@@ -81,6 +90,50 @@ class Music(commands.Cog):
         self.active_mode.pop(guild_id, None)
         self._playing_mode.pop(guild_id, None)
         self._expected_stop.discard(guild_id)
+        self._retry_counts.pop(guild_id, None)
+        self._last_positions.pop(guild_id, None)
+        self._retry_starts.pop(guild_id, None)
+
+    def _track_key(self, track: Track) -> str:
+        playable = track.playable
+        return (
+            getattr(playable, "identifier", None)
+            or getattr(playable, "uri", None)
+            or getattr(playable, "title", None)
+            or repr(playable)
+        )
+
+    def _clear_retry(self, guild_id: int, track: Track | None):
+        if track is None:
+            return
+        retry_map = self._retry_counts.get(guild_id)
+        if retry_map is None:
+            return
+        retry_map.pop(self._track_key(track), None)
+        if not retry_map:
+            self._retry_counts.pop(guild_id, None)
+        retry_start_map = self._retry_starts.get(guild_id)
+        if retry_start_map is not None:
+            retry_start_map.pop(self._track_key(track), None)
+            if not retry_start_map:
+                self._retry_starts.pop(guild_id, None)
+        last_pos_map = self._last_positions.get(guild_id)
+        if last_pos_map is not None and guild_id not in self._playing_mode:
+            # 재생이 완전히 끝난 곡의 위치는 더 이상 보존할 필요가 없다.
+            last_pos_map.pop(self._track_key(track), None)
+            if not last_pos_map:
+                self._last_positions.pop(guild_id, None)
+
+    def _consume_retry(self, guild_id: int, track: Track) -> int:
+        retry_map = self._retry_counts.setdefault(guild_id, {})
+        key = self._track_key(track)
+        retry_map[key] = retry_map.get(key, 0) + 1
+        return retry_map[key]
+
+    def _get_last_position(self, guild_id: int, track: Track | None) -> int:
+        if track is None:
+            return 0
+        return self._last_positions.get(guild_id, {}).get(self._track_key(track), 0)
 
     async def switch_mode(self, guild: discord.Guild, mode: str):
         """반대 모드가 재생/일시정지 중이면 멈추고 이 모드로 전환한다.
@@ -129,12 +182,17 @@ class Music(commands.Cog):
                 track = queue.pop(0)
                 currents[guild.id] = track
                 self._playing_mode[guild.id] = mode
+                track_key = self._track_key(track)
+                start = self._retry_starts.get(guild.id, {}).pop(track_key, 0)
 
                 try:
-                    await vc.play(track.playable)
+                    await vc.play(track.playable, start=start)
                 except Exception as e:
                     print(f"[Music] '{track.title}' 재생 준비 실패: {e}")
+                    self._clear_retry(guild.id, track)
                     continue  # 재생 불가한 곡은 건너뛰고 다음 곡 시도
+                if start > 0:
+                    print(f"[Music] 이어 재생 복구 성공: '{track.title}' start={start}ms", flush=True)
                 return
 
             currents.pop(guild.id, None)
@@ -149,17 +207,67 @@ class Music(commands.Cog):
         player = payload.player
         if player is None or player.guild is None:
             return
-        # 정상 종료(finished)도 아니고 우리가 !음악 스킵으로 의도한 stop도 아닌 경우만 남긴다
-        # (스트림 끊김/스터크/에러 등 — "가끔 강제스킵되는 것 같다"는 증상의 진짜 원인 파악용).
-        was_expected = player.guild.id in self._expected_stop
-        self._expected_stop.discard(player.guild.id)
-        if payload.reason != "finished" and not was_expected:
-            print(f"[Music] 비정상 종료: '{payload.track.title}' reason={payload.reason!r}", flush=True)
-        mode = self._playing_mode.get(player.guild.id)
+        guild_id = player.guild.id
+        mode = self._playing_mode.get(guild_id)
         if mode is None:
             return
-        self._playing_mode.pop(player.guild.id, None)
+
+        _, currents = self._state(mode)
+        current = currents.get(guild_id)
+        # 정상 종료(finished)도 아니고 우리가 !음악 스킵으로 의도한 stop도 아닌 경우만 남긴다
+        # (스트림 끊김/스터크/에러 등 — "가끔 강제스킵되는 것 같다"는 증상의 진짜 원인 파악용).
+        was_expected = guild_id in self._expected_stop
+        self._expected_stop.discard(guild_id)
+        self._playing_mode.pop(guild_id, None)
+
+        if payload.reason == "finished" or was_expected:
+            self._clear_retry(guild_id, current)
+            await self.advance(player.guild, mode)
+            return
+
+        title = current.title if current is not None else payload.track.title
+        print(f"[Music] 비정상 종료: '{title}' reason={payload.reason!r}", flush=True)
+
+        if current is None:
+            await self.advance(player.guild, mode)
+            return
+
+        retry_no = self._consume_retry(guild_id, current)
+        if retry_no <= 1:
+            last_position = self._get_last_position(guild_id, current)
+            resume_from = last_position if last_position >= 5000 else 0
+            queues, currents = self._state(mode)
+            currents.pop(guild_id, None)
+            queues.setdefault(guild_id, []).insert(0, current)
+            self._retry_starts.setdefault(guild_id, {})[self._track_key(current)] = resume_from
+            print(
+                f"[Music] 비정상 종료 자동 재시도: '{title}' attempt={retry_no} resume_from={resume_from}ms",
+                flush=True,
+            )
+            await self.advance(player.guild, mode)
+            return
+
+        self._clear_retry(guild_id, current)
+        print(f"[Music] 재시도 후에도 실패하여 스킵: '{title}'", flush=True)
         await self.advance(player.guild, mode)
+
+    @commands.Cog.listener()
+    async def on_wavelink_player_update(self, payload: wavelink.PlayerUpdateEventPayload):
+        player = payload.player
+        if player is None or player.guild is None:
+            return
+
+        guild_id = player.guild.id
+        mode = self._playing_mode.get(guild_id)
+        if mode is None:
+            return
+
+        _, currents = self._state(mode)
+        current = currents.get(guild_id)
+        if current is None:
+            return
+
+        self._last_positions.setdefault(guild_id, {})[self._track_key(current)] = payload.position
 
     @commands.Cog.listener()
     async def on_wavelink_inactive_player(self, player: wavelink.Player):
