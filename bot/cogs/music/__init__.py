@@ -16,7 +16,7 @@ from bot.cogs.music.views import (
 PLAYLIST_DISABLED = True
 PLAYLIST_DISABLED_MSG = "🚧 재생목록 기능은 원인 불명 버그로 현재 일시적으로 사용할 수 없습니다."
 MIN_RESUME_MS = 5000
-RETRY_CHAIN_RESET_MS = 5000
+RETRY_CHAIN_RESET_MS = 3000
 
 
 class Music(commands.Cog):
