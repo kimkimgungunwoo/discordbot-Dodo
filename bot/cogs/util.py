@@ -1,16 +1,18 @@
 from discord.ext import commands
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 import os
 import asyncio
 import discord
 import datetime
 
+from bot.cogs.control import category_embed
+
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
-MAX_CHAT = 10
+MAX_CHAT = 30
 
-GEMINI_DISABLED = True  # 임시 차단 — 재활성화하려면 False로 변경
+GEMINI_DISABLED = False  # 임시 차단 — 재활성화하려면 False로 변경
 GEMINI_DISABLED_MSG = "🚧 AI 챗봇 기능은 현재 일시적으로 사용할 수 없습니다."
 
 load_dotenv(ENV_PATH)
@@ -18,8 +20,8 @@ apiKey = os.getenv("GEMINI_API_KEY")
 gemini_prompt=os.getenv("gemini_prompt")
 chatbot_prompt = os.getenv("chatbot_prompt")
 
-genai.configure(api_key=apiKey)
-model = genai.GenerativeModel("gemini-2.5-flash-lite")
+MODEL_NAME = "gemini-3.5-flash-lite"
+client = genai.Client(api_key=apiKey)
 
 async def alarm(channel, target_time):
     now = datetime.datetime.now()
@@ -120,29 +122,62 @@ class GeminiStopView(discord.ui.View):
         await _archive_thread(self.thread)
 
 
+class AIQuestionModal(discord.ui.Modal, title="AI에게 질문"):
+    question = discord.ui.TextInput(
+        label="질문",
+        style=discord.TextStyle.paragraph,
+        placeholder="무엇이든 물어보세요",
+        max_length=2000,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        full_message = gemini_prompt + self.question.value
+        try:
+            response = await client.aio.models.generate_content(model=MODEL_NAME, contents=full_message)
+            answer = response.text
+        except Exception:
+            answer = "❌ 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+        await interaction.followup.send(f"**Q. {self.question.value}**\n\n{answer}")
+
+
+class AIQuestionPromptView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label="✍️ 질문 입력", style=discord.ButtonStyle.primary)
+    async def prompt(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.send_modal(AIQuestionModal())
+
+
 class Util(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.state: dict[int, dict] = {}
         self.chats: dict[int, object] = {}
 
-    @commands.command(name="g", aliases=["ㅎ", "AI", "ai"])
-    async def gemini(self, ctx, *, message):
-        if GEMINI_DISABLED:
-            await ctx.reply(GEMINI_DISABLED_MSG, mention_author=False)
-            return
-        loop = asyncio.get_running_loop()
-        full_message = gemini_prompt + message
-        response = await loop.run_in_executor(None, model.generate_content, full_message)
-        await ctx.reply(response.text, mention_author=False)
+    @commands.group(name="AI", aliases=["ai"], invoke_without_command=True)
+    async def ai_group(self, ctx: commands.Context):
+        await ctx.reply(embed=category_embed("ai"), mention_author=False)
 
-    @commands.command(name="c", aliases=["chat", "chatbot", "챗봇", "gemini", "ㅊ"])
-    async def geminiChat(self, ctx: commands.Context):
+    @ai_group.command(name="질문")
+    async def ai_question(self, ctx: commands.Context):
         if GEMINI_DISABLED:
             await ctx.reply(GEMINI_DISABLED_MSG, mention_author=False)
             return
-        chat = model.start_chat(history=[])
-        chat.send_message(chatbot_prompt)
+        await ctx.reply(
+            "버튼을 눌러 질문을 입력하세요:",
+            view=AIQuestionPromptView(),
+            mention_author=False,
+        )
+
+    @ai_group.command(name="대화")
+    async def ai_chat(self, ctx: commands.Context):
+        if GEMINI_DISABLED:
+            await ctx.reply(GEMINI_DISABLED_MSG, mention_author=False)
+            return
+        chat = client.aio.chats.create(model=MODEL_NAME)
+        await chat.send_message(chatbot_prompt)
 
         thread = await ctx.channel.create_thread(
             name=f"{ctx.author.name}-gemini-chat",
@@ -195,9 +230,8 @@ class Util(commands.Cog):
             await channel.send("내부 오류: chat 세션이 없습니다.")
             return
 
-        loop = asyncio.get_running_loop()
         try:
-            response = await loop.run_in_executor(None, chat.send_message, message.content)
+            response = await chat.send_message(message.content)
             answer = response.text
         except Exception:
             await channel.send("오류가 발생했습니다. 대화를 종료합니다.")
