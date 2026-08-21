@@ -16,7 +16,8 @@ from bot.cogs.music.views import (
 PLAYLIST_DISABLED = True
 PLAYLIST_DISABLED_MSG = "🚧 재생목록 기능은 원인 불명 버그로 현재 일시적으로 사용할 수 없습니다."
 MIN_RESUME_MS = 5000
-RETRY_CHAIN_RESET_MS = 3000
+RETRY_CHAIN_RESET_MS = 1000
+RETRY_RESTART_DELAY_SEC = 1.0
 
 
 class Music(commands.Cog):
@@ -49,6 +50,10 @@ class Music(commands.Cog):
         self._last_positions: dict[int, dict[str, int]] = {}
         # guild_id -> {track_key: position_ms}: 다음 재시도에서 사용할 시작 위치를 저장한다.
         self._retry_starts: dict[int, dict[str, int]] = {}
+        # guild_id -> Task: 비정상 종료/재생 실패 후 재복구를 예약한다.
+        self._retry_tasks: dict[int, asyncio.Task] = {}
+        # guild_id -> set[track_key]: 자동 복구 가치가 낮은 치명적 에러로 분류된 트랙.
+        self._fatal_tracks: dict[int, set[str]] = {}
 
     async def cog_unload(self):
         """Cog가 내려갈 때(핫리로드 포함) 호출된다. 여기서 정리하지 않으면
@@ -73,6 +78,10 @@ class Music(commands.Cog):
         self._retry_counts.clear()
         self._last_positions.clear()
         self._retry_starts.clear()
+        self._fatal_tracks.clear()
+        for task in self._retry_tasks.values():
+            task.cancel()
+        self._retry_tasks.clear()
 
     def _advance_lock(self, guild_id: int) -> asyncio.Lock:
         return self._advance_locks.setdefault(guild_id, asyncio.Lock())
@@ -95,6 +104,10 @@ class Music(commands.Cog):
         self._retry_counts.pop(guild_id, None)
         self._last_positions.pop(guild_id, None)
         self._retry_starts.pop(guild_id, None)
+        self._fatal_tracks.pop(guild_id, None)
+        task = self._retry_tasks.pop(guild_id, None)
+        if task is not None:
+            task.cancel()
 
     def _track_key(self, track: Track) -> str:
         # 같은 유튜브 곡이라도 "나중에 새로 추가된 재생"은 새 체인으로 취급해야 하므로
@@ -121,6 +134,11 @@ class Music(commands.Cog):
             last_pos_map.pop(self._track_key(track), None)
             if not last_pos_map:
                 self._last_positions.pop(guild_id, None)
+        fatal_map = self._fatal_tracks.get(guild_id)
+        if fatal_map is not None:
+            fatal_map.discard(self._track_key(track))
+            if not fatal_map:
+                self._fatal_tracks.pop(guild_id, None)
 
     def _consume_retry(self, guild_id: int, track: Track) -> int:
         retry_map = self._retry_counts.setdefault(guild_id, {})
@@ -132,6 +150,53 @@ class Music(commands.Cog):
         if track is None:
             return 0
         return self._last_positions.get(guild_id, {}).get(self._track_key(track), 0)
+
+    def _mark_fatal(self, guild_id: int, track: Track):
+        self._fatal_tracks.setdefault(guild_id, set()).add(self._track_key(track))
+
+    def _is_fatal(self, guild_id: int, track: Track | None) -> bool:
+        if track is None:
+            return False
+        return self._track_key(track) in self._fatal_tracks.get(guild_id, set())
+
+    def _is_unrecoverable_exception(self, message: str, cause: str) -> bool:
+        haystack = f"{message}\n{cause}".lower()
+        markers = (
+            "requires login",
+            "video player configuration error",
+            "playability status",
+        )
+        return any(marker in haystack for marker in markers)
+
+    def _schedule_retry(self, guild: discord.Guild, mode: str, track: Track, *, start: int, reason: str):
+        guild_id = guild.id
+        queues, currents = self._state(mode)
+        currents.pop(guild_id, None)
+        queue = queues.setdefault(guild_id, [])
+        if not queue or queue[0] is not track:
+            queue.insert(0, track)
+        self._retry_starts.setdefault(guild_id, {})[self._track_key(track)] = start
+
+        existing = self._retry_tasks.pop(guild_id, None)
+        if existing is not None:
+            existing.cancel()
+
+        async def _runner():
+            try:
+                await asyncio.sleep(RETRY_RESTART_DELAY_SEC)
+                await self.advance(guild, mode)
+            except asyncio.CancelledError:
+                return
+            finally:
+                current_task = self._retry_tasks.get(guild_id)
+                if current_task is asyncio.current_task():
+                    self._retry_tasks.pop(guild_id, None)
+
+        self._retry_tasks[guild_id] = self.bot.loop.create_task(_runner())
+        print(
+            f"[Music] 자동 복구 예약: '{track.title}' reason={reason} start={start}ms delay={RETRY_RESTART_DELAY_SEC}s",
+            flush=True,
+        )
 
     async def switch_mode(self, guild: discord.Guild, mode: str):
         """반대 모드가 재생/일시정지 중이면 멈추고 이 모드로 전환한다.
@@ -187,8 +252,10 @@ class Music(commands.Cog):
                     await vc.play(track.playable, start=start)
                 except Exception as e:
                     print(f"[Music] '{track.title}' 재생 준비 실패: {e}")
-                    self._clear_retry(guild.id, track, clear_position=True)
-                    continue  # 재생 불가한 곡은 건너뛰고 다음 곡 시도
+                    self._playing_mode.pop(guild.id, None)
+                    retry_no = self._consume_retry(guild.id, track)
+                    self._schedule_retry(guild, mode, track, start=start, reason=f"play_failed_{retry_no}")
+                    return
                 if start > 0:
                     print(f"[Music] 이어 재생 복구 성공: '{track.title}' start={start}ms", flush=True)
                 return
@@ -230,24 +297,24 @@ class Music(commands.Cog):
             await self.advance(player.guild, mode)
             return
 
-        retry_no = self._consume_retry(guild_id, current)
-        if retry_no <= 1:
-            last_position = self._get_last_position(guild_id, current)
-            resume_from = last_position if last_position >= MIN_RESUME_MS else 0
+        if self._is_fatal(guild_id, current):
             queues, currents = self._state(mode)
             currents.pop(guild_id, None)
-            queues.setdefault(guild_id, []).insert(0, current)
-            self._retry_starts.setdefault(guild_id, {})[self._track_key(current)] = resume_from
-            print(
-                f"[Music] 비정상 종료 자동 재시도: '{title}' attempt={retry_no} resume_from={resume_from}ms",
-                flush=True,
-            )
-            await self.advance(player.guild, mode)
+            queue = queues.setdefault(guild_id, [])
+            if not queue or queue[0] is not current:
+                queue.insert(0, current)
+            self._retry_starts.setdefault(guild_id, {})[self._track_key(current)] = 0
+            print(f"[Music] 치명적 오류로 자동 복구 중단: '{title}'", flush=True)
             return
 
-        self._clear_retry(guild_id, current, clear_position=True)
-        print(f"[Music] 재시도 후에도 실패하여 스킵: '{title}'", flush=True)
-        await self.advance(player.guild, mode)
+        retry_no = self._consume_retry(guild_id, current)
+        last_position = self._get_last_position(guild_id, current)
+        resume_from = last_position if last_position >= MIN_RESUME_MS else 0
+        print(
+            f"[Music] 비정상 종료 자동 재복구: '{title}' attempt={retry_no} resume_from={resume_from}ms",
+            flush=True,
+        )
+        self._schedule_retry(player.guild, mode, current, start=resume_from, reason=f"track_end_{payload.reason}")
 
     @commands.Cog.listener()
     async def on_wavelink_player_update(self, payload: wavelink.PlayerUpdateEventPayload):
@@ -276,6 +343,34 @@ class Music(commands.Cog):
                 flush=True,
             )
             self._clear_retry(guild_id, current, clear_position=False)
+
+    @commands.Cog.listener()
+    async def on_wavelink_track_exception(self, payload: wavelink.TrackExceptionEventPayload):
+        player = payload.player
+        if player is None or player.guild is None:
+            return
+
+        guild_id = player.guild.id
+        mode = self._playing_mode.get(guild_id)
+        if mode is None:
+            return
+
+        _, currents = self._state(mode)
+        current = currents.get(guild_id)
+        if current is None:
+            return
+
+        message = payload.exception.get("message", "")
+        cause = payload.exception.get("cause", "")
+        severity = payload.exception.get("severity", "")
+        print(
+            f"[Music] TrackException: '{current.title}' severity={severity} message={message!r} cause={cause!r}",
+            flush=True,
+        )
+
+        if self._is_unrecoverable_exception(message, cause):
+            self._mark_fatal(guild_id, current)
+            print(f"[Music] 치명적 재생 불가로 분류: '{current.title}'", flush=True)
 
     @commands.Cog.listener()
     async def on_wavelink_inactive_player(self, player: wavelink.Player):
