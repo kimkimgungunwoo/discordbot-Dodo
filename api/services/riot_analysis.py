@@ -12,10 +12,10 @@
 # ── 포지션별 기댓값 (비율 정규화 지표용) ────────────────────────────
 # 일반적인 한 게임의 지표 평균치 (정규화 기준)
 _EXP: dict[str, dict] = {
-    "TOP":     {"damage": 15000, "kp": 55,  "kda": 3.0},
+    "TOP":     {"damage": 15000, "kp": 55,  "kda": 3.0, "plates": 1.5},
     "JUNGLE":  {"damage": 12000, "kp": 65,  "kda": 3.0, "objectives": 3},
-    "MIDDLE":  {"damage": 18000, "kp": 55,  "kda": 3.5},
-    "BOTTOM":  {"damage": 22000, "kp": 50,  "kda": 4.0},
+    "MIDDLE":  {"damage": 18000, "kp": 55,  "kda": 3.5, "plates": 1.5},
+    "BOTTOM":  {"damage": 22000, "kp": 50,  "kda": 4.0, "plates": 1.5},
     "UTILITY": {"vision": 35,   "kp": 65,  "kda": 2.0},
 }
 _EXP_DEFAULT = _EXP["MIDDLE"]
@@ -23,20 +23,22 @@ _EXP_DEFAULT = _EXP["MIDDLE"]
 # 상대 라이너 대비 격차 지표(gold_diff/laning)는 기댓값이 아니라 이 폭(±cap)을 0~1로 매핑한다.
 # ponytail: 실측 데이터 없이 잡은 초기값 — 실제 매치로 체감 확인 후 조정할 것.
 _GOLD_DIFF_CAP = 3000  # 골드 격차 ±3000 → 정규화 0.0~1.0, 대등하면 0.5
-_CS_DIFF_CAP = 40      # 라인전 CS 격차 ±40
+_CS_DIFF_CAP = 40      # 라인전 CS 우위(challenges.maxCsAdvantageOnLaneOpponent) ±40
 
 # ── 포지션별 지표 가중치 — (metric, weight) 리스트, 합은 항상 1.0 ────
-# damage/kp/kda/vision/objectives: 포지션 기댓값 대비 정규화
-# laning(=CS차)/gold_diff: 같은 포지션 상대 라이너 대비 격차로 정규화
+# damage/kp/kda/vision/objectives/plates: 포지션 기댓값 대비 정규화
+# laning(=CS우위)/gold_diff: 같은 포지션 상대 라이너 대비 격차로 정규화
 # - 원딜: 딜량 비중을 가장 높게
 # - 정글: 오브젝트 관여(용/전령/바론)를 별도 지표로
-# - 탑/미드: 라인전(CS차) 지표 추가, 미드는 딜량도 함께 중시
+# - 탑: 딜량을 1순위로 두지 않음 — 라인전(CS우위)·골드격차를 가장 중시하고, KDA보다 딜량 비중을 낮춤
+# - 미드: 라인전(CS우위) 지표 추가, 딜량도 함께 중시
+# - 탑/미드/원딜: 초반 포탑 플레이트 반영
 # - 전 포지션 공통: 상대 라이너와의 골드차 반영
 _W: dict[str, list[tuple[str, float]]] = {
-    "TOP":     [("damage", .35), ("kp", .15), ("kda", .20), ("laning", .20), ("gold_diff", .10)],
+    "TOP":     [("laning", .25), ("gold_diff", .20), ("kda", .20), ("damage", .15), ("kp", .10), ("plates", .10)],
     "JUNGLE":  [("kp", .30), ("damage", .15), ("kda", .20), ("objectives", .25), ("gold_diff", .10)],
-    "MIDDLE":  [("damage", .35), ("kp", .15), ("kda", .20), ("laning", .15), ("gold_diff", .15)],
-    "BOTTOM":  [("damage", .45), ("kp", .15), ("kda", .20), ("gold_diff", .20)],
+    "MIDDLE":  [("damage", .30), ("kp", .15), ("kda", .20), ("laning", .15), ("gold_diff", .10), ("plates", .10)],
+    "BOTTOM":  [("damage", .35), ("kp", .15), ("kda", .20), ("gold_diff", .20), ("plates", .10)],
     "UTILITY": [("vision", .30), ("kp", .30), ("kda", .20), ("gold_diff", .20)],
 }
 _W_DEFAULT = _W["MIDDLE"]
@@ -75,9 +77,37 @@ def _metric_val(p: dict, metric: str, team_kills: int) -> float:
     if metric == "vision":
         return p.get("visionScore", 0)
     if metric == "objectives":
-        c = p.get("challenges") or {}
-        return c.get("dragonTakedowns", 0) + c.get("baronTakedowns", 0) + c.get("riftHeraldTakedowns", 0)
+        return objective_takedowns(p)
+    if metric == "plates":
+        return turret_plates(p)
     return 0
+
+
+def objective_takedowns(p: dict) -> int:
+    """드래곤/바론/전령 관여(킬 또는 어시) 횟수 — riot_api.py에서 표시용으로도 재사용."""
+    c = p.get("challenges") or {}
+    return c.get("dragonTakedowns", 0) + c.get("baronTakedowns", 0) + c.get("riftHeraldTakedowns", 0)
+
+
+def laning_advantage(p: dict) -> float:
+    """상대 라이너 대비 라인전 구간 최대 CS 우위 (challenges.maxCsAdvantageOnLaneOpponent) —
+    riot_api.py에서 표시/점수용으로 재사용. 원래 challenges.laningPhaseGoldExpAdvantage를
+    쓰려 했는데 실제 매치로 찍어보니 거의 항상 0(가끔 1)이라 사실상 못 쓰는 필드였음 —
+    maxCsAdvantageOnLaneOpponent는 실제 값이 다양하게 나오는 걸 확인하고 이걸로 교체함."""
+    c = p.get("challenges") or {}
+    return c.get("maxCsAdvantageOnLaneOpponent", 0) or 0
+
+
+def solo_kills(p: dict) -> int:
+    """라인전 중 1v1 솔로킬 횟수 (challenges.soloKills) — riot_api.py에서 표시용으로 재사용."""
+    c = p.get("challenges") or {}
+    return c.get("soloKills", 0)
+
+
+def turret_plates(p: dict) -> int:
+    """초반 포탑 플레이트 획득 수 (challenges.turretPlatesTaken) — riot_api.py에서 표시용으로 재사용."""
+    c = p.get("challenges") or {}
+    return c.get("turretPlatesTaken", 0)
 
 
 def _norm(val: float, metric: str, pos: str) -> float:
@@ -111,19 +141,10 @@ def _gold_diff(me: dict, opponent: dict | None) -> float:
     return me.get("goldEarned", 0) - opponent.get("goldEarned", 0)
 
 
-def _cs(p: dict) -> int:
-    return p.get("totalMinionsKilled", 0) + p.get("neutralMinionsKilled", 0)
-
-
-def _cs_diff(me: dict, opponent: dict | None) -> float:
-    if opponent is None:
-        return 0
-    return _cs(me) - _cs(opponent)
-
-
 def _perf_score(p: dict, pos: str, team_kills: int, all_participants: list[dict]) -> float:
     """포지션별 기여 점수 (0–70). 팀 내 순위 미반영."""
     weights = _W.get(pos, _W_DEFAULT)
+    # gold_diff는 여전히 우리가 직접 상대 라이너를 찾아서 계산 (라이엇이 안 주는 값).
     opponent = _lane_opponent(p, all_participants, pos)
 
     total = 0.0
@@ -131,7 +152,9 @@ def _perf_score(p: dict, pos: str, team_kills: int, all_participants: list[dict]
         if metric == "gold_diff":
             score = _diff_norm(_gold_diff(p, opponent), _GOLD_DIFF_CAP)
         elif metric == "laning":
-            score = _diff_norm(_cs_diff(p, opponent), _CS_DIFF_CAP)
+            # maxCsAdvantageOnLaneOpponent는 라이엇이 이미 상대 라이너 대비로 계산해서 주는
+            # 값이라 우리가 opponent를 따로 찾을 필요가 없다.
+            score = _diff_norm(laning_advantage(p), _CS_DIFF_CAP)
         else:
             score = _norm(_metric_val(p, metric, team_kills), metric, pos)
         total += score * weight
@@ -227,6 +250,28 @@ def _demo():
     jg = _make(100, "JUNGLE", challenges={"dragonTakedowns": 3, "baronTakedowns": 1, "riftHeraldTakedowns": 1})
     jg_hi_obj = score_player(jg, [jg] + [p for p in team1 if p["individualPosition"] != "JUNGLE"] + team2, "JUNGLE")
     assert jg_hi_obj >= jg_base, "오브젝트 관여가 늘어난 정글 점수가 baseline보다 낮음"
+
+    # 라인전 CS 우위(challenges.maxCsAdvantageOnLaneOpponent)가 높으면 TOP 점수가 올라야 한다.
+    top_hi_laning = _make(100, "TOP", challenges={"maxCsAdvantageOnLaneOpponent": 30})
+    top_hi_laning_score = score_player(
+        top_hi_laning, [top_hi_laning] + [p for p in team1 if p["individualPosition"] != "TOP"] + team2, "TOP",
+    )
+    assert top_hi_laning_score >= baseline, "라인전 우위가 있는 TOP 점수가 baseline보다 낮음"
+
+    # 포탑 플레이트를 더 가져가면 탑/미드/원딜 점수가 올라야 한다.
+    for pos in ("TOP", "MIDDLE", "BOTTOM"):
+        base = score_player(team1[positions.index(pos)], match, pos)
+        hi_plates = _make(100, pos, challenges={"turretPlatesTaken": 5})
+        hi_score = score_player(
+            hi_plates, [hi_plates] + [p for p in team1 if p["individualPosition"] != pos] + team2, pos,
+        )
+        assert hi_score >= base, f"{pos}: 포탑 플레이트가 늘어난 점수가 baseline보다 낮음"
+
+    # 탑은 더 이상 딜량이 1순위 가중치가 아니어야 한다 (라인전/골드격차를 더 중시).
+    top_weights = dict(_W["TOP"])
+    assert top_weights["damage"] < top_weights["kda"], "탑 딜량 가중치가 KDA보다 높음"
+    assert top_weights["damage"] < top_weights["laning"], "탑 딜량 가중치가 여전히 1순위"
+    assert top_weights["damage"] != max(top_weights.values()), "탑 딜량이 여전히 최고 가중치"
 
     print("ok")
 

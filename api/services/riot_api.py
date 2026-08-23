@@ -4,7 +4,9 @@ import aiohttp
 from collections import Counter
 from dataclasses import dataclass
 from dotenv import load_dotenv
-from api.services.riot_analysis import score_and_grade
+from api.services.riot_analysis import (
+    score_and_grade, objective_takedowns, laning_advantage, solo_kills, turret_plates,
+)
 
 load_dotenv()
 
@@ -25,6 +27,11 @@ POSITION_KR = {
     "TOP": "탑", "JUNGLE": "정글", "MIDDLE": "미드",
     "BOTTOM": "원딜", "UTILITY": "서포터",
 }
+_ROLE_ORDER = list(POSITION_KR)  # 탑/정글/미드/원딜/서폿 순 — 스코어보드 정렬용
+
+
+def _role_sort_key(p) -> int:
+    return _ROLE_ORDER.index(p.position) if p.position in _ROLE_ORDER else len(_ROLE_ORDER)
 
 _champ_cache: dict[int, tuple[str, str]] = {}  # id -> (korean_name, english_key)
 _spell_cache: dict[int, str] = {}               # id -> ddragon image id (e.g. "SummonerFlash")
@@ -118,6 +125,12 @@ class MatchResult:
     damage_share: float       # 팀 딜 기여율 (0–100)
     dmg_rank: int             # 팀 내 딜 순위 (1–5)
     score: int                # 포지션 보정 점수 (0–100)
+    objectives: int           # 드래곤/바론/전령 관여 횟수 (주로 정글 지표)
+    vision_score: int         # 시야점수 (주로 서포터 지표)
+    camps: int                # 정글 몹(캠프) 처치 수 (neutralMinionsKilled, 주로 정글 지표)
+    laning_advantage: float   # 상대 라이너 대비 라인전 구간 최대 CS 우위 — "라인전" 지표
+    solo_kills: int           # 라인전 중 1v1 솔로킬 횟수
+    turret_plates: int        # 초반 포탑 플레이트 획득 수
 
     @property
     def kda(self) -> float:
@@ -401,6 +414,12 @@ async def fetch_match_history(puuid: str, queue_id: int, count: int = 5) -> list
                 dmg_rank=dmg_rank,
                 score=_score,
                 grade=_grade,
+                objectives=objective_takedowns(me),
+                vision_score=me.get("visionScore", 0),
+                camps=me.get("neutralMinionsKilled", 0),
+                laning_advantage=laning_advantage(me),
+                solo_kills=solo_kills(me),
+                turret_plates=turret_plates(me),
             )
         )
     return results
@@ -423,6 +442,11 @@ class ParticipantSummary:
     win: bool
     score: int
     grade: str
+    objectives: int                  # 드래곤/바론/전령 관여 횟수 (주로 정글 지표)
+    camps: int                       # 정글 몹(캠프) 처치 수 (neutralMinionsKilled, 주로 정글 지표)
+    laning_advantage: float          # 상대 라이너 대비 라인전 구간 최대 CS 우위 — "라인전" 지표
+    solo_kills: int                  # 라인전 중 1v1 솔로킬 횟수
+    turret_plates: int               # 초반 포탑 플레이트 획득 수
     champ_icon_url: str
     spell_icon_urls: list[str]
     item_icon_urls: list[str]        # 빌드 아이템 (0번 슬롯 제외, 빈 슬롯은 목록에서 생략)
@@ -519,6 +543,11 @@ async def fetch_match_detail(match_id: str, puuid: str) -> MatchDetail:
             win=p["win"],
             score=score,
             grade=grade,
+            objectives=objective_takedowns(p),
+            camps=p.get("neutralMinionsKilled", 0),
+            laning_advantage=laning_advantage(p),
+            solo_kills=solo_kills(p),
+            turret_plates=turret_plates(p),
             champ_icon_url=f"{DDRAGON_BASE}/cdn/{ddragon_ver}/img/champion/{champ_key}.png",
             spell_icon_urls=[_spell_url(p.get("summoner1Id", 0)), _spell_url(p.get("summoner2Id", 0))],
             item_icon_urls=[_item_url(i) for i in items if i],
@@ -526,8 +555,12 @@ async def fetch_match_detail(match_id: str, puuid: str) -> MatchDetail:
         ))
 
     me_summary   = next(s for s in summaries if s.puuid == puuid)
-    my_team      = [me_summary] + [s for s in summaries if s.team_id == my_team_id and s.puuid != puuid]
-    enemy_team   = [s for s in summaries if s.team_id != my_team_id]
+    my_team      = sorted(
+        (s for s in summaries if s.team_id == my_team_id), key=_role_sort_key,
+    )
+    enemy_team   = sorted(
+        (s for s in summaries if s.team_id != my_team_id), key=_role_sort_key,
+    )
     ace          = max(summaries, key=lambda s: s.score)
     troll        = min(summaries, key=lambda s: s.score)
     enemy_team_id = enemy_team[0].team_id if enemy_team else next(

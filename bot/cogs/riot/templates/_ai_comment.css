@@ -1,0 +1,16 @@
+.ai-comment-section {
+  margin:20px 26px 24px;
+  padding:20px 24px;
+  border-radius:14px;
+  background:linear-gradient(135deg, #5865f22e 0%, #8b7cf62e 100%);
+  border:1.5px solid #8b7cf680;
+}
+.ai-comment-label {
+  display:flex; align-items:center; gap:7px;
+  font-size:16px; font-weight:800; color:var(--accent);
+  letter-spacing:.3px; margin-bottom:10px;
+}
+.ai-comment-text {
+  font-size:18px; font-weight:700; color:var(--text-strong);
+  line-height:1.65;
+}

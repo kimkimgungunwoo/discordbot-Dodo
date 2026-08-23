@@ -30,6 +30,12 @@ class MatchStats:
     avg_kp: float
     avg_cs_per_min: float
     avg_damage: int
+    avg_objectives: float     # 드래곤/바론/전령 관여 횟수 평균 (주로 정글 지표)
+    avg_vision_score: float   # 시야점수 평균 (주로 서포터 지표)
+    avg_camps: float          # 정글 몹(캠프) 처치 수 평균 (주로 정글 지표)
+    avg_laning_advantage: float   # 상대 라이너 대비 라인전 구간 최대 CS 우위 평균 — "라인전" 지표
+    avg_solo_kills: float         # 라인전 중 1v1 솔로킬 횟수 평균
+    avg_turret_plates: float      # 초반 포탑 플레이트 획득 수 평균
 
     # 캐리력
     avg_damage_share: float
@@ -134,6 +140,12 @@ def analyze_matches(matches: list) -> MatchStats | None:
         sum(m.cs / max(m.duration / 60, 1) for m in matches) / total, 1
     )
     avg_damage = round(sum(m.damage for m in matches) / total)
+    avg_objectives = round(sum(m.objectives for m in matches) / total, 1)
+    avg_vision_score = round(sum(m.vision_score for m in matches) / total, 1)
+    avg_camps = round(sum(m.camps for m in matches) / total, 1)
+    avg_laning_advantage = round(sum(m.laning_advantage for m in matches) / total, 1)
+    avg_solo_kills = round(sum(m.solo_kills for m in matches) / total, 1)
+    avg_turret_plates = round(sum(m.turret_plates for m in matches) / total, 1)
 
     # ── 캐리력 ─────────────────────────────────────────
     avg_score        = round(sum(m.score for m in matches) / total, 1)
@@ -187,7 +199,10 @@ def analyze_matches(matches: list) -> MatchStats | None:
     return MatchStats(
         total=total, wins=wins,
         avg_kda=avg_kda, avg_kp=avg_kp,
-        avg_cs_per_min=avg_cs_per_min, avg_damage=avg_damage,
+        avg_cs_per_min=avg_cs_per_min, avg_damage=avg_damage, avg_objectives=avg_objectives,
+        avg_vision_score=avg_vision_score, avg_camps=avg_camps,
+        avg_laning_advantage=avg_laning_advantage, avg_solo_kills=avg_solo_kills,
+        avg_turret_plates=avg_turret_plates,
         avg_damage_share=avg_damage_share, avg_dmg_rank=avg_dmg_rank,
         avg_score=avg_score,
         carry_count=carry_count, good_count=good_count,

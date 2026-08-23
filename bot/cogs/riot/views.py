@@ -14,6 +14,9 @@ from api.services.riot_stats import analyze_matches
 from bot.cogs.riot.renderer import (
     render_profile_card, render_match_card, render_stats_card, render_game_analysis_card,
 )
+from bot.cogs.riot.ai_comment import (
+    generate_comment, build_history_prompt, build_stats_prompt, build_game_analysis_prompt,
+)
 
 
 InteractionCallback = Callable[["RiotCog", discord.Interaction, str, str], Awaitable[None]]
@@ -286,7 +289,8 @@ class QueueSelectView(discord.ui.View):
             await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
             return
 
-        img = await render_match_card(matches, self.game_name, self.tag_line, queue_label)
+        comment = await generate_comment(build_history_prompt(matches, self.game_name))
+        img = await render_match_card(matches, self.game_name, self.tag_line, queue_label, ai_comment=comment)
         await interaction.followup.send(file=discord.File(img, "matches.png"))
 
     @discord.ui.button(label="🏆 솔로랭크", style=discord.ButtonStyle.primary)
@@ -327,7 +331,8 @@ class StatsQueueSelectView(discord.ui.View):
             await interaction.followup.send("최근 게임 기록이 없습니다.", ephemeral=True)
             return
 
-        img = await render_stats_card(stats, self.game_name, self.tag_line, queue_label, matches=matches)
+        comment = await generate_comment(build_stats_prompt(stats, self.game_name))
+        img = await render_stats_card(stats, self.game_name, self.tag_line, queue_label, matches=matches, ai_comment=comment)
         await interaction.followup.send(file=discord.File(img, "stats.png"))
 
     @discord.ui.button(label="🏆 솔로랭크", style=discord.ButtonStyle.primary)
@@ -428,7 +433,8 @@ class MatchPickSelect(discord.ui.Select):
             await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
             return
 
-        img = await render_game_analysis_card(detail, self.game_name, self.tag_line, self.queue_label)
+        comment = await generate_comment(build_game_analysis_prompt(detail, self.game_name))
+        img = await render_game_analysis_card(detail, self.game_name, self.tag_line, self.queue_label, ai_comment=comment)
         await interaction.followup.send(file=discord.File(img, "analysis.png"))
 
 
