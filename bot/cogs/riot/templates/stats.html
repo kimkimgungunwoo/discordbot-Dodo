@@ -5,6 +5,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 {% include "_tokens.html" %}
+{% include "_ai_comment.css" %}
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
 
@@ -276,6 +277,8 @@
       {% endfor %}
     </div>
   </div>
+
+  {% include "_ai_comment.html" %}
 
 </div>
 </body>

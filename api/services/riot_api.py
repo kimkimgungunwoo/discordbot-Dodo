@@ -4,7 +4,7 @@ import aiohttp
 from collections import Counter
 from dataclasses import dataclass
 from dotenv import load_dotenv
-from api.services.riot_analysis import score_and_grade
+from api.services.riot_analysis import score_and_grade, objective_takedowns
 
 load_dotenv()
 
@@ -118,6 +118,9 @@ class MatchResult:
     damage_share: float       # 팀 딜 기여율 (0–100)
     dmg_rank: int             # 팀 내 딜 순위 (1–5)
     score: int                # 포지션 보정 점수 (0–100)
+    objectives: int           # 드래곤/바론/전령 관여 횟수 (주로 정글 지표)
+    vision_score: int         # 시야점수 (주로 서포터 지표)
+    camps: int                # 정글 몹(캠프) 처치 수 (neutralMinionsKilled, 주로 정글 지표)
 
     @property
     def kda(self) -> float:
@@ -401,6 +404,9 @@ async def fetch_match_history(puuid: str, queue_id: int, count: int = 5) -> list
                 dmg_rank=dmg_rank,
                 score=_score,
                 grade=_grade,
+                objectives=objective_takedowns(me),
+                vision_score=me.get("visionScore", 0),
+                camps=me.get("neutralMinionsKilled", 0),
             )
         )
     return results
@@ -423,6 +429,8 @@ class ParticipantSummary:
     win: bool
     score: int
     grade: str
+    objectives: int                  # 드래곤/바론/전령 관여 횟수 (주로 정글 지표)
+    camps: int                       # 정글 몹(캠프) 처치 수 (neutralMinionsKilled, 주로 정글 지표)
     champ_icon_url: str
     spell_icon_urls: list[str]
     item_icon_urls: list[str]        # 빌드 아이템 (0번 슬롯 제외, 빈 슬롯은 목록에서 생략)
@@ -519,6 +527,8 @@ async def fetch_match_detail(match_id: str, puuid: str) -> MatchDetail:
             win=p["win"],
             score=score,
             grade=grade,
+            objectives=objective_takedowns(p),
+            camps=p.get("neutralMinionsKilled", 0),
             champ_icon_url=f"{DDRAGON_BASE}/cdn/{ddragon_ver}/img/champion/{champ_key}.png",
             spell_icon_urls=[_spell_url(p.get("summoner1Id", 0)), _spell_url(p.get("summoner2Id", 0))],
             item_icon_urls=[_item_url(i) for i in items if i],

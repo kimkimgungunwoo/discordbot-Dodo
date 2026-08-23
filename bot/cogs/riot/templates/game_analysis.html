@@ -5,6 +5,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 {% include "_tokens.html" %}
+{% include "_ai_comment.css" %}
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
 
@@ -12,7 +13,7 @@
     background:var(--bg-card);
     border-radius:16px;
     overflow:hidden;
-    width:1300px;
+    width:1700px;
     display:inline-block;
   }
 
@@ -82,27 +83,29 @@
   .badge-name { font-size:14px; font-weight:800; color:var(--text-strong); margin-top:2px; }
   .badge-sub  { font-size:12px; font-weight:600; color:var(--text-muted); }
 
-  /* ── Scoreboard ── */
-  .scoreboard { padding:18px 26px; }
+  /* ── Scoreboard (우리팀/상대팀 좌우 배치로 세로 길이를 절반으로 줄임) ── */
+  .scoreboards-row { display:flex; border-bottom:1px solid var(--border); }
+  .scoreboard { flex:1; padding:18px 22px; }
+  .scoreboards-row .scoreboard:first-child { border-right:1px solid var(--border); }
   .sb-row {
-    display:flex; align-items:center; gap:10px;
+    display:flex; align-items:center; gap:8px;
     padding:9px 0; border-bottom:1px solid var(--bg-surface-2);
   }
   .sb-row:last-child { border-bottom:none; }
-  .sb-row.me { background:#5865f214; margin:0 -12px; padding:9px 12px; border-radius:8px; }
-  .sb-champ-wrap { position:relative; flex-shrink:0; width:40px; height:40px; }
-  .sb-champ-icon { width:40px; height:40px; border-radius:8px; object-fit:cover; background:var(--border); }
+  .sb-row.me { background:#5865f214; margin:0 -10px; padding:9px 10px; border-radius:8px; }
+  .sb-champ-wrap { position:relative; flex-shrink:0; width:38px; height:38px; }
+  .sb-champ-icon { width:38px; height:38px; border-radius:8px; object-fit:cover; background:var(--border); }
   .sb-spells { display:flex; flex-direction:column; gap:2px; flex-shrink:0; }
-  .sb-spell { width:18px; height:18px; border-radius:4px; background:var(--border); }
-  .sb-name-wrap { width:150px; flex-shrink:0; min-width:0; }
+  .sb-spell { width:17px; height:17px; border-radius:4px; background:var(--border); }
+  .sb-name-wrap { width:120px; flex-shrink:0; min-width:0; }
   .sb-name { font-size:13px; font-weight:700; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .sb-pos  { font-size:11px; font-weight:600; color:var(--text-muted); }
-  .sb-kda-wrap { width:100px; flex-shrink:0; }
+  .sb-pos  { font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sb-kda-wrap { width:88px; flex-shrink:0; }
   .sb-kda { font-size:13px; font-weight:700; color:var(--text-strong); }
   .sb-kda-ratio { font-size:11px; font-weight:600; color:var(--text-muted); }
-  .sb-num { width:60px; flex-shrink:0; font-size:13px; font-weight:600; color:var(--text-secondary); text-align:center; }
+  .sb-num { width:52px; flex-shrink:0; font-size:13px; font-weight:600; color:var(--text-secondary); text-align:center; }
   .sb-items { display:flex; gap:2px; flex-shrink:0; }
-  .sb-item { width:22px; height:22px; border-radius:4px; background:var(--bg-track); object-fit:cover; }
+  .sb-item { width:20px; height:20px; border-radius:4px; background:var(--bg-track); object-fit:cover; }
   .sb-score-chip {
     margin-left:auto; flex-shrink:0;
     font-size:12px; font-weight:800; padding:3px 9px; border-radius:10px;
@@ -222,10 +225,8 @@
   </div>
 
   <!-- Scoreboard -->
-  <div class="scoreboard">
-    <div class="section-label">🔵 우리팀 스코어보드</div>
-    {% for p in d.my_team %}
-    <div class="sb-row {{ 'me' if p.puuid == d.me.puuid else '' }}">
+  {% macro sb_row(p, is_me) %}
+    <div class="sb-row {{ 'me' if is_me else '' }}">
       <div class="sb-champ-wrap">
         <img class="sb-champ-icon" src="{{ p.champ_icon_url }}" onerror="this.style.opacity=0" alt="">
       </div>
@@ -255,7 +256,17 @@
       {% set psc = p.score|score_color %}
       <span class="sb-score-chip" style="background:{{ psc }}26; color:{{ psc }}; border:1px solid {{ psc }}55">{{ p.score }}점</span>
     </div>
-    {% endfor %}
+  {% endmacro %}
+
+  <div class="scoreboards-row">
+    <div class="scoreboard">
+      <div class="section-label">🔵 우리팀 스코어보드</div>
+      {% for p in d.my_team %}{{ sb_row(p, p.puuid == d.me.puuid) }}{% endfor %}
+    </div>
+    <div class="scoreboard">
+      <div class="section-label">🔴 상대팀 스코어보드</div>
+      {% for p in d.enemy_team %}{{ sb_row(p, false) }}{% endfor %}
+    </div>
   </div>
 
   <!-- Game flow: gold diff over time -->
@@ -292,6 +303,8 @@
     </div>
   </div>
   {% endif %}
+
+  {% include "_ai_comment.html" %}
 
 </div>
 </body>

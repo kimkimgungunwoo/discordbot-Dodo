@@ -75,9 +75,14 @@ def _metric_val(p: dict, metric: str, team_kills: int) -> float:
     if metric == "vision":
         return p.get("visionScore", 0)
     if metric == "objectives":
-        c = p.get("challenges") or {}
-        return c.get("dragonTakedowns", 0) + c.get("baronTakedowns", 0) + c.get("riftHeraldTakedowns", 0)
+        return objective_takedowns(p)
     return 0
+
+
+def objective_takedowns(p: dict) -> int:
+    """드래곤/바론/전령 관여(킬 또는 어시) 횟수 — riot_api.py에서 표시용으로도 재사용."""
+    c = p.get("challenges") or {}
+    return c.get("dragonTakedowns", 0) + c.get("baronTakedowns", 0) + c.get("riftHeraldTakedowns", 0)
 
 
 def _norm(val: float, metric: str, pos: str) -> float:

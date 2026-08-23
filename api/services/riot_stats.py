@@ -30,6 +30,9 @@ class MatchStats:
     avg_kp: float
     avg_cs_per_min: float
     avg_damage: int
+    avg_objectives: float     # 드래곤/바론/전령 관여 횟수 평균 (주로 정글 지표)
+    avg_vision_score: float   # 시야점수 평균 (주로 서포터 지표)
+    avg_camps: float          # 정글 몹(캠프) 처치 수 평균 (주로 정글 지표)
 
     # 캐리력
     avg_damage_share: float
@@ -134,6 +137,9 @@ def analyze_matches(matches: list) -> MatchStats | None:
         sum(m.cs / max(m.duration / 60, 1) for m in matches) / total, 1
     )
     avg_damage = round(sum(m.damage for m in matches) / total)
+    avg_objectives = round(sum(m.objectives for m in matches) / total, 1)
+    avg_vision_score = round(sum(m.vision_score for m in matches) / total, 1)
+    avg_camps = round(sum(m.camps for m in matches) / total, 1)
 
     # ── 캐리력 ─────────────────────────────────────────
     avg_score        = round(sum(m.score for m in matches) / total, 1)
@@ -187,7 +193,8 @@ def analyze_matches(matches: list) -> MatchStats | None:
     return MatchStats(
         total=total, wins=wins,
         avg_kda=avg_kda, avg_kp=avg_kp,
-        avg_cs_per_min=avg_cs_per_min, avg_damage=avg_damage,
+        avg_cs_per_min=avg_cs_per_min, avg_damage=avg_damage, avg_objectives=avg_objectives,
+        avg_vision_score=avg_vision_score, avg_camps=avg_camps,
         avg_damage_share=avg_damage_share, avg_dmg_rank=avg_dmg_rank,
         avg_score=avg_score,
         carry_count=carry_count, good_count=good_count,

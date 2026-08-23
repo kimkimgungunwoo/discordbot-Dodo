@@ -59,18 +59,19 @@ async def render_profile_card(profile) -> io.BytesIO:
 
 
 async def render_match_card(
-    matches, game_name: str, tag_line: str, queue_label: str
+    matches, game_name: str, tag_line: str, queue_label: str, ai_comment: str | None = None
 ) -> io.BytesIO:
     return await _render("matches.html", {
         "matches": matches,
         "game_name": game_name,
         "tag_line": tag_line,
         "queue_label": queue_label,
+        "ai_comment": ai_comment,
     }, width=1300)
 
 
 async def render_stats_card(
-    stats, game_name: str, tag_line: str, queue_label: str, matches=None
+    stats, game_name: str, tag_line: str, queue_label: str, matches=None, ai_comment: str | None = None
 ) -> io.BytesIO:
     return await _render("stats.html", {
         "s": stats,
@@ -78,15 +79,17 @@ async def render_stats_card(
         "game_name": game_name,
         "tag_line": tag_line,
         "queue_label": queue_label,
+        "ai_comment": ai_comment,
     }, width=1300)
 
 
 async def render_game_analysis_card(
-    detail, game_name: str, tag_line: str, queue_label: str
+    detail, game_name: str, tag_line: str, queue_label: str, ai_comment: str | None = None
 ) -> io.BytesIO:
     return await _render("game_analysis.html", {
         "d": detail,
         "game_name": game_name,
         "tag_line": tag_line,
         "queue_label": queue_label,
-    }, width=1300)
+        "ai_comment": ai_comment,
+    }, width=1700)
