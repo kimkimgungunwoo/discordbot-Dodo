@@ -23,12 +23,18 @@ plugins:
     allowSearch: true
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
+    # 2026-08-30 실측(GET /youtube/stream/{id}?withClient=)으로 재배치 — WEB/ANDROID_VR은
+    # 실제 스트림 200 확인, WEBEMBEDDED는 실패, TV는 OAuth 정상인데도 무제한 영상에서마저
+    # 실패(플러그인 자체 결함으로 추정, 별도 이슈) — 그래서 TV를 우선순위 맨 뒤로 내림.
+    # PoToken(WEB/WEBEMBEDDED 보강용)은 공식 생성 도구(youtube-trusted-session-generator)가
+    # deprecated돼 토큰 추출 자체가 안 돼서(2회 재현 실패) 적용 보류 — WEB이 PoToken 없이도
+    # 이미 정상 작동해서 급하지 않음. 새 dynamic/remote PoToken 방식이 stable 지원되면 재검토.
     clients:
-      - TV          # OAuth를 실제로 쓰는 유일한 클라이언트 — 이게 없으면 OAuth 설정이 무시된다
-      - MUSIC
-      - ANDROID_VR
+      - MUSIC       # 검색 전용 (Playback Support 없음)
       - WEB
+      - ANDROID_VR
       - WEBEMBEDDED
+      - TV          # OAuth를 실제로 쓰는 유일한 클라이언트 — 현재 자체 결함으로 최후순위
     oauth:
       enabled: true
       # 최초엔 비워두고 기동 → 로그(docker compose logs lavalink)에 뜨는 기기 코드 로그인 링크로

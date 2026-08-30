@@ -18,6 +18,7 @@ PLAYLIST_DISABLED_MSG = "🚧 재생목록 기능은 원인 불명 버그로 현
 MIN_RESUME_MS = 5000
 RETRY_CHAIN_RESET_MS = 1000
 RETRY_RESTART_DELAY_SEC = 1.0
+MAX_PLAY_RETRIES = 3  # 재생 준비(vc.play) 자체가 이 횟수 넘게 연속 실패하면 무한 재시도 대신 건너뜀
 
 
 class Music(commands.Cog):
@@ -253,7 +254,22 @@ class Music(commands.Cog):
                 except Exception as e:
                     print(f"[Music] '{track.title}' 재생 준비 실패: {e}")
                     self._playing_mode.pop(guild.id, None)
+                    currents.pop(guild.id, None)
+
+                    # play() 실패는 on_wavelink_track_exception과 별개 경로라 _is_unrecoverable_exception
+                    # 체크가 없었음 — "이 영상은 로그인 필요" 같은 영구 실패도 매초 무한 재시도되며
+                    # 큐 전체가 멈춰버리는 버그였음 (같은 트랙이 계속 재생 준비 실패 로그로 반복 확인됨).
+                    if self._is_unrecoverable_exception(str(e), ""):
+                        print(f"[Music] 치명적 재생 불가로 건너뜀: '{track.title}'", flush=True)
+                        self._clear_retry(guild.id, track, clear_position=True)
+                        continue
+
                     retry_no = self._consume_retry(guild.id, track)
+                    if retry_no > MAX_PLAY_RETRIES:
+                        print(f"[Music] 재생 준비 {MAX_PLAY_RETRIES}회 연속 실패로 건너뜀: '{track.title}'", flush=True)
+                        self._clear_retry(guild.id, track, clear_position=True)
+                        continue
+
                     self._schedule_retry(guild, mode, track, start=start, reason=f"play_failed_{retry_no}")
                     return
                 if start > 0:
