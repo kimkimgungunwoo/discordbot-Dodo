@@ -18,7 +18,8 @@ PLAYLIST_DISABLED_MSG = "🚧 재생목록 기능은 원인 불명 버그로 현
 MIN_RESUME_MS = 5000
 RETRY_CHAIN_RESET_MS = 1000
 RETRY_RESTART_DELAY_SEC = 1.0
-MAX_PLAY_RETRIES = 3  # 재생 준비(vc.play) 자체가 이 횟수 넘게 연속 실패하면 무한 재시도 대신 건너뜀
+MAX_PLAY_RETRIES = 10  # 재생 준비(vc.play) 자체가 이 횟수 넘게 연속 실패하면 무한 재시도 대신 건너뜀
+                        # (LavalinkException은 이제 즉시 스킵 대상이라, 여기 걸리는 건 진짜 일시적 네트워크/노드 실패뿐)
 
 
 class Music(commands.Cog):
@@ -251,18 +252,31 @@ class Music(commands.Cog):
 
                 try:
                     await vc.play(track.playable, start=start)
-                except Exception as e:
-                    print(f"[Music] '{track.title}' 재생 준비 실패: {e}")
+                except wavelink.LavalinkException as e:
+                    # vc.play()가 LavalinkException을 던진다는 것 자체가 youtube-source 내부에서
+                    # WEB→ANDROID_VR→WEBEMBEDDED→TV 전체 클라이언트 폴백체인이 이미 다 실패해서
+                    # Lavalink가 정식 에러 응답(REST ErrorResponse)을 준 것 — 재시도해봐야 그 폴백체인을
+                    # 같은 영상에 또 돌리는 것뿐이라 즉시 스킵한다. (기존엔 여기서 _is_unrecoverable_exception
+                    # 으로 문자열 키워드 매칭을 시도했는데, wavelink의 LavalinkException.__str__엔 Lavalink
+                    # ErrorResponse의 status/error(HTTP 에러 클래스명)만 담기고 실제 사유 문구(message 필드,
+                    # 예: "This video requires login.")는 라이브러리가 애초에 안 담아줘서 절대 매칭될 수 없는
+                    # 죽은 코드였음 — wavelink/exceptions.py 소스로 확인. 대신 예외 타입 자체로 판별한다.)
+                    print(
+                        f"[Music] '{track.title}' 재생 준비 실패(전 클라이언트 실패, 즉시 스킵): "
+                        f"status={e.status} reason={e.error}",
+                        flush=True,
+                    )
                     self._playing_mode.pop(guild.id, None)
                     currents.pop(guild.id, None)
-
-                    # play() 실패는 on_wavelink_track_exception과 별개 경로라 _is_unrecoverable_exception
-                    # 체크가 없었음 — "이 영상은 로그인 필요" 같은 영구 실패도 매초 무한 재시도되며
-                    # 큐 전체가 멈춰버리는 버그였음 (같은 트랙이 계속 재생 준비 실패 로그로 반복 확인됨).
-                    if self._is_unrecoverable_exception(str(e), ""):
-                        print(f"[Music] 치명적 재생 불가로 건너뜀: '{track.title}'", flush=True)
-                        self._clear_retry(guild.id, track, clear_position=True)
-                        continue
+                    self._clear_retry(guild.id, track, clear_position=True)
+                    continue
+                except Exception as e:
+                    # LavalinkException이 아닌 경우(노드 연결 끊김/타임아웃 등 진짜 일시적 실패 가능성)만
+                    # 재시도한다. vc.play() 한 번의 실패가 곧 클라이언트 폴백체인 한 바퀴 실패를 뜻하므로
+                    # MAX_PLAY_RETRIES는 "유튜브 요청 횟수"가 아니라 "폴백체인 재시도 횟수"다.
+                    print(f"[Music] '{track.title}' 재생 준비 실패(일시적 가능성, 재시도): {e}", flush=True)
+                    self._playing_mode.pop(guild.id, None)
+                    currents.pop(guild.id, None)
 
                     retry_no = self._consume_retry(guild.id, track)
                     if retry_no > MAX_PLAY_RETRIES:
