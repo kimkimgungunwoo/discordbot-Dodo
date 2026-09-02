@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+{% include "_ai_comment.css" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:1400px;
+    display:inline-block;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding:22px 26px;
+    background:var(--header-bg);
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    gap:16px;
+  }
+  .profile-icon {
+    width:60px; height:60px;
+    border-radius:50%;
+    object-fit:cover;
+    border:2px solid var(--border);
+    background:var(--border);
+    flex-shrink:0;
+  }
+  .player-name { font-size:22px; font-weight:800; color:var(--text-primary); }
+  .player-title { font-size:13px; font-weight:600; color:var(--text-muted); margin-top:2px; }
+  .header-sub { margin-left:auto; font-size:14px; font-weight:600; color:var(--text-secondary); }
+
+  .section-label {
+    font-size:13px; font-weight:700; letter-spacing:.3px;
+    color:var(--text-secondary);
+    margin-bottom:14px;
+  }
+
+  /* ── Hero grid (5 x 2) ── */
+  .heroes { padding:22px 26px; border-bottom:1px solid var(--border); }
+  .heroes-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; }
+  .hero-card {
+    background:var(--bg-surface-2); border-radius:10px;
+    border:2px solid var(--warn);
+    padding:14px 10px; text-align:center; position:relative;
+  }
+  .hero-rank {
+    position:absolute; top:8px; left:8px;
+    font-size:11px; font-weight:800; color:var(--text-muted);
+  }
+  .hero-icon {
+    width:48px; height:48px;
+    border-radius:10px; object-fit:cover;
+    background:var(--border);
+    margin:8px auto 8px;
+  }
+  .hero-name { font-size:14px; font-weight:800; color:var(--text-strong); }
+  .hero-wr-chip {
+    display:inline-block; margin-top:7px;
+    font-size:11px; font-weight:800;
+    border-radius:5px; padding:2px 8px;
+  }
+  .hero-sub { font-size:11px; font-weight:600; color:var(--text-muted); margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <!-- Header -->
+  <div class="header">
+    <img class="profile-icon" src="{{ p.avatar }}" onerror="this.style.opacity=0" alt="">
+    <div>
+      <div class="player-name">{{ p.name }}</div>
+      {% if p.title %}<div class="player-title">{{ p.title }}</div>{% endif %}
+    </div>
+    <div class="header-sub">플레이시간 기준 상위 {{ p.top_heroes|length }}개 영웅</div>
+  </div>
+
+  <!-- Hero grid -->
+  <div class="heroes">
+    <div class="section-label">모스트 영웅 TOP {{ p.top_heroes|length }}</div>
+    <div class="heroes-grid">
+      {% for h in p.top_heroes %}
+      <div class="hero-card">
+        <span class="hero-rank">#{{ loop.index }}</span>
+        <img class="hero-icon" src="{{ h.portrait }}" onerror="this.style.opacity=0" alt="">
+        <div class="hero-name">{{ h.name }}</div>
+        <span class="hero-wr-chip"
+          style="background:{{ 'var(--win)' if h.winrate >= 50 else 'var(--lose)' }}26;
+                 color:{{ 'var(--win)' if h.winrate >= 50 else 'var(--lose)' }};
+                 border:1px solid {{ 'var(--win)' if h.winrate >= 50 else 'var(--lose)' }}60">
+          {{ h.winrate }}%
+        </span>
+        <div class="hero-sub">{{ h.hours_played }}시간</div>
+        <div class="hero-sub">KDA {{ h.kda }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% include "_ai_comment.html" %}
+
+</div>
+</body>
+</html>

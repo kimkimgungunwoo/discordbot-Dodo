@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+{% include "_hero_stat_block.css" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:2000px;
+    display:inline-block;
+  }
+
+  /* ── Header — 영웅 초상화를 은은한 배경 사진으로도 깔아서 밋밋함을 줄인다 ── */
+  .header {
+    position:relative;
+    padding:22px 28px;
+    background:
+      linear-gradient(120deg, #20242eee 0%, #241f3dee 65%, #241f3dcc 100%),
+      url('{{ hd.hero_portrait }}');
+    background-size:cover; background-position:center 20%;
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    gap:18px;
+  }
+  .hero-icon {
+    width:64px; height:64px;
+    border-radius:16px; object-fit:cover;
+    background:var(--border);
+    border:2px solid #ffffff30;
+    flex-shrink:0;
+  }
+  .h-name { font-size:23px; font-weight:800; color:var(--text-primary); }
+  .h-sub { font-size:13px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+  .role-chip {
+    display:inline-block; margin-left:8px;
+    font-size:11px; font-weight:800; color:var(--accent);
+    background:#5865f240; border:1px solid #5865f280;
+    border-radius:6px; padding:2px 9px; vertical-align:middle;
+  }
+  .header-right { margin-left:auto; text-align:right; display:flex; align-items:center; gap:10px; }
+  .player-avatar {
+    width:36px; height:36px; border-radius:50%; object-fit:cover;
+    background:var(--border); border:2px solid #ffffff30;
+  }
+  .player-line { font-size:13px; font-weight:700; color:var(--text-secondary); }
+
+  /* ── Summary row — 왼쪽 스탯 4개 + 오른쪽 AI 코멘트 미니카드(요청: 오른쪽 맨 위) ── */
+  .summary { display:flex; border-bottom:1px solid var(--border); }
+  .summary-stats { display:flex; flex:3; }
+  .stat-box { flex:1; padding:18px 24px; border-right:1px solid var(--border); }
+  .summary-stats .stat-box:last-child { border-right:none; }
+  .stat-label { font-size:12px; color:var(--text-muted); font-weight:700; letter-spacing:.4px; margin-bottom:7px; }
+  .stat-val { font-size:24px; font-weight:800; color:var(--warn); }
+  .stat-sub { font-size:12px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+  .ring-box { text-align:center; }
+  .ring-wrap { display:flex; justify-content:center; margin:1px 0; }
+
+  .ai-card {
+    flex:1.3; min-width:420px; padding:16px 22px;
+    background:linear-gradient(135deg, #5865f224 0%, #8b7cf624 100%);
+    border-left:1px solid var(--border);
+  }
+  .ai-card-label {
+    display:flex; align-items:center; gap:6px;
+    font-size:12px; font-weight:800; color:var(--accent); letter-spacing:.3px; margin-bottom:8px;
+  }
+  .ai-card-text { font-size:12.5px; font-weight:600; color:var(--text-strong); line-height:1.55; }
+
+  /* ── 3열 stat grid — 얇은 격자선으로 나눈다 ── */
+  .stat-grid {
+    display:grid; grid-template-columns:repeat(3, 1fr);
+    border-top:1px solid var(--border); border-left:1px solid var(--border);
+  }
+  .stat-grid .stat-card { border-right:1px solid var(--border); border-bottom:1px solid var(--border); }
+  .stat-grid .stat-card.full { grid-column:1 / -1; }
+  .stat-grid .kv-grid { grid-template-columns:1fr 1fr 1fr; }
+</style>
+</head>
+<body>
+{% import "_hero_stat_block.html" as hsb %}
+{% set role_emoji = {'tank': '🛡️', 'damage': '⚔️', 'support': '💚'} %}
+<div id="card">
+
+  <div class="header">
+    <img class="hero-icon" src="{{ hd.hero_portrait }}" onerror="this.style.opacity=0" alt="">
+    <div>
+      <div class="h-name">{{ hd.hero_name }}<span class="role-chip">{{ role_emoji.get(hd.hero_role, '❓') }} {{ hd.role_kr }}</span></div>
+      <div class="h-sub">⏱️ {{ hd.hours_played }}시간 · 🎮 {{ hd.games_played }}판</div>
+    </div>
+    <div class="header-right">
+      <div>
+        <div class="player-line">{{ hd.player_name }}</div>
+        <div class="h-sub">영웅 상세분석</div>
+      </div>
+      <img class="player-avatar" src="{{ hd.player_avatar }}" onerror="this.style.opacity=0" alt="">
+    </div>
+  </div>
+
+  {% set ring_c = (2 * 3.14159265 * 30)|round(2) %}
+  {% set ring_offset = (ring_c * (1 - hd.winrate / 100))|round(2) %}
+  <div class="summary">
+    <div class="summary-stats">
+      <div class="stat-box ring-box">
+        <div class="stat-label">🏆 승률</div>
+        <div class="ring-wrap">
+          <svg width="70" height="70" viewBox="0 0 76 76">
+            <circle cx="38" cy="38" r="30" fill="none" stroke="var(--bg-track)" stroke-width="7"/>
+            <circle cx="38" cy="38" r="30" fill="none"
+              style="stroke:{{ 'var(--win)' if hd.winrate >= 50 else 'var(--lose)' }}"
+              stroke-width="7" stroke-linecap="round"
+              stroke-dasharray="{{ ring_c }}"
+              stroke-dashoffset="{{ ring_offset }}"
+              transform="rotate(-90 38 38)"/>
+            <text x="38" y="44" text-anchor="middle" font-size="16" font-weight="800" style="fill:var(--text-strong)">{{ hd.winrate }}%</text>
+          </svg>
+        </div>
+        <div class="stat-sub">{{ hd.games_won }}승 {{ hd.games_lost }}패</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">⚡ KDA</div>
+        <div class="stat-val">{{ hd.kda }}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">⏱️ 플레이 시간</div>
+        <div class="stat-val">{{ hd.hours_played }}h</div>
+        <div class="stat-sub">{{ hd.games_played }}판 참여</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">📌 픽률</div>
+        <div class="stat-val">{{ hero_role_pick_rate }}</div>
+        <div class="stat-sub">역할 내 비중</div>
+      </div>
+    </div>
+    {% if ai_comment %}
+    <div class="ai-card">
+      <div class="ai-card-label">🤖 AI 코멘트</div>
+      <div class="ai-card-text">{{ ai_comment }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="stat-grid">
+    {{ hsb.section("📊 경험 / 숙련", experience) }}
+    {{ hsb.section("🎯 성과", performance) }}
+    {{ hsb.section("⚔️ 공격 지표", attack) }}
+    {{ hsb.section("🛡️ 생존 지표", survival) }}
+    {% if support %}{{ hsb.section("💚 지원 지표", support) }}{% endif %}
+    {% if aim %}{{ hsb.section("🔫 에임 / 정확도", aim) }}{% endif %}
+    {{ hsb.section("✨ 영웅 고유 지표 — " + hd.hero_name, hero_specific, full=true) }}
+  </div>
+
+</div>
+</body>
+</html>

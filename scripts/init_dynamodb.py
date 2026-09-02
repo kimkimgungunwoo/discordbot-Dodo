@@ -66,6 +66,17 @@ TABLES = [
             {"AttributeName": "puuid", "AttributeType": "S"},
         ],
     },
+    {
+        "name": "overwatch_favorite",
+        "KeySchema": [
+            {"AttributeName": "discord_user_id", "KeyType": "HASH"},
+            {"AttributeName": "player_id", "KeyType": "RANGE"},
+        ],
+        "AttributeDefinitions": [
+            {"AttributeName": "discord_user_id", "AttributeType": "N"},
+            {"AttributeName": "player_id", "AttributeType": "S"},
+        ],
+    },
 ]
 
 
