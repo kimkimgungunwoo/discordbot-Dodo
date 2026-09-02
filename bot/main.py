@@ -13,7 +13,10 @@ load_dotenv()
 token = os.getenv("token")
 
 from scripts.init_dynamodb import main as init_dynamodb
-asyncio.run(init_dynamodb())
+try:
+    asyncio.run(init_dynamodb())
+except Exception:
+    logging.exception("init_dynamodb failed, starting bot anyway")
 
 bot = create_bot()
 bot.run(token)
