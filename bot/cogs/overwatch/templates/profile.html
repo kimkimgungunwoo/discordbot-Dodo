@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:800px;
+    display:inline-block;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding:22px 24px;
+    background:var(--header-bg);
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    gap:16px;
+  }
+  .profile-icon {
+    width:68px; height:68px;
+    border-radius:50%;
+    object-fit:cover;
+    border:2px solid var(--border);
+    background:var(--border);
+    flex-shrink:0;
+  }
+  .player-name { font-size:26px; font-weight:800; color:var(--text-primary); }
+  .player-title { font-size:14px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+  .endorsement {
+    margin-left:auto; display:flex; align-items:center; gap:8px;
+    flex-shrink:0;
+  }
+  .endorsement-icon { width:34px; height:34px; }
+  .endorsement-lv { font-size:15px; font-weight:700; color:var(--text-secondary); }
+
+  /* ── Ranks ── */
+  .ranks { display:flex; border-bottom:1px solid var(--border); }
+  .rank-block { flex:1; padding:20px 24px; border-right:1px solid var(--border); text-align:center; }
+  .rank-block:last-child { border-right:none; }
+
+  .section-label {
+    font-size:13px; font-weight:700; letter-spacing:.3px;
+    color:var(--text-secondary);
+    margin-bottom:14px;
+  }
+
+  .rank-icon { width:52px; height:52px; margin-bottom:8px; }
+  .division-name { font-size:17px; font-weight:800; }
+  .tier-num { font-size:13px; font-weight:600; color:var(--text-muted); }
+  .unranked { font-size:14px; font-weight:600; color:var(--text-muted); font-style:italic; margin-top:16px; }
+
+  /* ── Stats ── */
+  .stats { display:flex; border-bottom:1px solid var(--border); }
+  .stat-box { flex:1; padding:18px 24px; border-right:1px solid var(--border); }
+  .stat-box:last-child { border-right:none; }
+  .stat-label { font-size:12px; color:var(--text-muted); font-weight:700; letter-spacing:.4px; margin-bottom:6px; }
+  .stat-val   { font-size:20px; font-weight:800; color:var(--text-strong); }
+  .stat-sub   { font-size:12px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+
+  /* ── Top heroes ── */
+  .heroes { padding:20px 24px; }
+  .hero-row {
+    display:flex; align-items:center;
+    gap:14px; padding:11px 0;
+    border-bottom:1px solid var(--bg-surface-2);
+  }
+  .hero-row:last-child { border-bottom:none; }
+
+  .medal { font-size:19px; flex-shrink:0; }
+  .hero-icon {
+    width:46px; height:46px;
+    border-radius:8px; object-fit:cover;
+    background:var(--border); flex-shrink:0;
+  }
+  .hero-name { font-size:16px; font-weight:700; color:var(--text-strong); flex:1; }
+  .hero-wr-chip {
+    font-size:13px; font-weight:800;
+    border-radius:5px; padding:3px 10px; flex-shrink:0;
+  }
+  .hero-sub { font-size:13px; font-weight:600; color:var(--text-secondary); width:110px; text-align:right; flex-shrink:0; }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <!-- Header -->
+  <div class="header">
+    <img class="profile-icon" src="{{ p.avatar }}" onerror="this.style.opacity=0" alt="">
+    <div>
+      <div class="player-name">{{ p.name }}</div>
+      {% if p.title %}<div class="player-title">{{ p.title }}</div>{% endif %}
+    </div>
+    <div class="endorsement">
+      {% if p.endorsement_icon %}<img class="endorsement-icon" src="{{ p.endorsement_icon }}" onerror="this.style.opacity=0" alt="">{% endif %}
+      <span class="endorsement-lv">{{ p.endorsement_level }}</span>
+    </div>
+  </div>
+
+  <!-- Ranks -->
+  {% set role_meta = [('tank','🛡️ 탱커'), ('damage','⚔️ 딜러'), ('support','💉 힐러')] %}
+  {% set rank_by_role = {} %}
+  {% for r in p.ranks %}{% set _ = rank_by_role.update({r.role: r}) %}{% endfor %}
+  <div class="ranks">
+    {% for role, label in role_meta %}
+    <div class="rank-block">
+      <div class="section-label">{{ label }}</div>
+      {% if role in rank_by_role %}
+      {% set r = rank_by_role[role] %}
+      {% set dc = r.division|division_color %}
+      <img class="rank-icon" src="{{ r.rank_icon }}" onerror="this.style.opacity=0" alt="">
+      <div class="division-name" style="color:{{ dc }}">{{ r.division_kr }}</div>
+      <div class="tier-num">{{ r.tier }}티어</div>
+      {% else %}
+      <div class="unranked">언랭크</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-box">
+      <div class="stat-label">승률</div>
+      <div class="stat-val" style="color:{{ 'var(--win)' if p.winrate >= 50 else 'var(--lose)' }}">{{ p.winrate }}%</div>
+      <div class="stat-sub">{{ p.games_won }}승 {{ p.games_played - p.games_won }}패</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">10분당 KDA</div>
+      <div class="stat-val">{{ p.elims_per_10min }}/{{ p.deaths_per_10min }}/{{ p.assists_per_10min }}</div>
+      <div class="stat-sub">처치/데스/어시</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">10분당 딜량</div>
+      <div class="stat-val">{{ (p.damage_per_10min / 1000)|round(1) }}k</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">10분당 힐량</div>
+      <div class="stat-val">{{ (p.healing_per_10min / 1000)|round(1) }}k</div>
+    </div>
+  </div>
+
+  <!-- Top heroes -->
+  {% if p.top_heroes %}
+  <div class="heroes">
+    <div class="section-label">모스트 영웅</div>
+    {% set medals = ['🥇','🥈','🥉'] %}
+    {% for h in p.top_heroes %}
+    <div class="hero-row">
+      <span class="medal">{{ medals[loop.index0] }}</span>
+      <img class="hero-icon" src="{{ h.portrait }}" onerror="this.style.opacity=0" alt="">
+      <span class="hero-name">{{ h.name }}</span>
+      <span class="hero-wr-chip"
+        style="background:{{ 'var(--win)' if h.winrate >= 50 else 'var(--lose)' }}26;
+               color:{{ 'var(--win)' if h.winrate >= 50 else 'var(--lose)' }};
+               border:1px solid {{ 'var(--win)' if h.winrate >= 50 else 'var(--lose)' }}60">
+        {{ h.winrate }}%
+      </span>
+      <span class="hero-sub">{{ h.hours_played }}시간 · KDA {{ h.kda }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+</body>
+</html>

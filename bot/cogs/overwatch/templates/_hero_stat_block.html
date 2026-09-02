@@ -1,0 +1,21 @@
+{% macro group(label, items) %}
+{% if items %}
+<div class="kv-group">
+  <div class="kv-group-label">{{ label }}</div>
+  <div class="kv-grid">
+    {% for k, v in items %}<div class="kv-row"><span class="kv-key">{{ k }}</span><span class="kv-val">{{ v }}</span></div>{% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro section(title, block, full=false) %}
+<div class="stat-card{{ ' full' if full else '' }}">
+  <div class="stat-card-title">{{ title }}</div>
+  {{ group("누적", block.total) }}
+  {{ group("10분당", block.per10min) }}
+  {{ group("비율", block.percentage) }}
+  {{ group("한 게임 최고", block.best) }}
+  {{ group("한 목숨 최고", block.best_life) }}
+</div>
+{% endmacro %}

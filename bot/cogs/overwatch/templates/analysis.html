@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+{% include "_ai_comment.css" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:1600px;
+    display:inline-block;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding:22px 26px;
+    background:var(--header-bg);
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    gap:16px;
+  }
+  .profile-icon {
+    width:68px; height:68px;
+    border-radius:50%;
+    object-fit:cover;
+    border:2px solid var(--border);
+    background:var(--border);
+    flex-shrink:0;
+  }
+  .player-name { font-size:26px; font-weight:800; color:var(--text-primary); }
+  .player-title { font-size:14px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+  .endorsement {
+    margin-left:auto; display:flex; align-items:center; gap:8px;
+    flex-shrink:0;
+  }
+  .endorsement-icon { width:34px; height:34px; }
+  .endorsement-lv { font-size:15px; font-weight:700; color:var(--text-secondary); }
+
+  .section-label {
+    font-size:13px; font-weight:700; letter-spacing:.3px;
+    color:var(--text-secondary);
+    margin-bottom:14px;
+  }
+
+  /* ── Overall stats ── */
+  .stats { display:flex; border-bottom:1px solid var(--border); }
+  .stat-box { flex:1; padding:18px 26px; border-right:1px solid var(--border); }
+  .stat-box:last-child { border-right:none; }
+  .stat-label { font-size:12px; color:var(--text-muted); font-weight:700; letter-spacing:.4px; margin-bottom:6px; }
+  .stat-val   { font-size:20px; font-weight:800; color:var(--text-strong); }
+  .stat-sub   { font-size:12px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+
+  /* ── Attack/Survival/Support group ── */
+  .group-section { display:flex; border-bottom:1px solid var(--border); }
+  .group-col { flex:1; padding:18px 26px; border-right:1px solid var(--border); }
+  .group-col:last-child { border-right:none; }
+  .group-title { font-size:14px; font-weight:800; color:var(--text-strong); margin-bottom:12px; }
+  .group-row { display:flex; justify-content:space-between; margin-bottom:8px; font-size:13px; }
+  .group-row:last-child { margin-bottom:0; }
+  .group-key { color:var(--text-muted); font-weight:600; }
+  .group-val { color:var(--text-strong); font-weight:800; }
+
+  /* ── Two-column row (역할 비중 + 역할별 성적 / 누적 기록 + 최고 기록) ── */
+  .two-col-row { display:flex; border-bottom:1px solid var(--border); }
+  .two-col-half { flex:1; padding:20px 26px; border-right:1px solid var(--border); }
+  .two-col-half:last-child { border-right:none; }
+
+  /* ── Role time share ── */
+  .role-pct-header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
+  .role-pct-total { font-size:13px; font-weight:700; color:var(--text-secondary); }
+  .role-pct-row { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  .role-pct-row:last-child { margin-bottom:0; }
+  .role-pct-label { width:56px; font-size:13px; font-weight:700; color:var(--text-strong); flex-shrink:0; }
+  .role-pct-bar-bg { flex:1; height:10px; background:var(--bg-track); border-radius:5px; overflow:hidden; }
+  .role-pct-bar-fill { height:100%; border-radius:5px; }
+  .role-pct-val { width:40px; text-align:right; font-size:13px; font-weight:800; color:var(--text-strong); flex-shrink:0; }
+
+  /* ── Role breakdown ── */
+  .role-row {
+    display:flex; align-items:center;
+    gap:10px; padding:11px 0;
+    border-bottom:1px solid var(--bg-surface-2);
+  }
+  .role-row:last-child { border-bottom:none; padding-bottom:0; }
+  .role-icon { font-size:20px; width:26px; flex-shrink:0; text-align:center; }
+  .role-name { font-size:14px; font-weight:800; color:var(--text-strong); width:48px; flex-shrink:0; }
+  .role-hours { font-size:12px; font-weight:600; color:var(--text-muted); width:60px; flex-shrink:0; }
+  .role-wr-chip {
+    font-size:12px; font-weight:800;
+    border-radius:5px; padding:3px 8px; flex-shrink:0; width:48px; text-align:center;
+  }
+  .role-metric { font-size:12px; font-weight:600; color:var(--text-secondary); flex:1; text-align:right; }
+  .role-metric .v { color:var(--text-strong); font-weight:800; }
+
+  /* ── Combat totals / Best records ── */
+  .combat-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+  .combat-item {
+    background:var(--bg-surface-2); border-radius:9px;
+    padding:12px 10px; text-align:center;
+  }
+  .ci-val { font-size:17px; font-weight:800; color:var(--text-strong); }
+  .ci-label { font-size:10px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+
+  /* ── Top heroes ── */
+  .heroes { padding:20px 26px; }
+  .heroes-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+  .hero-card {
+    background:var(--bg-surface-2); border-radius:10px;
+    padding:14px; text-align:center;
+  }
+  .hero-card .medal { font-size:18px; }
+  .hero-icon {
+    width:52px; height:52px;
+    border-radius:10px; object-fit:cover;
+    background:var(--border);
+    margin:6px auto 8px;
+  }
+  .hero-name { font-size:15px; font-weight:800; color:var(--text-strong); }
+  .hero-wr-chip {
+    display:inline-block; margin-top:8px;
+    font-size:12px; font-weight:800;
+    border-radius:5px; padding:3px 9px;
+  }
+  .hero-sub { font-size:12px; font-weight:600; color:var(--text-muted); margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <!-- Header -->
+  <div class="header">
+    <img class="profile-icon" src="{{ p.avatar }}" onerror="this.style.opacity=0" alt="">
+    <div>
+      <div class="player-name">{{ p.name }}</div>
+      {% if p.title %}<div class="player-title">{{ p.title }}</div>{% endif %}
+    </div>
+    <div class="endorsement">
+      {% if p.endorsement_icon %}<img class="endorsement-icon" src="{{ p.endorsement_icon }}" onerror="this.style.opacity=0" alt="">{% endif %}
+      <span class="endorsement-lv">{{ p.endorsement_level }}</span>
+    </div>
+  </div>
+
+  <!-- Overall stats -->
+  <div class="stats">
+    <div class="stat-box">
+      <div class="stat-label">전체 승률</div>
+      <div class="stat-val" style="color:{{ 'var(--win)' if p.winrate >= 50 else 'var(--lose)' }}">{{ p.winrate }}%</div>
+      <div class="stat-sub">{{ p.games_played }}판 중 {{ p.games_won }}승</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">10분당 KDA</div>
+      <div class="stat-val">{{ p.elims_per_10min }}/{{ p.deaths_per_10min }}/{{ p.assists_per_10min }}</div>
+      <div class="stat-sub">처치/데스/어시</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">10분당 딜량</div>
+      <div class="stat-val">{{ (p.damage_per_10min / 1000)|round(1) }}k</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">10분당 힐량</div>
+      <div class="stat-val">{{ (p.healing_per_10min / 1000)|round(1) }}k</div>
+    </div>
+  </div>
+
+  <!-- Attack contribution / Survival / Support -->
+  <div class="group-section">
+    <div class="group-col">
+      <div class="group-title">⚔️ 공격 기여</div>
+      <div class="group-row"><span class="group-key">10분당 처치</span><span class="group-val">{{ p.elims_per_10min }}</span></div>
+      <div class="group-row"><span class="group-key">10분당 마무리</span><span class="group-val">{{ p.final_blows_per_10min }}</span></div>
+      <div class="group-row"><span class="group-key">10분당 피해량</span><span class="group-val">{{ (p.damage_per_10min / 1000)|round(1) }}k</span></div>
+      <div class="group-row"><span class="group-key">KDA</span><span class="group-val">{{ p.kda }}</span></div>
+    </div>
+    <div class="group-col">
+      <div class="group-title">🛡️ 생존</div>
+      <div class="group-row"><span class="group-key">10분당 데스</span><span class="group-val">{{ p.deaths_per_10min }}</span></div>
+      <div class="group-row"><span class="group-key">처치 / 데스</span><span class="group-val">{{ p.elim_per_life }}</span></div>
+    </div>
+    <div class="group-col">
+      <div class="group-title">💉 지원</div>
+      <div class="group-row"><span class="group-key">10분당 어시</span><span class="group-val">{{ p.assists_per_10min }}</span></div>
+      <div class="group-row"><span class="group-key">10분당 힐량</span><span class="group-val">{{ (p.healing_per_10min / 1000)|round(1) }}k</span></div>
+      <div class="group-row"><span class="group-key">방어/공격 어시</span><span class="group-val">{{ p.assist_totals.defensive_assists|intfmt }}/{{ p.assist_totals.offensive_assists|intfmt }}</span></div>
+    </div>
+  </div>
+
+  <!-- Role time share + Role breakdown (side by side) -->
+  {% if p.role_stats %}
+  {% set total_role_sec = p.role_stats|sum(attribute='time_played') %}
+  {% set role_color = {'tank':'var(--accent)', 'damage':'var(--carry)', 'support':'var(--win)'} %}
+  {% set role_icon = {'tank':'🛡️', 'damage':'⚔️', 'support':'💉'} %}
+  <div class="two-col-row">
+    <div class="two-col-half">
+      <div class="role-pct-header">
+        <div class="section-label" style="margin-bottom:0">역할 비중</div>
+        <div class="role-pct-total">전체 {{ p.hours_played }}시간</div>
+      </div>
+      {% for r in p.role_stats %}
+      {% set pct = (r.time_played / total_role_sec * 100)|round %}
+      <div class="role-pct-row">
+        <span class="role-pct-label">{{ r.role_kr }}</span>
+        <div class="role-pct-bar-bg"><div class="role-pct-bar-fill" style="width:{{ pct }}%; background:{{ role_color.get(r.role, 'var(--accent)') }}"></div></div>
+        <span class="role-pct-val">{{ pct }}%</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="two-col-half">
+      <div class="section-label">역할별 성적</div>
+      {% for r in p.role_stats %}
+      <div class="role-row">
+        <span class="role-icon">{{ role_icon.get(r.role, '') }}</span>
+        <span class="role-name">{{ r.role_kr }}</span>
+        <span class="role-hours">{{ r.hours_played }}시간</span>
+        <span class="role-wr-chip"
+          style="background:{{ 'var(--win)' if r.winrate >= 50 else 'var(--lose)' }}26;
+                 color:{{ 'var(--win)' if r.winrate >= 50 else 'var(--lose)' }};
+                 border:1px solid {{ 'var(--win)' if r.winrate >= 50 else 'var(--lose)' }}60">
+          {{ r.winrate }}%
+        </span>
+        <span class="role-metric">KDA <span class="v">{{ r.kda }}</span>
+          &nbsp;·&nbsp; 데스 <span class="v">{{ r.deaths_per_10min }}</span>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Combat totals + Best records (side by side) -->
+  <div class="two-col-row">
+    <div class="two-col-half">
+      <div class="section-label">누적 전투 기록</div>
+      <div class="combat-grid">
+        <div class="combat-item"><div class="ci-val">{{ p.combat.eliminations|intfmt }}</div><div class="ci-label">총 처치</div></div>
+        <div class="combat-item"><div class="ci-val">{{ p.combat.final_blows|intfmt }}</div><div class="ci-label">마무리</div></div>
+        <div class="combat-item"><div class="ci-val">{{ p.combat.solo_kills|intfmt }}</div><div class="ci-label">솔로킬</div></div>
+        <div class="combat-item"><div class="ci-val">{{ p.combat.multikills|intfmt }}</div><div class="ci-label">멀티킬</div></div>
+        <div class="combat-item"><div class="ci-val">{{ p.combat.objective_kills|intfmt }}</div><div class="ci-label">오브젝트 처치</div></div>
+        <div class="combat-item"><div class="ci-val">{{ p.combat.environmental_kills|intfmt }}</div><div class="ci-label">환경 처치</div></div>
+      </div>
+    </div>
+    <div class="two-col-half">
+      <div class="section-label">한 게임 개인 최고 기록</div>
+      <div class="combat-grid">
+        <div class="combat-item"><div class="ci-val">{{ p.best.eliminations_most }}</div><div class="ci-label">최다 처치</div></div>
+        <div class="combat-item"><div class="ci-val">{{ p.best.kill_streak_best }}</div><div class="ci-label">최고 킬스트릭</div></div>
+        <div class="combat-item"><div class="ci-val">{{ p.best.multikill_best }}</div><div class="ci-label">최고 멀티킬</div></div>
+        <div class="combat-item"><div class="ci-val">{{ p.best.solo_kills_most }}</div><div class="ci-label">최다 솔로킬</div></div>
+        <div class="combat-item"><div class="ci-val">{{ (p.best.damage_most / 1000)|round(1) }}k</div><div class="ci-label">최다 딜량</div></div>
+        <div class="combat-item"><div class="ci-val">{{ (p.best.healing_most / 1000)|round(1) }}k</div><div class="ci-label">최다 힐량</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top heroes -->
+  {% if p.top_heroes %}
+  <div class="heroes">
+    <div class="section-label">모스트 영웅</div>
+    {% set medals = ['🥇','🥈','🥉'] %}
+    <div class="heroes-grid">
+      {% for h in p.top_heroes %}
+      <div class="hero-card">
+        <span class="medal">{{ medals[loop.index0] }}</span>
+        <img class="hero-icon" src="{{ h.portrait }}" onerror="this.style.opacity=0" alt="">
+        <div class="hero-name">{{ h.name }}</div>
+        <span class="hero-wr-chip"
+          style="background:{{ 'var(--win)' if h.winrate >= 50 else 'var(--lose)' }}26;
+                 color:{{ 'var(--win)' if h.winrate >= 50 else 'var(--lose)' }};
+                 border:1px solid {{ 'var(--win)' if h.winrate >= 50 else 'var(--lose)' }}60">
+          {{ h.winrate }}%
+        </span>
+        <div class="hero-sub">{{ h.hours_played }}시간 · KDA {{ h.kda }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% include "_ai_comment.html" %}
+
+</div>
+</body>
+</html>
