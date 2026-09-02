@@ -14,6 +14,7 @@ MAX_CHAT = 30
 
 GEMINI_DISABLED = False  # 임시 차단 — 재활성화하려면 False로 변경
 GEMINI_DISABLED_MSG = "🚧 AI 챗봇 기능은 현재 일시적으로 사용할 수 없습니다."
+GENERATING_MSG = "🔍 생성 중입니다..."
 
 load_dotenv(ENV_PATH)
 apiKey = os.getenv("GEMINI_API_KEY")

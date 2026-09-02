@@ -8,6 +8,7 @@ import uuid
 from bot.cogs.control import category_embed
 from bot.cogs.party.renderer import render_party_list_card
 from bot.cogs.party.views import PartyView, PartyCreatePromptView, PartyListView
+from bot.cogs.util import GENERATING_MSG
 
 
 class Party(commands.Cog):
@@ -138,12 +139,12 @@ class Party(commands.Cog):
             return
 
         sorted_parties = sorted(self.parties.items(), key=lambda item: item[1]["target_time"])
-        async with ctx.typing():
-            img = await render_party_list_card(sorted_parties)
-        await ctx.reply(
-            file=discord.File(img, "parties.png"),
+        msg = await ctx.reply(GENERATING_MSG, mention_author=False)
+        img = await render_party_list_card(sorted_parties)
+        await msg.edit(
+            content=None,
+            attachments=[discord.File(img, "parties.png")],
             view=PartyListView(self, sorted_parties),
-            mention_author=False,
         )
 
     @party.command(name="삭제")

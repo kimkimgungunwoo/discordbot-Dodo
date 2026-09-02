@@ -17,6 +17,7 @@ from bot.cogs.riot.renderer import (
 from bot.cogs.riot.ai_comment import (
     generate_comment, build_history_prompt, build_stats_prompt, build_game_analysis_prompt,
 )
+from bot.cogs.util import GENERATING_MSG
 
 
 InteractionCallback = Callable[["RiotCog", discord.Interaction, str, str], Awaitable[None]]
@@ -41,12 +42,11 @@ async def do_fetch_profile(
     except Exception as e:
         await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
         return
+    msg = await interaction.followup.send(GENERATING_MSG, wait=True)
     img  = await render_profile_card(profile)
     is_fav = await _is_favorite(interaction.user.id, profile.puuid)
     view = ProfileView(cog, profile.puuid, profile.game_name, profile.tag_line, is_fav)
-    await interaction.followup.send(
-        file=discord.File(img, "profile.png"), view=view
-    )
+    await msg.edit(content=None, attachments=[discord.File(img, "profile.png")], view=view)
 
 
 async def do_fetch_history(
@@ -238,9 +238,10 @@ async def do_show_favorite(cog: RiotCog, interaction: discord.Interaction, fav: 
             ephemeral=True,
         )
         return
+    msg = await interaction.followup.send(GENERATING_MSG, wait=True)
     img  = await render_profile_card(profile)
     view = ProfileView(cog, profile.puuid, profile.game_name, profile.tag_line, is_favorite=True)
-    await interaction.followup.send(file=discord.File(img, "profile.png"), view=view)
+    await msg.edit(content=None, attachments=[discord.File(img, "profile.png")], view=view)
 
 
 class FavoriteManageSelect(discord.ui.Select):
@@ -289,9 +290,10 @@ class QueueSelectView(discord.ui.View):
             await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
             return
 
+        msg = await interaction.followup.send(GENERATING_MSG, wait=True)
         comment = await generate_comment(build_history_prompt(matches, self.game_name))
         img = await render_match_card(matches, self.game_name, self.tag_line, queue_label, ai_comment=comment)
-        await interaction.followup.send(file=discord.File(img, "matches.png"))
+        await msg.edit(content=None, attachments=[discord.File(img, "matches.png")])
 
     @discord.ui.button(label="🏆 솔로랭크", style=discord.ButtonStyle.primary)
     async def solo(self, interaction: discord.Interaction, _button: discord.ui.Button):
@@ -331,9 +333,10 @@ class StatsQueueSelectView(discord.ui.View):
             await interaction.followup.send("최근 게임 기록이 없습니다.", ephemeral=True)
             return
 
+        msg = await interaction.followup.send(GENERATING_MSG, wait=True)
         comment = await generate_comment(build_stats_prompt(stats, self.game_name))
         img = await render_stats_card(stats, self.game_name, self.tag_line, queue_label, matches=matches, ai_comment=comment)
-        await interaction.followup.send(file=discord.File(img, "stats.png"))
+        await msg.edit(content=None, attachments=[discord.File(img, "stats.png")])
 
     @discord.ui.button(label="🏆 솔로랭크", style=discord.ButtonStyle.primary)
     async def solo(self, interaction: discord.Interaction, _button: discord.ui.Button):
@@ -433,9 +436,10 @@ class MatchPickSelect(discord.ui.Select):
             await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
             return
 
+        msg = await interaction.followup.send(GENERATING_MSG, wait=True)
         comment = await generate_comment(build_game_analysis_prompt(detail, self.game_name))
         img = await render_game_analysis_card(detail, self.game_name, self.tag_line, self.queue_label, ai_comment=comment)
-        await interaction.followup.send(file=discord.File(img, "analysis.png"))
+        await msg.edit(content=None, attachments=[discord.File(img, "analysis.png")])
 
 
 class MatchPickView(discord.ui.View):

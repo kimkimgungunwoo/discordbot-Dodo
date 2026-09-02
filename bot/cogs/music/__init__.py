@@ -9,6 +9,7 @@ from bot.cogs.music.views import (
     Track,
     MusicSearchPromptView, RemoveView, QueuePaginatorView, PlaylistControlView,
 )
+from bot.cogs.util import GENERATING_MSG
 
 # 원인 불명 버그(재생목록 로드 시 전체 트랙이 수백ms 안에 연쇄적으로 재생/종료됨)로 임시 차단.
 # 재활성화하려면 False로. views.py의 PlaylistControlView 등 관련 코드는 그대로 남겨둠 — 이 명령어
@@ -504,9 +505,9 @@ class Music(commands.Cog):
             await ctx.reply("현재 대기열이 비어있습니다.", mention_author=False)
             return
 
-        async with ctx.typing():
-            img = await render_queue_card(current, queue)
-        await ctx.reply(file=discord.File(img, "queue.png"), mention_author=False)
+        msg = await ctx.reply(GENERATING_MSG, mention_author=False)
+        img = await render_queue_card(current, queue)
+        await msg.edit(content=None, attachments=[discord.File(img, "queue.png")])
 
     @music_group.command(name="대기목록")
     async def queue_list(self, ctx: commands.Context):
@@ -618,9 +619,9 @@ class Music(commands.Cog):
         is_active_now = self.active_mode.get(guild_id) == "playlist" and (vc.playing or vc.paused)
 
         if meta and is_active_now:
-            async with ctx.typing():
-                img = await render_playlist_card(meta, current, queue)
-            await ctx.reply(file=discord.File(img, "playlist.png"), view=view, mention_author=False)
+            msg = await ctx.reply(GENERATING_MSG, mention_author=False)
+            img = await render_playlist_card(meta, current, queue)
+            await msg.edit(content=None, attachments=[discord.File(img, "playlist.png")], view=view)
             return
 
         if meta and (current or queue):
