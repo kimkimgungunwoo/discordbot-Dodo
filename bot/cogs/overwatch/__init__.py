@@ -17,29 +17,23 @@ class Overwatch(commands.Cog):
 
     @overwatch_group.command(name="프로필")
     async def profile(self, ctx: commands.Context):
-        await ctx.reply(
-            "원하는 방식을 선택하세요:", view=OverwatchMenuView(do_fetch_profile), mention_author=False,
-        )
+        view = OverwatchMenuView(do_fetch_profile)
+        view.message = await ctx.reply("원하는 방식을 선택하세요:", view=view, mention_author=False)
 
     @overwatch_group.command(name="즐겨찾기")
     async def favorites(self, ctx: commands.Context):
-        await ctx.reply(
-            "원하는 방식을 선택하세요:",
-            view=OverwatchMenuView(do_fetch_profile, search_label="➕ 추가", favorites_label="📋 목록"),
-            mention_author=False,
-        )
+        view = OverwatchMenuView(do_fetch_profile, search_label="➕ 추가", favorites_label="📋 목록")
+        view.message = await ctx.reply("원하는 방식을 선택하세요:", view=view, mention_author=False)
 
     @overwatch_group.command(name="분석")
     async def analysis(self, ctx: commands.Context):
-        await ctx.reply(
-            "원하는 방식을 선택하세요:", view=OverwatchMenuView(do_fetch_analysis), mention_author=False,
-        )
+        view = OverwatchMenuView(do_fetch_analysis)
+        view.message = await ctx.reply("원하는 방식을 선택하세요:", view=view, mention_author=False)
 
     @overwatch_group.command(name="영웅분석")
     async def hero_analysis(self, ctx: commands.Context):
-        await ctx.reply(
-            "원하는 방식을 선택하세요:", view=OverwatchMenuView(do_hero_analysis_menu), mention_author=False,
-        )
+        view = OverwatchMenuView(do_hero_analysis_menu)
+        view.message = await ctx.reply("원하는 방식을 선택하세요:", view=view, mention_author=False)
 
 
 async def setup(bot: commands.Bot):

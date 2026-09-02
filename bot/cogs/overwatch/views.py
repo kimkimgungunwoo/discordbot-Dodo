@@ -34,6 +34,26 @@ async def _send_unexpected_error(interaction: discord.Interaction, e: Exception)
     await interaction.followup.send(f"❌ {SERVER_ERROR_MSG}", ephemeral=True)
 
 
+class StaleView(discord.ui.View):
+    """타임아웃되면 컴포넌트를 비활성화하고 안내 문구로 메시지를 바꾼다. 그냥 두면 나중에
+    눌렀을 때 봇이 이 뷰를 메모리에서 이미 놔버린 상태라 3초 안에 응답을 못 해 디스코드가
+    '적시에 응답하지 않았어요'를 띄운다 — 그 전에 먼저 죽여서 원인 모를 에러를 막는다."""
+
+    def __init__(self, *, timeout: float = 300, timeout_message: str = "⏱️ 시간이 만료됐습니다. 다시 시도해주세요."):
+        super().__init__(timeout=timeout)
+        self.message: discord.Message | None = None
+        self._timeout_message = timeout_message
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(content=self._timeout_message, view=self)
+            except discord.HTTPException:
+                pass
+
+
 async def _is_favorite(user_id: int, player_id: str) -> bool:
     async with SessionLocal() as session:
         return await get_favorite(session, user_id, player_id) is not None
@@ -42,7 +62,7 @@ async def _is_favorite(user_id: int, player_id: str) -> bool:
 async def _send_view(interaction: discord.Interaction, player_id: str, profile, img):
     is_fav = await _is_favorite(interaction.user.id, player_id)
     view = ProfileView(player_id, profile.name, profile.title, is_fav)
-    await interaction.followup.send(file=discord.File(img, "profile.png"), view=view)
+    view.message = await interaction.followup.send(file=discord.File(img, "profile.png"), view=view, wait=True)
 
 
 async def do_fetch_profile(interaction: discord.Interaction, player_id: str):
@@ -113,9 +133,9 @@ async def do_hero_pick(interaction: discord.Interaction, player_id: str):
     )
 
 
-class HeroAnalysisModeView(discord.ui.View):
+class HeroAnalysisModeView(StaleView):
     def __init__(self, player_id: str):
-        super().__init__(timeout=60)
+        super().__init__()
         self.player_id = player_id
 
     @discord.ui.button(label="📊 종합 분석", style=discord.ButtonStyle.primary)
@@ -130,8 +150,9 @@ class HeroAnalysisModeView(discord.ui.View):
 
 
 async def do_hero_analysis_menu(interaction: discord.Interaction, player_id: str):
-    await interaction.followup.send(
-        "🔎 분석 방식을 선택하세요:", view=HeroAnalysisModeView(player_id),
+    view = HeroAnalysisModeView(player_id)
+    view.message = await interaction.followup.send(
+        "🔎 분석 방식을 선택하세요:", view=view, wait=True,
     )
 
 
@@ -181,13 +202,13 @@ class BattletagModal(discord.ui.Modal, title="배틀태그 검색"):
         if not results:
             await interaction.followup.send(f"❌ {NOT_FOUND_MSG}", ephemeral=True)
             return
-        await interaction.followup.send(
-            f"**{name}** 검색 결과 — 계정을 선택하세요:",
-            view=PlayerPickView(results, self._callback),
+        view = PlayerPickView(results, self._callback)
+        view.message = await interaction.followup.send(
+            f"**{name}** 검색 결과 — 계정을 선택하세요:", view=view, wait=True,
         )
 
 
-class OverwatchMenuView(discord.ui.View):
+class OverwatchMenuView(StaleView):
     def __init__(
         self,
         callback: InteractionCallback,
@@ -195,7 +216,7 @@ class OverwatchMenuView(discord.ui.View):
         search_label: str = "🔍 검색",
         favorites_label: str = "⭐ 즐겨찾기",
     ):
-        super().__init__(timeout=60)
+        super().__init__()
         self._callback = callback
         self.search.label = search_label
         self.favorites.label = favorites_label
@@ -206,15 +227,17 @@ class OverwatchMenuView(discord.ui.View):
 
     @discord.ui.button(label="⭐ 즐겨찾기", style=discord.ButtonStyle.secondary)
     async def favorites(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.defer()
         async with SessionLocal() as session:
             favs = await get_favorites(session, interaction.user.id)
         if not favs:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "즐겨찾기한 계정이 없습니다. 검색 후 ⭐ 버튼으로 등록할 수 있습니다.", ephemeral=True,
             )
             return
-        await interaction.response.edit_message(
-            content="즐겨찾기 계정을 선택하세요:", view=FavoriteManageView(favs, self._callback),
+        view = FavoriteManageView(favs, self._callback)
+        view.message = await interaction.edit_original_response(
+            content="즐겨찾기 계정을 선택하세요:", view=view,
         )
 
 
@@ -236,15 +259,15 @@ class PlayerPickSelect(discord.ui.Select):
         await self._callback(interaction, r.player_id)
 
 
-class PlayerPickView(discord.ui.View):
+class PlayerPickView(StaleView):
     def __init__(self, results: list, callback: InteractionCallback):
-        super().__init__(timeout=120)
+        super().__init__()
         self.add_item(PlayerPickSelect(results, callback))
 
 
-class ProfileView(discord.ui.View):
+class ProfileView(StaleView):
     def __init__(self, player_id: str, name: str, title: str | None, is_favorite: bool):
-        super().__init__(timeout=300)
+        super().__init__()
         self.player_id = player_id
         self.name = name
         self.title = title
@@ -252,25 +275,23 @@ class ProfileView(discord.ui.View):
 
     @discord.ui.button(label="⭐ 즐겨찾기 등록", style=discord.ButtonStyle.success)
     async def add_fav(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
         async with SessionLocal() as session:
             if await get_favorite(session, interaction.user.id, self.player_id):
-                await interaction.response.send_message("이미 즐겨찾기에 등록된 계정입니다.", ephemeral=True)
+                await interaction.followup.send("이미 즐겨찾기에 등록된 계정입니다.", ephemeral=True)
                 return
             await add_favorite(session, interaction.user.id, self.player_id, self.name, self.title)
-        await interaction.response.send_message(
-            f"**{self.name}** 을(를) 즐겨찾기에 추가했습니다.", ephemeral=True
-        )
+        await interaction.followup.send(f"**{self.name}** 을(를) 즐겨찾기에 추가했습니다.", ephemeral=True)
 
     @discord.ui.button(label="🗑️ 즐겨찾기 제외", style=discord.ButtonStyle.danger)
     async def remove_fav(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
         async with SessionLocal() as session:
             removed = await remove_favorite(session, interaction.user.id, self.player_id)
         if not removed:
-            await interaction.response.send_message("즐겨찾기에 등록되지 않은 계정입니다.", ephemeral=True)
+            await interaction.followup.send("즐겨찾기에 등록되지 않은 계정입니다.", ephemeral=True)
             return
-        await interaction.response.send_message(
-            f"**{self.name}** 을(를) 즐겨찾기에서 제거했습니다.", ephemeral=True
-        )
+        await interaction.followup.send(f"**{self.name}** 을(를) 즐겨찾기에서 제거했습니다.", ephemeral=True)
 
 
 class FavoriteManageSelect(discord.ui.Select):
@@ -289,9 +310,9 @@ class FavoriteManageSelect(discord.ui.Select):
         await self._callback(interaction, fav.player_id)
 
 
-class FavoriteManageView(discord.ui.View):
+class FavoriteManageView(StaleView):
     def __init__(self, favorites: list, callback: InteractionCallback):
-        super().__init__(timeout=120)
+        super().__init__()
         self.add_item(FavoriteManageSelect(favorites, callback))
 
 
@@ -330,28 +351,13 @@ class HeroPickSelect(discord.ui.Select):
         await interaction.followup.send(file=discord.File(img, "hero_detail.png"), ephemeral=True)
 
 
-class HeroPickView(discord.ui.View):
+class HeroPickView(StaleView):
     def __init__(self, player_id: str, heroes: list):
-        super().__init__(timeout=300)
+        super().__init__(timeout_message="⏱️ 선택 시간이 만료됐습니다. 다시 시도해주세요.")
         self.player_id = player_id
-        self.message: discord.Message | None = None
         by_role: dict[str, list] = {"tank": [], "damage": [], "support": []}
         for h in heroes:
             by_role.setdefault(h.role, []).append(h)
         for role in ("tank", "damage", "support"):
             if by_role.get(role):
                 self.add_item(HeroPickSelect(role, by_role[role]))
-
-    async def on_timeout(self):
-        # 타임아웃 후에도 그대로 두면, 나중에 눌렀을 때 봇이 이 뷰를 더 이상 메모리에
-        # 들고 있지 않아 3초 안에 응답을 못 해 디스코드가 "적시에 응답하지 않았어요"를
-        # 띄운다 — 그 전에 직접 비활성화하고 안내를 남겨서 원인 모를 에러를 막는다.
-        for item in self.children:
-            item.disabled = True
-        if self.message:
-            try:
-                await self.message.edit(
-                    content="⏱️ 선택 시간이 만료됐습니다. 다시 시도해주세요.", view=self,
-                )
-            except discord.HTTPException:
-                pass
