@@ -27,6 +27,26 @@ _DEFAULT_SYSTEM = (
 )
 _SYSTEM = os.getenv("riot_ai_prompt") or _DEFAULT_SYSTEM
 
+_DEFAULT_HISTORY_INSTRUCTION = (
+    "개별 게임을 하나씩 평가하지 말고, 이 게임들 전체에서 보이는 흐름/경향성"
+    "(성장세인지 하락세인지, 반복되는 문제나 패턴, 특정 챔프·포지션에서의 경향)"
+    " 위주로 코멘트해줘."
+)
+_HISTORY_INSTRUCTION = os.getenv("riot_history_prompt") or _DEFAULT_HISTORY_INSTRUCTION
+
+_DEFAULT_STATS_INSTRUCTION = (
+    "총점과 승률을 중심으로, 다른 요소들(팀운/트렌드/포지션 등)이 그 승률에 "
+    "어떻게 영향을 줬는지 종합해서 코멘트해줘."
+)
+_STATS_INSTRUCTION = os.getenv("riot_stats_prompt") or _DEFAULT_STATS_INSTRUCTION
+
+_DEFAULT_GAME_ANALYSIS_INSTRUCTION = (
+    "{game_name}이(가) 이 판에서 실제로 어떤 역할을 했는지, 팀 전체 상황과 "
+    "비교했을 때 잘한 점/아쉬운 점을 구체적으로 짚어줘. 같은 포지션 상대 라이너와의 "
+    "점수 차이가 어디서 왔는지도 반드시 짚어서 코멘트해줘."
+)
+_GAME_ANALYSIS_INSTRUCTION = os.getenv("riot_game_analysis_prompt") or _DEFAULT_GAME_ANALYSIS_INSTRUCTION
+
 
 async def generate_comment(prompt: str) -> str | None:
     """실패하거나 AI 기능이 꺼져있으면 None — 호출부는 그때 코멘트 섹션을 그냥 생략하면 된다."""
@@ -76,9 +96,7 @@ def build_history_prompt(matches: list, game_name: str) -> str:
     return (
         f"{game_name}의 최근 {len(matches)}게임 전적 (1번이 가장 최근 게임, 괄호 안은 포지션):\n"
         + "\n".join(lines)
-        + "\n\n개별 게임을 하나씩 평가하지 말고, 이 게임들 전체에서 보이는 흐름/경향성"
-        "(성장세인지 하락세인지, 반복되는 문제나 패턴, 특정 챔프·포지션에서의 경향)"
-        " 위주로 코멘트해줘."
+        + "\n\n" + _HISTORY_INSTRUCTION
     )
 
 
@@ -98,8 +116,7 @@ def build_stats_prompt(stats, game_name: str) -> str:
         f"못한 판인데 버스탄 {stats.bad_win}판)\n"
         f"트렌드: {stats.trend_arrow or '데이터 부족'} "
         f"(최근 {stats.recent_n}판 {stats.recent_win_rate}% vs 이전 {stats.prev_n}판 {stats.prev_win_rate}%)\n\n"
-        "총점과 승률을 중심으로, 다른 요소들(팀운/트렌드/포지션 등)이 그 승률에 "
-        "어떻게 영향을 줬는지 종합해서 코멘트해줘."
+        + _STATS_INSTRUCTION
     )
 
 
@@ -141,7 +158,5 @@ def build_game_analysis_prompt(detail, game_name: str) -> str:
         f"상대팀: {en_line}\n"
         f"이 게임의 에이스: {detail.ace.summoner_name}({detail.ace.score}점), "
         f"트롤: {detail.troll.summoner_name}({detail.troll.score}점)\n\n"
-        f"{game_name}이(가) 이 판에서 실제로 어떤 역할을 했는지, 팀 전체 상황과 "
-        "비교했을 때 잘한 점/아쉬운 점을 구체적으로 짚어줘. 같은 포지션 상대 라이너와의 "
-        "점수 차이가 어디서 왔는지도 반드시 짚어서 코멘트해줘."
+        + _GAME_ANALYSIS_INSTRUCTION.format(game_name=game_name)
     )

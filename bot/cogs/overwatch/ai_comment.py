@@ -10,6 +10,30 @@ _DEFAULT_SYSTEM = (
 )
 _SYSTEM = os.getenv("overwatch_ai_prompt") or _DEFAULT_SYSTEM
 
+_DEFAULT_ANALYSIS_INSTRUCTION = (
+    "이 유저가 어떤 역할에 강점이 있는지, 역할 비중과 승률이 어떻게 맞물리는지, "
+    "공격 기여/생존/지원 세 축의 밸런스는 어떤지(예: 처치는 잘하는데 생존력이 약한지, "
+    "딜은 낮아도 어시스트로 팀을 받쳐주는지), 누적 전투 기록과 최고 기록이 보여주는 "
+    "플레이 스타일(공격적/안정적, 솔로 캐리형/팀플레이형 등), 모스트 영웅 성적이 전체 성적과 "
+    "비교해 어떤지 종합해서 코멘트해줘."
+)
+_ANALYSIS_INSTRUCTION = os.getenv("overwatch_analysis_prompt") or _DEFAULT_ANALYSIS_INSTRUCTION
+
+_DEFAULT_HERO_ANALYSIS_INSTRUCTION = (
+    "이 유저의 영웅폭이 넓은지 좁은지(한두 영웅에 집중하는 원챔형인지, 여러 영웅을 고루 "
+    "쓰는 폭넓은 유형인지), 선호하는 영웅들이 대체로 어떤 역할/유형에 몰려있는지, "
+    "플레이시간이 많은 영웅일수록 승률도 높은 편인지 아니면 반대인지, 상위 목록에서 "
+    "특히 잘하는 영웅과 반대로 시간 대비 아쉬운 영웅이 뭔지 종합해서 코멘트해줘."
+)
+_HERO_ANALYSIS_INSTRUCTION = os.getenv("overwatch_hero_analysis_prompt") or _DEFAULT_HERO_ANALYSIS_INSTRUCTION
+
+_DEFAULT_HERO_DETAIL_INSTRUCTION = (
+    "이 유저가 {hero}를 얼마나 잘 다루는지 코멘트해줘. 강점(뛰어난 처치력/생존력/"
+    "서포팅/정확도 등)과 약점을 구체적으로 짚고, 위에 나온 이 영웅 고유 스킬 활용도까지 "
+    "포함해서 2~3문장으로."
+)
+_HERO_DETAIL_INSTRUCTION = os.getenv("overwatch_hero_detail_prompt") or _DEFAULT_HERO_DETAIL_INSTRUCTION
+
 
 async def generate_comment(prompt: str) -> str | None:
     """실패하거나 AI 기능이 꺼져있으면 None — 호출부는 그때 코멘트 섹션을 그냥 생략하면 된다."""
@@ -78,11 +102,7 @@ def build_analysis_prompt(profile, name: str) -> str:
         f"{combat_line}\n"
         f"{best_line}\n"
         f"모스트 영웅 Top3:\n{hero_lines}\n\n"
-        "이 유저가 어떤 역할에 강점이 있는지, 역할 비중과 승률이 어떻게 맞물리는지, "
-        "공격 기여/생존/지원 세 축의 밸런스는 어떤지(예: 처치는 잘하는데 생존력이 약한지, "
-        "딜은 낮아도 어시스트로 팀을 받쳐주는지), 누적 전투 기록과 최고 기록이 보여주는 "
-        "플레이 스타일(공격적/안정적, 솔로 캐리형/팀플레이형 등), 모스트 영웅 성적이 전체 성적과 "
-        "비교해 어떤지 종합해서 코멘트해줘."
+        + _ANALYSIS_INSTRUCTION
     )
 
 
@@ -94,10 +114,7 @@ def build_hero_analysis_prompt(heroes: list, name: str) -> str:
 
     return (
         f"{name}이(가) 플레이시간 기준으로 가장 많이 한 영웅 상위 {len(heroes)}개:\n{lines}\n\n"
-        "이 유저의 영웅폭이 넓은지 좁은지(한두 영웅에 집중하는 원챔형인지, 여러 영웅을 고루 "
-        "쓰는 폭넓은 유형인지), 선호하는 영웅들이 대체로 어떤 역할/유형에 몰려있는지, "
-        "플레이시간이 많은 영웅일수록 승률도 높은 편인지 아니면 반대인지, 상위 목록에서 "
-        "특히 잘하는 영웅과 반대로 시간 대비 아쉬운 영웅이 뭔지 종합해서 코멘트해줘."
+        + _HERO_ANALYSIS_INSTRUCTION
     )
 
 
@@ -127,7 +144,5 @@ def build_hero_detail_prompt(hd, player_name: str) -> str:
 
     return (
         "\n".join(lines) + "\n\n"
-        f"이 유저가 {hd.hero_name}를 얼마나 잘 다루는지 코멘트해줘. 강점(뛰어난 처치력/생존력/"
-        "서포팅/정확도 등)과 약점을 구체적으로 짚고, 위에 나온 이 영웅 고유 스킬 활용도까지 "
-        "포함해서 2~3문장으로."
+        + _HERO_DETAIL_INSTRUCTION.format(hero=hd.hero_name)
     )

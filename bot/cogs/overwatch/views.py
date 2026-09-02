@@ -14,6 +14,7 @@ from bot.cogs.overwatch.renderer import (
 from bot.cogs.overwatch.ai_comment import (
     generate_comment, build_analysis_prompt, build_hero_analysis_prompt, build_hero_detail_prompt,
 )
+from bot.cogs.util import GENERATING_MSG
 
 InteractionCallback = Callable[[discord.Interaction, str], Awaitable[None]]
 
@@ -59,10 +60,14 @@ async def _is_favorite(user_id: int, player_id: str) -> bool:
         return await get_favorite(session, user_id, player_id) is not None
 
 
-async def _send_view(interaction: discord.Interaction, player_id: str, profile, img):
+async def _send_view(interaction: discord.Interaction, player_id: str, profile, img, msg: discord.Message | None = None):
     is_fav = await _is_favorite(interaction.user.id, player_id)
     view = ProfileView(player_id, profile.name, profile.title, is_fav)
-    view.message = await interaction.followup.send(file=discord.File(img, "profile.png"), view=view, wait=True)
+    file = discord.File(img, "profile.png")
+    if msg is not None:
+        view.message = await msg.edit(content=None, attachments=[file], view=view)
+    else:
+        view.message = await interaction.followup.send(file=file, view=view, wait=True)
 
 
 async def do_fetch_profile(interaction: discord.Interaction, player_id: str):
@@ -93,9 +98,10 @@ async def do_fetch_analysis(interaction: discord.Interaction, player_id: str):
     if profile.games_played == 0:
         await interaction.followup.send(f"❌ {NO_STATS_MSG}", ephemeral=True)
         return
+    msg = await interaction.followup.send(GENERATING_MSG, wait=True)
     comment = await generate_comment(build_analysis_prompt(profile, profile.name))
     img = await render_analysis_card(profile, ai_comment=comment)
-    await _send_view(interaction, player_id, profile, img)
+    await _send_view(interaction, player_id, profile, img, msg=msg)
 
 
 async def do_fetch_hero_analysis(interaction: discord.Interaction, player_id: str):
@@ -110,9 +116,10 @@ async def do_fetch_hero_analysis(interaction: discord.Interaction, player_id: st
     if not hero_analysis.top_heroes:
         await interaction.followup.send(f"❌ {NO_STATS_MSG}", ephemeral=True)
         return
+    msg = await interaction.followup.send(GENERATING_MSG, wait=True)
     comment = await generate_comment(build_hero_analysis_prompt(hero_analysis.top_heroes, hero_analysis.name))
     img = await render_hero_analysis_card(hero_analysis, ai_comment=comment)
-    await interaction.followup.send(file=discord.File(img, "hero_analysis.png"))
+    await msg.edit(content=None, attachments=[discord.File(img, "hero_analysis.png")])
 
 
 async def do_hero_pick(interaction: discord.Interaction, player_id: str):
@@ -346,9 +353,10 @@ class HeroPickSelect(discord.ui.Select):
         if hero_detail.games_played == 0:
             await interaction.followup.send("해당 영웅 플레이 기록이 없습니다.", ephemeral=True)
             return
+        msg = await interaction.followup.send(GENERATING_MSG, ephemeral=True, wait=True)
         comment = await generate_comment(build_hero_detail_prompt(hero_detail, hero_detail.player_name))
         img = await render_hero_detail_card(hero_detail, ai_comment=comment)
-        await interaction.followup.send(file=discord.File(img, "hero_detail.png"), ephemeral=True)
+        await msg.edit(content=None, attachments=[discord.File(img, "hero_detail.png")])
 
 
 class HeroPickView(StaleView):
