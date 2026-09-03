@@ -6,6 +6,12 @@ from api.models.chat_stat import ChatStat
 from api.models.voice_session import VoiceSession
 from api.models.voice_stat import VoiceStat
 from api.models.backfill_progress import BackfillProgress
+from api.models.chat_hourly import ChatHourly
+from api.models.voice_hourly import VoiceHourly
+
+
+def kst_hour(when: datetime.datetime) -> int:
+    return (when.hour + 9) % 24
 
 
 def _row_to_chat_stat(item: dict) -> ChatStat:
@@ -71,6 +77,42 @@ async def delete_all_chat_stats(session: DynamoSession):
         await table.delete_item(Key={"user_id": item["user_id"]})
 
 
+async def increment_chat_hourly_by_hour(session: DynamoSession, user_id: int, hour: int, count: int = 1):
+    table = await session.table("chat_hourly")
+    await table.update_item(
+        Key={"user_id": user_id, "hour": hour},
+        UpdateExpression="ADD message_count :n",
+        ExpressionAttributeValues={":n": count},
+    )
+
+
+async def increment_chat_hourly(session: DynamoSession, user_id: int, when: datetime.datetime, count: int = 1):
+    await increment_chat_hourly_by_hour(session, user_id, kst_hour(when), count=count)
+
+
+async def scan_chat_hourly(session: DynamoSession) -> list[ChatHourly]:
+    table = await session.table("chat_hourly")
+    return [
+        ChatHourly(hour=int(i["hour"]), message_count=int(i.get("message_count", 0)))
+        for i in await _scan_all(table)
+    ]
+
+
+async def get_chat_hourly_for_user(session: DynamoSession, user_id: int) -> list[ChatHourly]:
+    table = await session.table("chat_hourly")
+    resp = await table.query(KeyConditionExpression=Key("user_id").eq(user_id))
+    return [
+        ChatHourly(hour=int(i["hour"]), message_count=int(i.get("message_count", 0)))
+        for i in resp.get("Items", [])
+    ]
+
+
+async def delete_all_chat_hourly(session: DynamoSession):
+    table = await session.table("chat_hourly")
+    for item in await _scan_all(table):
+        await table.delete_item(Key={"user_id": item["user_id"], "hour": item["hour"]})
+
+
 async def start_voice_session(session: DynamoSession, user_id: int, joined_at: datetime.datetime) -> str:
     sk = f"{joined_at.isoformat()}#{uuid.uuid4().hex[:8]}"
     table = await session.table("voice_session")
@@ -105,6 +147,7 @@ async def close_voice_session(session: DynamoSession, user_id: int, sk: str, lef
         ExpressionAttributeValues={":t": left_at.isoformat()},
     )
     await _increment_voice_stat(session, user_id, duration, left_at)
+    await increment_voice_hourly(session, user_id, joined_at, duration)
     return duration
 
 
@@ -115,6 +158,32 @@ async def _increment_voice_stat(session: DynamoSession, user_id: int, seconds: i
         UpdateExpression="ADD total_seconds :s, session_count :n SET last_left_at = :t",
         ExpressionAttributeValues={":s": seconds, ":n": 1, ":t": when.isoformat()},
     )
+
+
+async def increment_voice_hourly(session: DynamoSession, user_id: int, when: datetime.datetime, seconds: int):
+    table = await session.table("voice_hourly")
+    await table.update_item(
+        Key={"user_id": user_id, "hour": kst_hour(when)},
+        UpdateExpression="ADD total_seconds :s",
+        ExpressionAttributeValues={":s": seconds},
+    )
+
+
+async def scan_voice_hourly(session: DynamoSession) -> list[VoiceHourly]:
+    table = await session.table("voice_hourly")
+    return [
+        VoiceHourly(hour=int(i["hour"]), total_seconds=int(i.get("total_seconds", 0)))
+        for i in await _scan_all(table)
+    ]
+
+
+async def get_voice_hourly_for_user(session: DynamoSession, user_id: int) -> list[VoiceHourly]:
+    table = await session.table("voice_hourly")
+    resp = await table.query(KeyConditionExpression=Key("user_id").eq(user_id))
+    return [
+        VoiceHourly(hour=int(i["hour"]), total_seconds=int(i.get("total_seconds", 0)))
+        for i in resp.get("Items", [])
+    ]
 
 
 async def get_voice_stat(session: DynamoSession, user_id: int) -> VoiceStat | None:

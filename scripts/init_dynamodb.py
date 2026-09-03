@@ -103,6 +103,28 @@ TABLES = [
         "KeySchema": [{"AttributeName": "channel_id", "KeyType": "HASH"}],
         "AttributeDefinitions": [{"AttributeName": "channel_id", "AttributeType": "N"}],
     },
+    {
+        "name": "chat_hourly",
+        "KeySchema": [
+            {"AttributeName": "user_id", "KeyType": "HASH"},
+            {"AttributeName": "hour", "KeyType": "RANGE"},
+        ],
+        "AttributeDefinitions": [
+            {"AttributeName": "user_id", "AttributeType": "N"},
+            {"AttributeName": "hour", "AttributeType": "N"},
+        ],
+    },
+    {
+        "name": "voice_hourly",
+        "KeySchema": [
+            {"AttributeName": "user_id", "KeyType": "HASH"},
+            {"AttributeName": "hour", "KeyType": "RANGE"},
+        ],
+        "AttributeDefinitions": [
+            {"AttributeName": "user_id", "AttributeType": "N"},
+            {"AttributeName": "hour", "AttributeType": "N"},
+        ],
+    },
 ]
 
 

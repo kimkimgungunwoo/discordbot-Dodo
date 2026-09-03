@@ -8,8 +8,10 @@ from bot.cogs.util import GENERATING_MSG
 from api.database import SessionLocal
 from api.crud.analytics_crud import (
     increment_chat_stat, get_chat_stat, scan_chat_stats, delete_all_chat_stats,
+    increment_chat_hourly, increment_chat_hourly_by_hour, scan_chat_hourly,
+    get_chat_hourly_for_user, delete_all_chat_hourly, kst_hour,
     start_voice_session, close_voice_session, find_open_voice_session,
-    get_voice_stat, scan_voice_stats,
+    get_voice_stat, scan_voice_stats, scan_voice_hourly, get_voice_hourly_for_user,
     get_backfill_progress, set_backfill_progress, delete_all_backfill_progress,
 )
 from bot.cogs.analytics.renderer import (
@@ -67,6 +69,7 @@ class Analytics(commands.Cog):
             return
         async with SessionLocal() as session:
             await increment_chat_stat(session, message.author.id, message.created_at)
+            await increment_chat_hourly(session, message.author.id, message.created_at)
 
     @commands.Cog.listener()
     async def on_voice_state_update(
@@ -121,6 +124,7 @@ class Analytics(commands.Cog):
 
         before_id = progress.cursor_id if progress else cutoff_id
         pending: dict[int, int] = {}
+        pending_hourly: dict[tuple[int, int], int] = {}
         last_id = before_id
         since_flush = 0
         channel_total = 0
@@ -128,23 +132,31 @@ class Analytics(commands.Cog):
         async for msg in channel.history(limit=None, before=discord.Object(id=before_id)):
             if not msg.author.bot:
                 pending[msg.author.id] = pending.get(msg.author.id, 0) + 1
+                key = (msg.author.id, kst_hour(msg.created_at))
+                pending_hourly[key] = pending_hourly.get(key, 0) + 1
                 channel_total += 1
             last_id = msg.id
             since_flush += 1
             if since_flush >= _BACKFILL_BATCH:
-                await self._flush_backfill(channel.id, pending, last_id, done=False)
+                await self._flush_backfill(channel.id, pending, pending_hourly, last_id, done=False)
                 pending.clear()
+                pending_hourly.clear()
                 since_flush = 0
 
-        await self._flush_backfill(channel.id, pending, last_id, done=True)
+        await self._flush_backfill(channel.id, pending, pending_hourly, last_id, done=True)
         print(f"[Analytics] 백필 완료: #{channel.name} ({channel.id}) — {channel_total:,}개 메시지")
         return channel_total
 
-    async def _flush_backfill(self, channel_id: int, pending: dict[int, int], cursor_id: int, done: bool):
+    async def _flush_backfill(
+        self, channel_id: int, pending: dict[int, int], pending_hourly: dict[tuple[int, int], int],
+        cursor_id: int, done: bool,
+    ):
         async with SessionLocal() as session:
             now = datetime.datetime.utcnow()
             for user_id, count in pending.items():
                 await increment_chat_stat(session, user_id, now, count=count)
+            for (user_id, hour), count in pending_hourly.items():
+                await increment_chat_hourly_by_hour(session, user_id, hour, count=count)
             await set_backfill_progress(session, channel_id, cursor_id, done)
 
     @commands.group(name="통계", invoke_without_command=True)
@@ -159,6 +171,7 @@ class Analytics(commands.Cog):
             old_task.cancel()
         async with SessionLocal() as session:
             await delete_all_chat_stats(session)
+            await delete_all_chat_hourly(session)
             await delete_all_backfill_progress(session)
         await self._ensure_backfill(ctx.guild)
         await msg.edit(content="✅ 완료되었습니다.")
@@ -169,12 +182,14 @@ class Analytics(commands.Cog):
         await self._ensure_backfill(ctx.guild)
         async with SessionLocal() as session:
             stats = await scan_chat_stats(session)
+            hourly_rows = await scan_chat_hourly(session)
 
         rows, total, avg = await self._build_rank_rows(ctx.guild, stats, key=lambda s: s.message_count, fmt=lambda v: f"{v:,}개")
+        hourly = _build_hourly(hourly_rows, key=lambda r: r.message_count)
         img = await render_overview_card(
             kind="chat", guild_name=ctx.guild.name, guild_icon=_guild_icon(ctx.guild),
             total_label=f"{total:,}개", active_count=len(stats),
-            avg_label=f"{avg:,.0f}개", rows=rows,
+            avg_label=f"{avg:,.0f}개", rows=rows, hourly=hourly,
         )
         await msg.edit(content=None, attachments=[discord.File(img, "chat_overall.png")])
 
@@ -182,15 +197,17 @@ class Analytics(commands.Cog):
     async def voice_overall(self, ctx: commands.Context):
         async with SessionLocal() as session:
             stats = await scan_voice_stats(session)
+            hourly_rows = await scan_voice_hourly(session)
 
         msg = await ctx.reply(GENERATING_MSG, mention_author=False)
         rows, total, avg = await self._build_rank_rows(
             ctx.guild, stats, key=lambda s: s.total_seconds, fmt=format_duration,
         )
+        hourly = _build_hourly(hourly_rows, key=lambda r: r.total_seconds)
         img = await render_overview_card(
             kind="voice", guild_name=ctx.guild.name, guild_icon=_guild_icon(ctx.guild),
             total_label=format_duration(total), active_count=len(stats),
-            avg_label=format_duration(avg), rows=rows,
+            avg_label=format_duration(avg), rows=rows, hourly=hourly,
         )
         await msg.edit(content=None, attachments=[discord.File(img, "voice_overall.png")])
 
@@ -251,12 +268,16 @@ class Analytics(commands.Cog):
             voice = await get_voice_stat(session, user_id)
             all_chat = await scan_chat_stats(session)
             all_voice = await scan_voice_stats(session)
+            chat_hourly_rows = await get_chat_hourly_for_user(session, user_id)
+            voice_hourly_rows = await get_voice_hourly_for_user(session, user_id)
 
         msg = await interaction.followup.send(GENERATING_MSG, wait=True)
 
         message_rank, message_total = _rank_of(all_chat, user_id, key=lambda s: s.message_count)
         voice_rank, voice_total = _rank_of(all_voice, user_id, key=lambda s: s.total_seconds)
         name, avatar = await self._resolve_member(interaction.guild, user_id)
+        chat_hourly = _build_hourly(chat_hourly_rows, key=lambda r: r.message_count)
+        voice_hourly = _build_hourly(voice_hourly_rows, key=lambda r: r.total_seconds)
 
         img = await render_user_stat_card(
             name=name,
@@ -266,6 +287,7 @@ class Analytics(commands.Cog):
             voice_seconds=voice.total_seconds if voice else 0,
             voice_rank=voice_rank, voice_total_users=voice_total,
             session_count=voice.session_count if voice else 0,
+            chat_hourly=chat_hourly, voice_hourly=voice_hourly,
         )
         await msg.edit(content=None, attachments=[discord.File(img, "user_stat.png")])
 
@@ -285,6 +307,15 @@ class Analytics(commands.Cog):
                 "pct": round(key(s) / max(best, 1) * 100, 1),
             })
         return rows, total, avg
+
+
+def _build_hourly(rows: list, *, key) -> list[dict]:
+    by_hour: dict[int, int] = {}
+    for r in rows:
+        by_hour[r.hour] = by_hour.get(r.hour, 0) + key(r)
+    values = [by_hour.get(h, 0) for h in range(24)]
+    best = max(values) or 1
+    return [{"hour": h, "pct": round(values[h] / best * 100, 1)} for h in range(24)]
 
 
 def _guild_icon(guild: discord.Guild) -> str:

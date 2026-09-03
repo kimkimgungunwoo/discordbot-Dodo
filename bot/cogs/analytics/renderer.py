@@ -40,6 +40,7 @@ async def _render(template_name: str, ctx: dict, width: int = 1400) -> io.BytesI
 async def render_overview_card(
     *, kind: str, guild_name: str, guild_icon: str,
     total_label: str, active_count: int, avg_label: str, rows: list[dict],
+    hourly: list[dict] | None = None,
 ) -> io.BytesIO:
     ctx = {
         "kind": kind,
@@ -51,6 +52,7 @@ async def render_overview_card(
         "active_count": active_count,
         "avg_label": avg_label,
         "rows": rows,
+        "hourly": hourly or [],
     }
     return await _render("overview.html", ctx, width=1400)
 
@@ -60,6 +62,7 @@ async def render_user_stat_card(
     message_rank: int | None, message_total_users: int,
     voice_seconds: int, voice_rank: int | None, voice_total_users: int,
     session_count: int,
+    chat_hourly: list[dict] | None = None, voice_hourly: list[dict] | None = None,
 ) -> io.BytesIO:
     ctx = {
         "name": name, "avatar": avatar,
@@ -68,6 +71,7 @@ async def render_user_stat_card(
         "voice_label": format_duration(voice_seconds),
         "voice_rank": voice_rank, "voice_total_users": voice_total_users,
         "session_count": session_count,
+        "chat_hourly": chat_hourly or [], "voice_hourly": voice_hourly or [],
     }
     return await _render("user_stat.html", ctx, width=1200)
 
