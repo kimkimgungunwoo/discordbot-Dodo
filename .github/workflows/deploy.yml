@@ -24,4 +24,6 @@ jobs:
             git reset --hard origin/main
             [ -f .env ] && cp .env .env.bak
             printf '%s\n' "$ENV_FILE" > .env
-            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+            docker compose -f docker-compose.prod.yml build bot
+            docker compose -f docker-compose.prod.yml run --rm --no-deps bot python -m scripts.init_dynamodb
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
