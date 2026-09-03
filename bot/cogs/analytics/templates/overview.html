@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:1400px;
+    display:inline-block;
+  }
+
+  .header {
+    padding:22px 28px;
+    background:
+      linear-gradient(120deg, #20242eee 0%, #241f3dee 65%, #241f3dcc 100%),
+      url('{{ guild_icon }}');
+    background-size:cover; background-position:center;
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:14px;
+  }
+  .header-icon { font-size:28px; }
+  .header-title { font-size:22px; font-weight:800; color:var(--text-primary); }
+  .header-right { margin-left:auto; text-align:right; display:flex; align-items:center; gap:10px; }
+  .guild-icon { width:40px; height:40px; border-radius:50%; object-fit:cover; background:var(--border); border:2px solid #ffffff30; }
+  .guild-name { font-size:13px; font-weight:700; color:var(--text-secondary); }
+
+  .summary { display:flex; border-bottom:1px solid var(--border); }
+  .stat-box { flex:1; padding:18px 26px; border-right:1px solid var(--border); text-align:center; }
+  .stat-box:last-child { border-right:none; }
+  .stat-label { font-size:12px; color:var(--text-muted); font-weight:700; letter-spacing:.4px; margin-bottom:7px; }
+  .stat-val { font-size:22px; font-weight:800; color:var(--warn); }
+
+  .rank-wrap { padding:20px 26px 24px; }
+  .section-label { font-size:13px; font-weight:700; color:var(--text-secondary); margin-bottom:14px; }
+  .rank-row { display:flex; align-items:center; gap:12px; padding:8px 0; }
+  .rank-num { width:26px; flex-shrink:0; font-size:14px; font-weight:800; color:var(--text-muted); text-align:center; }
+  .rank-avatar {
+    width:34px; height:34px; border-radius:50%; object-fit:cover;
+    background:var(--border); border:2px solid #ffffff20; flex-shrink:0;
+  }
+  .rank-name {
+    width:180px; flex-shrink:0; font-size:13px; font-weight:700; color:var(--text-strong);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .rank-bar-wrap { flex:1; height:10px; border-radius:5px; background:var(--bg-track); overflow:hidden; }
+  .rank-bar { height:100%; background:var(--accent); border-radius:5px; }
+  .rank-value { width:120px; flex-shrink:0; text-align:right; font-size:13px; font-weight:800; color:var(--warn); }
+  .empty { font-size:13px; font-weight:600; color:var(--text-muted); padding:10px 0; }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <div class="header">
+    <span class="header-icon">{{ icon }}</span>
+    <div class="header-title">{{ title }}</div>
+    <div class="header-right">
+      <div class="guild-name">{{ guild_name }}</div>
+      <img class="guild-icon" src="{{ guild_icon }}" onerror="this.style.opacity=0" alt="">
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="stat-box">
+      <div class="stat-label">전체 {{ '메시지 수' if kind == 'chat' else '통화시간' }}</div>
+      <div class="stat-val">{{ total_label }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">활동 유저 수</div>
+      <div class="stat-val">{{ active_count }}명</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">유저당 평균</div>
+      <div class="stat-val">{{ avg_label }}</div>
+    </div>
+  </div>
+
+  <div class="rank-wrap">
+    <div class="section-label">🏆 {{ '채팅' if kind == 'chat' else '통화' }} 많은 유저 TOP {{ rows|length }}</div>
+    {% for r in rows %}
+    <div class="rank-row">
+      <div class="rank-num">{{ {1:'🥇',2:'🥈',3:'🥉'}.get(loop.index, loop.index) }}</div>
+      <img class="rank-avatar" src="{{ r.avatar }}" onerror="this.style.opacity=0" alt="">
+      <div class="rank-name">{{ r.name }}</div>
+      <div class="rank-bar-wrap"><div class="rank-bar" style="width:{{ r.pct }}%"></div></div>
+      <div class="rank-value">{{ r.value_label }}</div>
+    </div>
+    {% else %}
+    <div class="empty">아직 기록이 없습니다.</div>
+    {% endfor %}
+  </div>
+
+</div>
+</body>
+</html>

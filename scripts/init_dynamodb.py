@@ -77,6 +77,32 @@ TABLES = [
             {"AttributeName": "player_id", "AttributeType": "S"},
         ],
     },
+    {
+        "name": "chat_stat",
+        "KeySchema": [{"AttributeName": "user_id", "KeyType": "HASH"}],
+        "AttributeDefinitions": [{"AttributeName": "user_id", "AttributeType": "N"}],
+    },
+    {
+        "name": "voice_session",
+        "KeySchema": [
+            {"AttributeName": "user_id", "KeyType": "HASH"},
+            {"AttributeName": "sk", "KeyType": "RANGE"},
+        ],
+        "AttributeDefinitions": [
+            {"AttributeName": "user_id", "AttributeType": "N"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+        ],
+    },
+    {
+        "name": "voice_stat",
+        "KeySchema": [{"AttributeName": "user_id", "KeyType": "HASH"}],
+        "AttributeDefinitions": [{"AttributeName": "user_id", "AttributeType": "N"}],
+    },
+    {
+        "name": "backfill_progress",
+        "KeySchema": [{"AttributeName": "channel_id", "KeyType": "HASH"}],
+        "AttributeDefinitions": [{"AttributeName": "channel_id", "AttributeType": "N"}],
+    },
 ]
 
 
