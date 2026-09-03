@@ -38,6 +38,17 @@
   .stat-label { font-size:12px; color:var(--text-muted); font-weight:700; letter-spacing:.4px; margin-bottom:7px; }
   .stat-val { font-size:24px; font-weight:800; color:var(--warn); }
   .stat-sub { font-size:12px; font-weight:600; color:var(--text-muted); margin-top:4px; }
+
+  .section-label { font-size:13px; font-weight:700; color:var(--text-secondary); margin-bottom:14px; }
+  .hourly-wrap {
+    margin:16px 26px;
+    padding:16px 20px 12px;
+    background:var(--bg-surface-2);
+    border-radius:12px;
+  }
+  .hourly-chart { position:relative; margin-top:6px; }
+  .hourly-labels { display:flex; margin-top:6px; }
+  .hourly-labels span { flex:1; text-align:center; font-size:9px; font-weight:600; color:var(--text-muted); }
 </style>
 </head>
 <body>
@@ -67,6 +78,38 @@
       <div class="stat-val">{{ session_count }}회</div>
     </div>
   </div>
+
+  {% macro hourly_chart(title, hourly) %}
+  {% set cw = 1100 %}
+  {% set ch = 70 %}
+  {% set n = hourly|length %}
+  {% set ns = namespace(pts='') %}
+  {% for h in hourly %}
+    {% set x = ((loop.index0 / (n - 1)) * cw)|round(1) if n > 1 else (cw / 2)|round(1) %}
+    {% set y = (ch - (h.pct / 100 * ch))|round(1) %}
+    {% set ns.pts = ns.pts ~ x|string ~ ',' ~ y|string ~ ' ' %}
+  {% endfor %}
+  <div class="hourly-wrap">
+    <div class="section-label">{{ title }}</div>
+    <div class="hourly-chart">
+      <svg viewBox="0 0 {{ cw }} {{ ch }}" width="100%" height="{{ ch }}">
+        <polyline points="{{ ns.pts }}" fill="none" style="stroke:var(--warn)"
+          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        {% for h in hourly %}
+          {% set x = ((loop.index0 / (n - 1)) * cw)|round(1) if n > 1 else (cw / 2)|round(1) %}
+          {% set y = (ch - (h.pct / 100 * ch))|round(1) %}
+        <circle cx="{{ x }}" cy="{{ y }}" r="3" style="fill:var(--warn)" />
+        {% endfor %}
+      </svg>
+    </div>
+    <div class="hourly-labels">
+      {% for h in hourly %}<span>{{ h.hour if h.hour % 3 == 0 else '' }}</span>{% endfor %}
+    </div>
+  </div>
+  {% endmacro %}
+
+  {% if chat_hourly %}{{ hourly_chart("⏰ 채팅 시간대별 활동 (KST)", chat_hourly) }}{% endif %}
+  {% if voice_hourly %}{{ hourly_chart("⏰ 통화 시간대별 활동 (KST)", voice_hourly) }}{% endif %}
 
 </div>
 </body>

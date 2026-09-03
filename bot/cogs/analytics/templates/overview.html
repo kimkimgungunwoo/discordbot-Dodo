@@ -53,6 +53,16 @@
   .rank-bar { height:100%; background:var(--accent); border-radius:5px; }
   .rank-value { width:120px; flex-shrink:0; text-align:right; font-size:13px; font-weight:800; color:var(--warn); }
   .empty { font-size:13px; font-weight:600; color:var(--text-muted); padding:10px 0; }
+
+  .hourly-wrap {
+    margin:20px 26px 24px;
+    padding:18px 22px 14px;
+    background:var(--bg-surface-2);
+    border-radius:12px;
+  }
+  .hourly-chart { position:relative; margin-top:6px; }
+  .hourly-labels { display:flex; margin-top:6px; }
+  .hourly-labels span { flex:1; text-align:center; font-size:9px; font-weight:600; color:var(--text-muted); }
 </style>
 </head>
 <body>
@@ -96,6 +106,35 @@
     <div class="empty">아직 기록이 없습니다.</div>
     {% endfor %}
   </div>
+
+  {% if hourly %}
+  {% set cw = 1300 %}
+  {% set ch = 90 %}
+  {% set n = hourly|length %}
+  {% set ns = namespace(pts='') %}
+  {% for h in hourly %}
+    {% set x = ((loop.index0 / (n - 1)) * cw)|round(1) if n > 1 else (cw / 2)|round(1) %}
+    {% set y = (ch - (h.pct / 100 * ch))|round(1) %}
+    {% set ns.pts = ns.pts ~ x|string ~ ',' ~ y|string ~ ' ' %}
+  {% endfor %}
+  <div class="hourly-wrap">
+    <div class="section-label">⏰ 시간대별 활동 (KST)</div>
+    <div class="hourly-chart">
+      <svg viewBox="0 0 {{ cw }} {{ ch }}" width="100%" height="{{ ch }}">
+        <polyline points="{{ ns.pts }}" fill="none" style="stroke:var(--warn)"
+          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        {% for h in hourly %}
+          {% set x = ((loop.index0 / (n - 1)) * cw)|round(1) if n > 1 else (cw / 2)|round(1) %}
+          {% set y = (ch - (h.pct / 100 * ch))|round(1) %}
+        <circle cx="{{ x }}" cy="{{ y }}" r="3" style="fill:var(--warn)" />
+        {% endfor %}
+      </svg>
+    </div>
+    <div class="hourly-labels">
+      {% for h in hourly %}<span>{{ h.hour if h.hour % 3 == 0 else '' }}</span>{% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
 </div>
 </body>
