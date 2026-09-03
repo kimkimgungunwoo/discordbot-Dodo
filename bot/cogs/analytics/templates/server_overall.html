@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:1600px;
+    display:inline-block;
+  }
+
+  .header {
+    padding:22px 28px;
+    background:
+      linear-gradient(120deg, #20242eee 0%, #241f3dee 65%, #241f3dcc 100%),
+      url('{{ guild_icon }}');
+    background-size:cover; background-position:center;
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:14px;
+  }
+  .guild-icon {
+    width:48px; height:48px; border-radius:50%; object-fit:cover;
+    background:var(--border); border:2px solid #ffffff30;
+  }
+  .guild-name { font-size:20px; font-weight:800; color:var(--text-primary); }
+  .sub { font-size:13px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+
+  .cols { display:flex; }
+  .col { flex:1; padding:20px 26px; }
+  .cols .col:first-child { border-right:1px solid var(--border); }
+  .col-title { font-size:15px; font-weight:800; color:var(--text-strong); margin-bottom:14px; }
+  .col-summary { display:flex; gap:16px; margin-bottom:16px; }
+  .mini-stat { flex:1; background:var(--bg-surface-2); border-radius:10px; padding:12px 14px; text-align:center; }
+  .mini-label { font-size:11px; color:var(--text-muted); font-weight:700; margin-bottom:5px; }
+  .mini-val { font-size:17px; font-weight:800; color:var(--warn); }
+
+  .top-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--bg-surface-2); }
+  .top-row:last-child { border-bottom:none; }
+  .top-name { font-size:13px; font-weight:700; color:var(--text-strong); }
+  .top-value { font-size:13px; font-weight:800; color:var(--warn); }
+  .empty { font-size:13px; font-weight:600; color:var(--text-muted); padding:8px 0; }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <div class="header">
+    <img class="guild-icon" src="{{ guild_icon }}" onerror="this.style.opacity=0" alt="">
+    <div>
+      <div class="guild-name">{{ guild_name }}</div>
+      <div class="sub">서버 전체 통계 · 멤버 {{ member_count }}명</div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="col">
+      <div class="col-title">💬 채팅</div>
+      <div class="col-summary">
+        <div class="mini-stat"><div class="mini-label">전체 메시지</div><div class="mini-val">{{ chat_total_label }}</div></div>
+        <div class="mini-stat"><div class="mini-label">활동 유저</div><div class="mini-val">{{ chat_active_count }}명</div></div>
+      </div>
+      {% for name, value in top_chat %}
+      <div class="top-row"><span class="top-name">{{ {1:"🥇",2:"🥈",3:"🥉"}.get(loop.index, loop.index ~ ".") }} {{ name }}</span><span class="top-value">{{ value }}</span></div>
+      {% else %}
+      <div class="empty">아직 기록이 없습니다.</div>
+      {% endfor %}
+    </div>
+    <div class="col">
+      <div class="col-title">🎙️ 통화</div>
+      <div class="col-summary">
+        <div class="mini-stat"><div class="mini-label">전체 통화시간</div><div class="mini-val">{{ voice_total_label }}</div></div>
+        <div class="mini-stat"><div class="mini-label">활동 유저</div><div class="mini-val">{{ voice_active_count }}명</div></div>
+      </div>
+      {% for name, value in top_voice %}
+      <div class="top-row"><span class="top-name">{{ {1:"🥇",2:"🥈",3:"🥉"}.get(loop.index, loop.index ~ ".") }} {{ name }}</span><span class="top-value">{{ value }}</span></div>
+      {% else %}
+      <div class="empty">아직 기록이 없습니다.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

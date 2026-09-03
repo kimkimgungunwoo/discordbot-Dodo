@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+{% include "_tokens.html" %}
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
+
+  #card {
+    background:var(--bg-card);
+    border-radius:16px;
+    overflow:hidden;
+    width:1200px;
+    display:inline-block;
+  }
+
+  .header {
+    padding:22px 28px;
+    background:
+      linear-gradient(120deg, #20242eee 0%, #241f3dee 65%, #241f3dcc 100%),
+      url('{{ avatar }}');
+    background-size:cover; background-position:center;
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:16px;
+  }
+  .avatar {
+    width:56px; height:56px; border-radius:50%; object-fit:cover;
+    background:var(--border); border:2px solid #ffffff30;
+  }
+  .name { font-size:20px; font-weight:800; color:var(--text-primary); }
+  .sub { font-size:13px; font-weight:600; color:var(--text-muted); margin-top:3px; }
+
+  .summary { display:flex; }
+  .stat-box { flex:1; padding:20px 26px; border-right:1px solid var(--border); }
+  .stat-box:last-child { border-right:none; }
+  .stat-label { font-size:12px; color:var(--text-muted); font-weight:700; letter-spacing:.4px; margin-bottom:7px; }
+  .stat-val { font-size:24px; font-weight:800; color:var(--warn); }
+  .stat-sub { font-size:12px; font-weight:600; color:var(--text-muted); margin-top:4px; }
+</style>
+</head>
+<body>
+<div id="card">
+
+  <div class="header">
+    <img class="avatar" src="{{ avatar }}" onerror="this.style.opacity=0" alt="">
+    <div>
+      <div class="name">{{ name }}</div>
+      <div class="sub">유저 통계</div>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="stat-box">
+      <div class="stat-label">💬 메시지 수</div>
+      <div class="stat-val">{{ message_count|intfmt }}개</div>
+      <div class="stat-sub">{{ (({1:'🥇 ',2:'🥈 ',3:'🥉 '}.get(message_rank, '')) ~ message_rank ~ '위 / ' ~ message_total_users ~ '명') if message_rank else '기록 없음' }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">🎙️ 통화시간</div>
+      <div class="stat-val">{{ voice_label }}</div>
+      <div class="stat-sub">{{ (({1:'🥇 ',2:'🥈 ',3:'🥉 '}.get(voice_rank, '')) ~ voice_rank ~ '위 / ' ~ voice_total_users ~ '명') if voice_rank else '기록 없음' }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">📞 통화 세션 수</div>
+      <div class="stat-val">{{ session_count }}회</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
