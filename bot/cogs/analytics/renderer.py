@@ -63,6 +63,7 @@ async def render_user_stat_card(
     voice_seconds: int, voice_rank: int | None, voice_total_users: int,
     session_count: int,
     chat_hourly: list[dict] | None = None, voice_hourly: list[dict] | None = None,
+    mates: list[dict] | None = None,
 ) -> io.BytesIO:
     ctx = {
         "name": name, "avatar": avatar,
@@ -72,6 +73,7 @@ async def render_user_stat_card(
         "voice_rank": voice_rank, "voice_total_users": voice_total_users,
         "session_count": session_count,
         "chat_hourly": chat_hourly or [], "voice_hourly": voice_hourly or [],
+        "mates": mates or [],
     }
     return await _render("user_stat.html", ctx, width=1200)
 
@@ -81,11 +83,15 @@ async def render_server_overall_card(
     chat_total_label: str, chat_active_count: int,
     voice_total_label: str, voice_active_count: int,
     top_chat: list[tuple], top_voice: list[tuple],
+    chat_hourly: list[dict] | None = None, voice_hourly: list[dict] | None = None,
+    best_couple: dict | None = None, top_games: list[dict] | None = None,
 ) -> io.BytesIO:
     ctx = {
         "guild_name": guild_name, "guild_icon": guild_icon, "member_count": member_count,
         "chat_total_label": chat_total_label, "chat_active_count": chat_active_count,
         "voice_total_label": voice_total_label, "voice_active_count": voice_active_count,
         "top_chat": top_chat, "top_voice": top_voice,
+        "chat_hourly": chat_hourly or [], "voice_hourly": voice_hourly or [],
+        "best_couple": best_couple, "top_games": top_games or [],
     }
     return await _render("server_overall.html", ctx, width=1600)

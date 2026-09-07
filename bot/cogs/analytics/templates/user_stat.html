@@ -46,6 +46,15 @@
     background:var(--bg-surface-2);
     border-radius:12px;
   }
+
+  .mates-wrap { margin:16px 26px; padding:16px 20px; background:var(--bg-surface-2); border-radius:12px; }
+  .mates-bar { display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--bg-track); margin-bottom:12px; }
+  .mates-seg { background:var(--warn); }
+  .mates-row { display:flex; align-items:center; gap:10px; padding:5px 0; }
+  .mates-rank { width:20px; font-size:12px; font-weight:800; color:var(--text-muted); text-align:center; flex-shrink:0; }
+  .mates-name { flex:1; font-size:13px; font-weight:700; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mates-pct { width:52px; text-align:right; font-size:12px; font-weight:700; color:var(--text-muted); }
+  .mates-time { width:120px; text-align:right; font-size:13px; font-weight:800; color:var(--warn); }
   .hourly-chart { position:relative; margin-top:6px; }
   .hourly-labels { display:flex; margin-top:6px; }
   .hourly-labels span { flex:1; text-align:center; font-size:9px; font-weight:600; color:var(--text-muted); }
@@ -110,6 +119,23 @@
 
   {% if chat_hourly %}{{ hourly_chart("⏰ 채팅 시간대별 활동 (KST)", chat_hourly) }}{% endif %}
   {% if voice_hourly %}{{ hourly_chart("⏰ 통화 시간대별 활동 (KST)", voice_hourly) }}{% endif %}
+
+  {% if mates %}
+  <div class="mates-wrap">
+    <div class="section-label">🤝 통화메이트</div>
+    <div class="mates-bar">
+      {% for m in mates %}<div class="mates-seg" style="width:{{ m.pct }}%;opacity:{{ m.opacity }}"></div>{% endfor %}
+    </div>
+    {% for m in mates %}
+    <div class="mates-row">
+      <span class="mates-rank">{{ loop.index }}</span>
+      <span class="mates-name">{{ m.name }}</span>
+      <span class="mates-pct">{{ m.pct }}%</span>
+      <span class="mates-time">{{ m.label }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
 </div>
 </body>
