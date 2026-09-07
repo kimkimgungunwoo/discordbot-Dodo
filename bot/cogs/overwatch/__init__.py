@@ -13,7 +13,7 @@ class Overwatch(commands.Cog):
 
     @commands.group(name="오버워치", invoke_without_command=True)
     async def overwatch_group(self, ctx: commands.Context):
-        await ctx.reply(embed=category_embed("overwatch"), mention_author=False)
+        await ctx.reply(embed=category_embed("overwatch", ctx.clean_prefix), mention_author=False)
 
     @overwatch_group.command(name="프로필")
     async def profile(self, ctx: commands.Context):

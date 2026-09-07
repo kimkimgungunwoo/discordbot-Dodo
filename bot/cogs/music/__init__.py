@@ -424,7 +424,7 @@ class Music(commands.Cog):
 
     @commands.group(name="음악", invoke_without_command=True)
     async def music_group(self, ctx: commands.Context):
-        await ctx.reply(embed=category_embed("music"), mention_author=False)
+        await ctx.reply(embed=category_embed("music", ctx.clean_prefix), mention_author=False)
 
     @music_group.command(name="입장")
     async def join(self, ctx: commands.Context):

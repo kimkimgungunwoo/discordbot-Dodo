@@ -14,7 +14,7 @@ class RiotCog(commands.Cog):
 
     @commands.group(name="롤", invoke_without_command=True)
     async def lol(self, ctx: commands.Context):
-        await ctx.reply(embed=category_embed("riot"), mention_author=False)
+        await ctx.reply(embed=category_embed("riot", ctx.clean_prefix), mention_author=False)
 
     @lol.command(name="프로필")
     async def lol_profile(self, ctx: commands.Context):

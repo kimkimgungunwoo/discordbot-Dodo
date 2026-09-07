@@ -5,6 +5,11 @@ from discord.ext import commands
 from watchfiles import awatch
 from pathlib import Path
 
+from api.database import SessionLocal
+from api.crud.guild_config_crud import get_all_prefixes, set_prefix
+
+DEFAULT_PREFIX = "!"
+
 COGS = [
     "bot.cogs.basic",
     "bot.cogs.util",
@@ -22,15 +27,24 @@ COGS = [
 COGS_DIR = Path(__file__).parent.parent / "cogs"
 
 
+def _prefix_for(bot: "MyBot", message: discord.Message):
+    p = bot.prefixes.get(message.guild.id, DEFAULT_PREFIX) if message.guild else DEFAULT_PREFIX
+    return commands.when_mentioned_or(p)(bot, message)
+
+
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.presences = True
         intents.members = True
-        super().__init__(command_prefix="!", intents=intents, help_command=None)
+        super().__init__(command_prefix=_prefix_for, intents=intents, help_command=None)
+        self.prefixes: dict[int, str] = {}
 
     async def setup_hook(self):
+        async with SessionLocal() as session:
+            self.prefixes = await get_all_prefixes(session)
+
         node = wavelink.Node(uri=os.environ["LAVALINK_URI"], password=os.environ["LAVALINK_PASSWORD"])
         await wavelink.Pool.connect(nodes=[node], client=self)
 
@@ -38,12 +52,17 @@ class MyBot(commands.Bot):
             await self.load_extension(ext)
         self.loop.create_task(self._hot_reload())
 
+    async def set_guild_prefix(self, guild_id: int, prefix: str):
+        async with SessionLocal() as session:
+            await set_prefix(session, guild_id, prefix)
+        self.prefixes[guild_id] = prefix
+
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError):
         if isinstance(error, (commands.CommandNotFound, commands.CheckFailure)):
             return
         if isinstance(error, (commands.MissingRequiredArgument, commands.BadArgument, commands.TooManyArguments)):
             top = ctx.command.root_parent
-            guide = f"`!{top.name}`" if top else "`!help`"
+            guide = f"`{ctx.clean_prefix}{top.name}`" if top else f"`{ctx.clean_prefix}help`"
             await ctx.reply(f"❌ 명령어 형식이 올바르지 않습니다. {guide} 로 사용법을 확인하세요.", mention_author=False)
             return
         print(f"[CommandError] {ctx.command}: {error!r}")

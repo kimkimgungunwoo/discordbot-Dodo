@@ -5,7 +5,8 @@ from discord.ext import commands
 CATEGORIES: dict[str, tuple[str, str]] = {
     "control": (
         "🎙️ 봇 제어",
-        "`!help` — 명령어 목록 (별칭: `!도움말`, `!명령어`)",
+        "`!help` — 명령어 목록 (별칭: `!도움말`, `!명령어`)\n"
+        "`!prefix` — 이 서버 prefix 확인 / 변경 (`!prefix .`, 서버 관리 권한 필요)",
     ),
     "music": (
         "🎵 음악",
@@ -81,13 +82,16 @@ CATEGORIES: dict[str, tuple[str, str]] = {
 }
 
 
-def category_embed(key: str) -> discord.Embed:
+def category_embed(key: str, prefix: str = "!") -> discord.Embed:
     title, desc = CATEGORIES[key]
+    if prefix != "!":
+        desc = desc.replace("`!", "`" + prefix)
     return discord.Embed(title=title, description=desc, color=discord.Color.blurple())
 
 
 class HelpSelect(discord.ui.Select):
-    def __init__(self):
+    def __init__(self, prefix: str):
+        self.prefix = prefix
         options = [
             discord.SelectOption(label=title, value=key)
             for key, (title, _) in CATEGORIES.items()
@@ -95,13 +99,17 @@ class HelpSelect(discord.ui.Select):
         super().__init__(placeholder="카테고리를 선택하세요", options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.edit_message(embed=category_embed(self.values[0]), view=self.view)
+        await interaction.response.edit_message(embed=category_embed(self.values[0], self.prefix), view=self.view)
 
 
 class HelpView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, prefix: str = "!"):
         super().__init__(timeout=120)
-        self.add_item(HelpSelect())
+        self.add_item(HelpSelect(prefix))
+
+
+def _valid_prefix(p: str) -> bool:
+    return 1 <= len(p) <= 3 and " " not in p and p[0] not in "@/#"
 
 
 class Control(commands.Cog):
@@ -110,13 +118,45 @@ class Control(commands.Cog):
 
     @commands.command(name="help", aliases=["도움말", "명령어"])
     async def help(self, ctx: commands.Context):
-        """사용 가능한 명령어 목록을 보여줍니다."""
         embed = discord.Embed(
             title="명령어 목록",
-            description="prefix: `!`\n아래 드롭다운에서 카테고리를 선택하세요.",
+            description=f"prefix: `{ctx.clean_prefix}`\n아래 드롭다운에서 카테고리를 선택하세요.",
             color=discord.Color.blurple(),
         )
-        await ctx.send(embed=embed, view=HelpView())
+        await ctx.send(embed=embed, view=HelpView(ctx.clean_prefix))
+
+    @commands.command(name="prefix", aliases=["프리픽스"])
+    @commands.guild_only()
+    async def prefix_cmd(self, ctx: commands.Context, new_prefix: str = None):
+        cur = self.bot.prefixes.get(ctx.guild.id, "!")
+        if new_prefix is None:
+            await ctx.reply(f"현재 이 서버 prefix: `{cur}`", mention_author=False)
+            return
+        if not ctx.author.guild_permissions.manage_guild:
+            await ctx.reply("서버 관리 권한이 필요합니다.", mention_author=False)
+            return
+        if not _valid_prefix(new_prefix):
+            await ctx.reply("prefix는 공백 없는 1~3자여야 하고 `@` `/` `#` 로 시작할 수 없습니다.", mention_author=False)
+            return
+        await self.bot.set_guild_prefix(ctx.guild.id, new_prefix)
+        await ctx.reply(
+            f"이제 이 서버 prefix는 `{new_prefix}` 입니다.\n"
+            f"다른 봇과 겹쳐서 안 먹히면 `@{ctx.me.display_name} prefix <기호>` 로도 바꿀 수 있어요.",
+            mention_author=False,
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild):
+        ch = guild.system_channel or next(
+            (c for c in guild.text_channels if c.permissions_for(guild.me).send_messages), None
+        )
+        if ch is None:
+            return
+        await ch.send(
+            "👋 안녕하세요! 명령어 prefix는 기본 `!` 입니다.\n"
+            f"`!prefix <기호>` 로 바꿀 수 있고, 다른 봇과 겹치면 `@{guild.me.display_name} prefix <기호>` 로도 변경돼요.\n"
+            "`!help` 로 명령어를 확인하세요."
+        )
 
 
 async def setup(bot: commands.Bot):

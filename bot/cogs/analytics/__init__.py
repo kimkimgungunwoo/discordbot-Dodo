@@ -269,7 +269,7 @@ class Analytics(commands.Cog):
 
     @commands.group(name="통계", invoke_without_command=True)
     async def stat_group(self, ctx: commands.Context):
-        await ctx.reply(embed=category_embed("analytics"), mention_author=False)
+        await ctx.reply(embed=category_embed("analytics", ctx.clean_prefix), mention_author=False)
 
     @stat_group.command(name="재분석")
     async def reanalyze(self, ctx: commands.Context):
