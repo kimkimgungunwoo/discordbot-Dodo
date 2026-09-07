@@ -46,9 +46,48 @@
   .top-name { font-size:13px; font-weight:700; color:var(--text-strong); }
   .top-value { font-size:13px; font-weight:800; color:var(--warn); }
   .empty { font-size:13px; font-weight:600; color:var(--text-muted); padding:8px 0; }
+
+  .spark { margin-top:16px; padding-top:14px; border-top:1px solid var(--bg-surface-2); }
+  .spark-label { font-size:11px; font-weight:700; color:var(--text-muted); margin-bottom:7px; }
+  .spark-axis { display:flex; justify-content:space-between; margin-top:3px; }
+  .spark-axis span { font-size:9px; font-weight:600; color:var(--text-muted); }
+
+  .subsec { margin-top:16px; padding-top:14px; border-top:1px solid var(--bg-surface-2); }
+  .subsec-label { font-size:11px; font-weight:700; color:var(--text-muted); margin-bottom:10px; }
+
+  .couple-body { display:flex; align-items:center; justify-content:center; gap:10px; }
+  .couple-av { width:38px; height:38px; border-radius:50%; object-fit:cover; background:var(--border); border:2px solid #ffffff20; }
+  .couple-name { font-size:15px; font-weight:800; color:var(--text-strong); }
+  .couple-heart { font-size:16px; }
+  .couple-time { text-align:center; font-size:13px; font-weight:700; color:var(--warn); margin-top:8px; }
+
+  .games-body { display:flex; align-items:center; gap:22px; }
+  .games-legend { flex:1; display:flex; flex-direction:column; gap:7px; }
+  .games-legrow { display:flex; align-items:center; gap:9px; }
+  .games-dot { width:11px; height:11px; border-radius:3px; flex-shrink:0; }
+  .games-gname { flex:1; font-size:13px; font-weight:700; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .games-gpct { font-size:13px; font-weight:800; color:var(--warn); }
 </style>
 </head>
 <body>
+{% macro spark(hourly) %}
+{% set cw = 700 %}{% set ch = 44 %}
+{% set n = hourly|length %}
+{% set ns = namespace(pts='') %}
+{% for h in hourly %}
+  {% set x = ((loop.index0 / (n - 1)) * cw)|round(1) if n > 1 else (cw / 2)|round(1) %}
+  {% set y = (ch - 3 - (h.pct / 100 * (ch - 6)))|round(1) %}
+  {% set ns.pts = ns.pts ~ x|string ~ ',' ~ y|string ~ ' ' %}
+{% endfor %}
+<div class="spark">
+  <div class="spark-label">⏰ 시간대별 활동 (KST)</div>
+  <svg viewBox="0 0 {{ cw }} {{ ch }}" width="100%" height="{{ ch }}" preserveAspectRatio="none">
+    <polyline points="{{ ns.pts }}" fill="none" style="stroke:var(--warn)"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>
+  <div class="spark-axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>
+</div>
+{% endmacro %}
 <div id="card">
 
   <div class="header">
@@ -71,6 +110,22 @@
       {% else %}
       <div class="empty">아직 기록이 없습니다.</div>
       {% endfor %}
+      {% if chat_hourly %}{{ spark(chat_hourly) }}{% endif %}
+      <div class="subsec">
+        <div class="subsec-label">💑 베스트 커플</div>
+        {% if best_couple %}
+        <div class="couple-body">
+          <img class="couple-av" src="{{ best_couple.avatar_a }}" onerror="this.style.opacity=0" alt="">
+          <span class="couple-name">{{ best_couple.name_a }}</span>
+          <span class="couple-heart">❤️</span>
+          <span class="couple-name">{{ best_couple.name_b }}</span>
+          <img class="couple-av" src="{{ best_couple.avatar_b }}" onerror="this.style.opacity=0" alt="">
+        </div>
+        <div class="couple-time">{{ best_couple.label }} 함께</div>
+        {% else %}
+        <div class="empty">아직 기록이 없습니다.</div>
+        {% endif %}
+      </div>
     </div>
     <div class="col">
       <div class="col-title">🎙️ 통화</div>
@@ -83,6 +138,38 @@
       {% else %}
       <div class="empty">아직 기록이 없습니다.</div>
       {% endfor %}
+      {% if voice_hourly %}{{ spark(voice_hourly) }}{% endif %}
+      <div class="subsec">
+        <div class="subsec-label">🎮 인기 게임</div>
+        {% if top_games %}
+        <div class="games-body">
+          {% set r = 52 %}
+          {% set circ = (2 * 3.14159265 * r) | round(3) %}
+          {% set ns = namespace(off=0) %}
+          <svg viewBox="0 0 140 140" width="140" height="140" style="flex-shrink:0">
+            <circle cx="70" cy="70" r="{{ r }}" fill="none" stroke="var(--bg-track)" stroke-width="20"/>
+            {% for g in top_games %}
+              {% set seg = (g.pct / 100 * circ) | round(3) %}
+              <circle cx="70" cy="70" r="{{ r }}" fill="none" stroke="var(--warn)" stroke-opacity="{{ g.opacity }}"
+                stroke-width="20" stroke-dasharray="{{ seg }} {{ (circ - seg) | round(3) }}"
+                stroke-dashoffset="{{ (-ns.off) | round(3) }}" transform="rotate(-90 70 70)"/>
+              {% set ns.off = ns.off + seg %}
+            {% endfor %}
+          </svg>
+          <div class="games-legend">
+            {% for g in top_games %}
+            <div class="games-legrow">
+              <span class="games-dot" style="background:var(--warn);opacity:{{ g.opacity }}"></span>
+              <span class="games-gname">{{ g.name }}</span>
+              <span class="games-gpct">{{ g.pct }}%</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% else %}
+        <div class="empty">아직 기록이 없습니다.</div>
+        {% endif %}
+      </div>
     </div>
   </div>
 

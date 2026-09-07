@@ -1,5 +1,4 @@
 from discord.ext import commands
-from typing import Optional
 import discord
 import asyncio
 import datetime
@@ -7,7 +6,10 @@ import uuid
 
 from bot.cogs.control import category_embed
 from bot.cogs.party.renderer import render_party_list_card
-from bot.cogs.party.views import PartyView, PartyCreatePromptView, PartyListView
+from bot.cogs.party.views import (
+    PartyView, PartyCreatePromptView, PartyListView, PartyDeletePickerView, PartyMemberPickerView,
+)
+from bot.cogs.party.timeutil import now_kst
 from bot.cogs.util import GENERATING_MSG
 
 
@@ -79,7 +81,7 @@ class Party(commands.Cog):
         if party is None:
             return
 
-        wait_seconds = (party["target_time"] - datetime.datetime.now()).total_seconds()
+        wait_seconds = (party["target_time"] - now_kst()).total_seconds()
         if wait_seconds > 0:
             await asyncio.sleep(wait_seconds)
 
@@ -105,18 +107,6 @@ class Party(commands.Cog):
             # 안 그러면 채널 삭제/권한 문제 등으로 send가 실패했을 때 파티가 영원히 안 지워짐.
             self.parties.pop(party_id, None)
             self.party_tasks.pop(party_id, None)
-
-    def _find_party_id_by_index(self, index: int) -> Optional[str]:
-        sorted_items = sorted(
-            self.parties.items(),
-            key=lambda item: item[1]["target_time"]
-        )
-
-        if index < 1 or index > len(sorted_items):
-            return None
-
-        party_id, _ = sorted_items[index - 1]
-        return party_id
 
     @commands.group(name="파티", invoke_without_command=True)
     async def party(self, ctx: commands.Context):
@@ -148,42 +138,32 @@ class Party(commands.Cog):
         )
 
     @party.command(name="삭제")
-    async def delete_party(self, ctx: commands.Context, index: int):
-        party_id = self._find_party_id_by_index(index)
-
-        if party_id is None:
-            await ctx.send("해당 번호의 파티가 없습니다.")
+    async def delete_party(self, ctx: commands.Context):
+        """드롭다운으로 파티를 골라 삭제합니다."""
+        if not self.parties:
+            await ctx.reply("현재 등록된 파티가 없습니다.", mention_author=False)
             return
 
-        party = self.parties.pop(party_id, None)
-        task = self.party_tasks.pop(party_id, None)
-
-        if task is not None:
-            task.cancel()
-
-        if party is None:
-            await ctx.send("이미 삭제되었거나 존재하지 않는 파티입니다.")
-            return
-
-        await ctx.send(f"파티 삭제 완료: **{party['title']}**")
+        sorted_parties = sorted(self.parties.items(), key=lambda item: item[1]["target_time"])
+        await ctx.reply(
+            "삭제할 파티를 선택하세요:",
+            view=PartyDeletePickerView(self, sorted_parties),
+            mention_author=False,
+        )
 
     @party.command(name="멤버")
-    async def party_members(self, ctx: commands.Context, index: int):
-        party_id = self._find_party_id_by_index(index)
-
-        if party_id is None:
-            await ctx.send("해당 번호의 파티가 없습니다.")
+    async def party_members(self, ctx: commands.Context):
+        """드롭다운으로 파티를 골라 참여자를 확인합니다."""
+        if not self.parties:
+            await ctx.reply("현재 등록된 파티가 없습니다.", mention_author=False)
             return
 
-        party = self.parties[party_id]
-        members = party["members"]
-
-        if not members:
-            await ctx.send(f"**{party['title']}** 참여자는 아직 없습니다.")
-            return
-
-        mention_text = " ".join(f"<@{user_id}>" for user_id in members)
-        await ctx.send(f"**{party['title']}** 참여자:\n{mention_text}")
+        sorted_parties = sorted(self.parties.items(), key=lambda item: item[1]["target_time"])
+        await ctx.reply(
+            "멤버를 확인할 파티를 선택하세요:",
+            view=PartyMemberPickerView(self, sorted_parties),
+            mention_author=False,
+        )
 
 
 async def setup(bot):

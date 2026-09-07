@@ -8,10 +8,29 @@ from api.models.voice_stat import VoiceStat
 from api.models.backfill_progress import BackfillProgress
 from api.models.chat_hourly import ChatHourly
 from api.models.voice_hourly import VoiceHourly
+from api.models.voice_pair import VoicePair
+from api.models.game_stat import GameStat
+
+
+_MAX_SESSION_SECONDS = 24 * 3600  # 이 이상 열려있던 세션은 눌러앉기/클라 멈춤으로 보고 잘라냄
 
 
 def kst_hour(when: datetime.datetime) -> int:
     return (when.hour + 9) % 24
+
+
+def _voice_hourly_chunks(joined_at: datetime.datetime, left_at: datetime.datetime) -> list[tuple[int, int]]:
+    """세션을 시(KST) 버킷별로 쪼갠다 → [(kst_hour, seconds), ...]. KST가 +9 정각이라 UTC 시 경계 = KST 시 경계."""
+    chunks: list[tuple[int, int]] = []
+    cur = joined_at
+    while cur < left_at:
+        hour_end = cur.replace(minute=0, second=0, microsecond=0) + datetime.timedelta(hours=1)
+        chunk_end = min(hour_end, left_at)
+        seconds = int((chunk_end - cur).total_seconds())
+        if seconds > 0:
+            chunks.append((kst_hour(cur), seconds))
+        cur = chunk_end
+    return chunks
 
 
 def _row_to_chat_stat(item: dict) -> ChatStat:
@@ -57,13 +76,6 @@ async def increment_chat_stat(session: DynamoSession, user_id: int, when: dateti
         UpdateExpression="ADD message_count :n SET last_message_at = :t",
         ExpressionAttributeValues={":n": count, ":t": when.isoformat()},
     )
-
-
-async def get_chat_stat(session: DynamoSession, user_id: int) -> ChatStat | None:
-    table = await session.table("chat_stat")
-    resp = await table.get_item(Key={"user_id": user_id})
-    item = resp.get("Item")
-    return _row_to_chat_stat(item) if item else None
 
 
 async def scan_chat_stats(session: DynamoSession) -> list[ChatStat]:
@@ -113,13 +125,20 @@ async def delete_all_chat_hourly(session: DynamoSession):
         await table.delete_item(Key={"user_id": item["user_id"], "hour": item["hour"]})
 
 
-async def start_voice_session(session: DynamoSession, user_id: int, joined_at: datetime.datetime) -> str:
+async def start_voice_session(
+    session: DynamoSession, user_id: int, joined_at: datetime.datetime, channel_id: int | None = None,
+) -> str:
     sk = f"{joined_at.isoformat()}#{uuid.uuid4().hex[:8]}"
     table = await session.table("voice_session")
-    await table.put_item(Item={"user_id": user_id, "sk": sk, "joined_at": joined_at.isoformat()})
+    item = {"user_id": user_id, "sk": sk, "joined_at": joined_at.isoformat()}
+    if channel_id is not None:
+        item["channel_id"] = channel_id
+    await table.put_item(Item=item)
     return sk
 
 
+# 세션은 닫을 때 stat/hourly로 접고 행을 삭제한다 → voice_session 테이블엔 항상 "열린 세션"만 남아
+# on_ready 대조(reconcile) 스캔이 시간이 지나도 가벼움.
 async def find_open_voice_session(session: DynamoSession, user_id: int) -> VoiceSession | None:
     table = await session.table("voice_session")
     resp = await table.query(
@@ -128,42 +147,53 @@ async def find_open_voice_session(session: DynamoSession, user_id: int) -> Voice
         Limit=1,
     )
     items = resp.get("Items", [])
-    if not items or items[0].get("left_at"):
-        return None
-    return _row_to_voice_session(items[0])
+    return _row_to_voice_session(items[0]) if items else None
 
 
-async def close_voice_session(session: DynamoSession, user_id: int, sk: str, left_at: datetime.datetime) -> int:
+async def scan_open_voice_sessions(session: DynamoSession) -> list[VoiceSession]:
+    table = await session.table("voice_session")
+    return [_row_to_voice_session(i) for i in await _scan_all(table)]
+
+
+async def drop_voice_session(session: DynamoSession, user_id: int, sk: str):
+    """세션을 stat에 반영하지 않고 버린다 (봇 다운타임 중 세션 등)."""
+    table = await session.table("voice_session")
+    await table.delete_item(Key={"user_id": user_id, "sk": sk})
+
+
+async def close_voice_session(
+    session: DynamoSession, user_id: int, sk: str, left_at: datetime.datetime, bump_count: bool = True,
+) -> int:
     table = await session.table("voice_session")
     resp = await table.get_item(Key={"user_id": user_id, "sk": sk})
     item = resp.get("Item")
-    if item is None or item.get("left_at"):
+    if item is None:
         return 0
     joined_at = datetime.datetime.fromisoformat(item["joined_at"])
-    duration = max(int((left_at - joined_at).total_seconds()), 0)
-    await table.update_item(
-        Key={"user_id": user_id, "sk": sk},
-        UpdateExpression="SET left_at = :t",
-        ExpressionAttributeValues={":t": left_at.isoformat()},
-    )
-    await _increment_voice_stat(session, user_id, duration, left_at)
-    await increment_voice_hourly(session, user_id, joined_at, duration)
+    duration = min(max(int((left_at - joined_at).total_seconds()), 0), _MAX_SESSION_SECONDS)
+    await table.delete_item(Key={"user_id": user_id, "sk": sk})
+    await _increment_voice_stat(session, user_id, duration, left_at, bump_count)
+    for hour, seconds in _voice_hourly_chunks(joined_at, joined_at + datetime.timedelta(seconds=duration)):
+        await _add_voice_hourly(session, user_id, hour, seconds)
     return duration
 
 
-async def _increment_voice_stat(session: DynamoSession, user_id: int, seconds: int, when: datetime.datetime):
+async def _increment_voice_stat(
+    session: DynamoSession, user_id: int, seconds: int, when: datetime.datetime, bump_count: bool = True,
+):
+    # 채널 이동(close+reopen)일 땐 session_count를 올리지 않는다 — 새 통화가 아님.
+    expr = "ADD total_seconds :s" + (", session_count :n" if bump_count else "") + " SET last_left_at = :t"
+    vals = {":s": seconds, ":t": when.isoformat()}
+    if bump_count:
+        vals[":n"] = 1
     table = await session.table("voice_stat")
-    await table.update_item(
-        Key={"user_id": user_id},
-        UpdateExpression="ADD total_seconds :s, session_count :n SET last_left_at = :t",
-        ExpressionAttributeValues={":s": seconds, ":n": 1, ":t": when.isoformat()},
-    )
+    await table.update_item(Key={"user_id": user_id}, UpdateExpression=expr, ExpressionAttributeValues=vals)
 
 
-async def increment_voice_hourly(session: DynamoSession, user_id: int, when: datetime.datetime, seconds: int):
+async def _add_voice_hourly(session: DynamoSession, user_id: int, hour: int, seconds: int):
     table = await session.table("voice_hourly")
     await table.update_item(
-        Key={"user_id": user_id, "hour": kst_hour(when)},
+        Key={"user_id": user_id, "hour": hour},
         UpdateExpression="ADD total_seconds :s",
         ExpressionAttributeValues={":s": seconds},
     )
@@ -186,16 +216,49 @@ async def get_voice_hourly_for_user(session: DynamoSession, user_id: int) -> lis
     ]
 
 
-async def get_voice_stat(session: DynamoSession, user_id: int) -> VoiceStat | None:
-    table = await session.table("voice_stat")
-    resp = await table.get_item(Key={"user_id": user_id})
-    item = resp.get("Item")
-    return _row_to_voice_stat(item) if item else None
-
-
 async def scan_voice_stats(session: DynamoSession) -> list[VoiceStat]:
     table = await session.table("voice_stat")
     return [_row_to_voice_stat(i) for i in await _scan_all(table)]
+
+
+def _pair_key(a: int, b: int) -> str:
+    lo, hi = sorted((a, b))
+    return f"{lo}#{hi}"
+
+
+async def add_voice_pair(session: DynamoSession, a: int, b: int, seconds: int):
+    table = await session.table("voice_pair")
+    await table.update_item(
+        Key={"pair": _pair_key(a, b)},
+        UpdateExpression="ADD total_seconds :s",
+        ExpressionAttributeValues={":s": seconds},
+    )
+
+
+async def scan_voice_pairs(session: DynamoSession) -> list[VoicePair]:
+    table = await session.table("voice_pair")
+    out = []
+    for i in await _scan_all(table):
+        lo, hi = i["pair"].split("#")
+        out.append(VoicePair(a=int(lo), b=int(hi), total_seconds=int(i.get("total_seconds", 0))))
+    return out
+
+
+async def add_game_stat(session: DynamoSession, user_id: int, game_name: str, seconds: int):
+    table = await session.table("game_stat")
+    await table.update_item(
+        Key={"user_id": user_id, "game_name": game_name},
+        UpdateExpression="ADD total_seconds :s",
+        ExpressionAttributeValues={":s": seconds},
+    )
+
+
+async def scan_game_stats(session: DynamoSession) -> list[GameStat]:
+    table = await session.table("game_stat")
+    return [
+        GameStat(user_id=int(i["user_id"]), game_name=i["game_name"], total_seconds=int(i.get("total_seconds", 0)))
+        for i in await _scan_all(table)
+    ]
 
 
 async def get_backfill_progress(session: DynamoSession, channel_id: int) -> BackfillProgress | None:
@@ -220,3 +283,16 @@ async def delete_all_backfill_progress(session: DynamoSession):
     table = await session.table("backfill_progress")
     for item in await _scan_all(table):
         await table.delete_item(Key={"channel_id": item["channel_id"]})
+
+
+if __name__ == "__main__":
+    j = datetime.datetime(2026, 9, 7, 12, 50)  # UTC 12:50 = KST 21:50
+    l = datetime.datetime(2026, 9, 7, 15, 10)  # KST 00:10 (다음날)
+    chunks = _voice_hourly_chunks(j, l)
+    assert chunks == [(21, 600), (22, 3600), (23, 3600), (0, 600)], chunks
+    assert sum(s for _, s in chunks) == int((l - j).total_seconds())
+    assert _voice_hourly_chunks(
+        datetime.datetime(2026, 9, 7, 12, 10), datetime.datetime(2026, 9, 7, 12, 40)
+    ) == [(21, 1800)]
+    assert _voice_hourly_chunks(j, j) == []
+    print("ok")

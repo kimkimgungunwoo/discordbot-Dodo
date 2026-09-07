@@ -125,6 +125,22 @@ TABLES = [
             {"AttributeName": "hour", "AttributeType": "N"},
         ],
     },
+    {
+        "name": "voice_pair",
+        "KeySchema": [{"AttributeName": "pair", "KeyType": "HASH"}],
+        "AttributeDefinitions": [{"AttributeName": "pair", "AttributeType": "S"}],
+    },
+    {
+        "name": "game_stat",
+        "KeySchema": [
+            {"AttributeName": "user_id", "KeyType": "HASH"},
+            {"AttributeName": "game_name", "KeyType": "RANGE"},
+        ],
+        "AttributeDefinitions": [
+            {"AttributeName": "user_id", "AttributeType": "N"},
+            {"AttributeName": "game_name", "AttributeType": "S"},
+        ],
+    },
 ]
 
 
