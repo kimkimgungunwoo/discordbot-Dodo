@@ -5,11 +5,8 @@ wavelink==3.5.2   # Lavalink(별도 컨테이너) 클라이언트 — 음악 재
 
 # AI
 google-genai==2.19.0
-google-api-python-client==2.193.0
 
-# FastAPI
-fastapi==0.136.3
-uvicorn==0.48.0
+# Schemas
 pydantic==2.12.5
 
 # Database
@@ -23,4 +20,3 @@ jinja2
 watchfiles==1.2.0
 python-dotenv==1.2.2
 aiohttp==3.13.3
-requests==2.33.0
