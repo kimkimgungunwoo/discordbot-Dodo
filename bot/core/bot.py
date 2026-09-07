@@ -26,8 +26,8 @@ class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
-        intents.presences = True  # 게임 활동 통계 (포털에서 PRESENCE INTENT 켜야 함)
-        intents.members = True    # 멤버 캐시 (닉/아바타 resolve, presence 매핑)
+        intents.presences = True
+        intents.members = True
         super().__init__(command_prefix="!", intents=intents, help_command=None)
 
     async def setup_hook(self):

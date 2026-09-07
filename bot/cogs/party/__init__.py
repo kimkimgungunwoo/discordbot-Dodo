@@ -139,7 +139,6 @@ class Party(commands.Cog):
 
     @party.command(name="삭제")
     async def delete_party(self, ctx: commands.Context):
-        """드롭다운으로 파티를 골라 삭제합니다."""
         if not self.parties:
             await ctx.reply("현재 등록된 파티가 없습니다.", mention_author=False)
             return
@@ -153,7 +152,6 @@ class Party(commands.Cog):
 
     @party.command(name="멤버")
     async def party_members(self, ctx: commands.Context):
-        """드롭다운으로 파티를 골라 참여자를 확인합니다."""
         if not self.parties:
             await ctx.reply("현재 등록된 파티가 없습니다.", mention_author=False)
             return

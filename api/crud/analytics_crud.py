@@ -12,7 +12,7 @@ from api.models.voice_pair import VoicePair
 from api.models.game_stat import GameStat
 
 
-_MAX_SESSION_SECONDS = 24 * 3600  # 이 이상 열려있던 세션은 눌러앉기/클라 멈춤으로 보고 잘라냄
+_MAX_SESSION_SECONDS = 24 * 3600
 
 
 def kst_hour(when: datetime.datetime) -> int:
@@ -20,7 +20,6 @@ def kst_hour(when: datetime.datetime) -> int:
 
 
 def _voice_hourly_chunks(joined_at: datetime.datetime, left_at: datetime.datetime) -> list[tuple[int, int]]:
-    """세션을 시(KST) 버킷별로 쪼갠다 → [(kst_hour, seconds), ...]. KST가 +9 정각이라 UTC 시 경계 = KST 시 경계."""
     chunks: list[tuple[int, int]] = []
     cur = joined_at
     while cur < left_at:
@@ -137,8 +136,6 @@ async def start_voice_session(
     return sk
 
 
-# 세션은 닫을 때 stat/hourly로 접고 행을 삭제한다 → voice_session 테이블엔 항상 "열린 세션"만 남아
-# on_ready 대조(reconcile) 스캔이 시간이 지나도 가벼움.
 async def find_open_voice_session(session: DynamoSession, user_id: int) -> VoiceSession | None:
     table = await session.table("voice_session")
     resp = await table.query(
@@ -156,7 +153,6 @@ async def scan_open_voice_sessions(session: DynamoSession) -> list[VoiceSession]
 
 
 async def drop_voice_session(session: DynamoSession, user_id: int, sk: str):
-    """세션을 stat에 반영하지 않고 버린다 (봇 다운타임 중 세션 등)."""
     table = await session.table("voice_session")
     await table.delete_item(Key={"user_id": user_id, "sk": sk})
 
@@ -181,7 +177,6 @@ async def close_voice_session(
 async def _increment_voice_stat(
     session: DynamoSession, user_id: int, seconds: int, when: datetime.datetime, bump_count: bool = True,
 ):
-    # 채널 이동(close+reopen)일 땐 session_count를 올리지 않는다 — 새 통화가 아님.
     expr = "ADD total_seconds :s" + (", session_count :n" if bump_count else "") + " SET last_left_at = :t"
     vals = {":s": seconds, ":t": when.isoformat()}
     if bump_count:
@@ -286,8 +281,8 @@ async def delete_all_backfill_progress(session: DynamoSession):
 
 
 if __name__ == "__main__":
-    j = datetime.datetime(2026, 9, 7, 12, 50)  # UTC 12:50 = KST 21:50
-    l = datetime.datetime(2026, 9, 7, 15, 10)  # KST 00:10 (다음날)
+    j = datetime.datetime(2026, 9, 7, 12, 50)
+    l = datetime.datetime(2026, 9, 7, 15, 10)
     chunks = _voice_hourly_chunks(j, l)
     assert chunks == [(21, 600), (22, 3600), (23, 3600), (0, 600)], chunks
     assert sum(s for _, s in chunks) == int((l - j).total_seconds())
