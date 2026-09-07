@@ -141,6 +141,11 @@ TABLES = [
             {"AttributeName": "game_name", "AttributeType": "S"},
         ],
     },
+    {
+        "name": "guild_config",
+        "KeySchema": [{"AttributeName": "guild_id", "KeyType": "HASH"}],
+        "AttributeDefinitions": [{"AttributeName": "guild_id", "AttributeType": "N"}],
+    },
 ]
 
 

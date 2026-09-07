@@ -159,7 +159,7 @@ class Util(commands.Cog):
 
     @commands.group(name="AI", aliases=["ai"], invoke_without_command=True)
     async def ai_group(self, ctx: commands.Context):
-        await ctx.reply(embed=category_embed("ai"), mention_author=False)
+        await ctx.reply(embed=category_embed("ai", ctx.clean_prefix), mention_author=False)
 
     @ai_group.command(name="질문")
     async def ai_question(self, ctx: commands.Context):

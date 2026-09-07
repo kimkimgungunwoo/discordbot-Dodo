@@ -110,7 +110,7 @@ class Party(commands.Cog):
 
     @commands.group(name="파티", invoke_without_command=True)
     async def party(self, ctx: commands.Context):
-        await ctx.reply(embed=category_embed("party"), mention_author=False)
+        await ctx.reply(embed=category_embed("party", ctx.clean_prefix), mention_author=False)
 
     @party.command(name="생성")
     async def create_party(self, ctx: commands.Context):
