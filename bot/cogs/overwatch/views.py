@@ -15,6 +15,7 @@ from bot.cogs.overwatch.ai_comment import (
     generate_comment, build_analysis_prompt, build_hero_analysis_prompt, build_hero_detail_prompt,
 )
 from bot.cogs.util import GENERATING_MSG
+from bot.cogs.paginated_select import PaginatedSelectView
 
 InteractionCallback = Callable[[discord.Interaction, str], Awaitable[None]]
 
@@ -242,8 +243,8 @@ class OverwatchMenuView(StaleView):
                 "즐겨찾기한 계정이 없습니다. 검색 후 ⭐ 버튼으로 등록할 수 있습니다.", ephemeral=True,
             )
             return
-        view = FavoriteManageView(favs, self._callback)
-        view.message = await interaction.edit_original_response(
+        view = make_favorite_manage_view(favs, self._callback)
+        await interaction.edit_original_response(
             content="즐겨찾기 계정을 선택하세요:", view=view,
         )
 
@@ -301,26 +302,18 @@ class ProfileView(StaleView):
         await interaction.followup.send(f"**{self.name}** 을(를) 즐겨찾기에서 제거했습니다.", ephemeral=True)
 
 
-class FavoriteManageSelect(discord.ui.Select):
-    def __init__(self, favorites: list, callback: InteractionCallback):
-        self._by_value = {f.player_id: f for f in favorites}
-        self._callback = callback
-        options = [
-            discord.SelectOption(label=f.name, description=f.title or None, value=f.player_id)
-            for f in favorites
-        ][:25]
-        super().__init__(placeholder="즐겨찾기한 계정 선택", options=options)
+def make_favorite_manage_view(favorites: list, callback: InteractionCallback) -> discord.ui.View:
+    by_value = {f.player_id: f for f in favorites}
+    options = [
+        discord.SelectOption(label=f.name, description=f.title or None, value=f.player_id)
+        for f in favorites
+    ]
 
-    async def callback(self, interaction: discord.Interaction):
-        fav = self._by_value[self.values[0]]
+    async def on_pick(interaction: discord.Interaction, value: str):
         await interaction.response.defer()
-        await self._callback(interaction, fav.player_id)
+        await callback(interaction, by_value[value].player_id)
 
-
-class FavoriteManageView(StaleView):
-    def __init__(self, favorites: list, callback: InteractionCallback):
-        super().__init__()
-        self.add_item(FavoriteManageSelect(favorites, callback))
+    return PaginatedSelectView(options, on_pick, placeholder="즐겨찾기한 계정 선택")
 
 
 _ROLE_LABEL = {"tank": "🛡️ 탱커", "damage": "⚔️ 딜러", "support": "💚 힐러"}

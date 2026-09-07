@@ -18,6 +18,7 @@ from bot.cogs.riot.ai_comment import (
     generate_comment, build_history_prompt, build_stats_prompt, build_game_analysis_prompt,
 )
 from bot.cogs.util import GENERATING_MSG
+from bot.cogs.paginated_select import PaginatedSelectView
 
 
 InteractionCallback = Callable[["RiotCog", discord.Interaction, str, str], Awaitable[None]]
@@ -127,12 +128,12 @@ class RiotMenuView(discord.ui.View):
         *,
         search_label: str = "🔍 검색",
         favorites_label: str = "⭐ 즐겨찾기",
-        favorites_view: type[discord.ui.View] | None = None,
+        favorites_view: Callable[..., discord.ui.View] | None = None,
     ):
         super().__init__(timeout=60)
         self.cog       = cog
         self._callback = callback
-        self._favorites_view = favorites_view or FavoritesView
+        self._favorites_view = favorites_view or make_favorites_view
         self.search.label    = search_label
         self.favorites.label = favorites_label
 
@@ -189,27 +190,20 @@ class ProfileView(discord.ui.View):
         )
 
 
-class FavoritesSelect(discord.ui.Select):
-    def __init__(self, cog: RiotCog, favorites: list, callback: InteractionCallback):
-        self.cog       = cog
-        self._callback = callback
-        self._by_value = {f"{fav.game_name}#{fav.tag_line}": fav for fav in favorites}
-        options = [
-            discord.SelectOption(label=value, value=value)
-            for value in self._by_value
-        ][:25]
-        super().__init__(placeholder="즐겨찾기한 계정 선택", options=options)
+def _fav_options(favorites: list) -> tuple[dict, list[discord.SelectOption]]:
+    by_value = {f"{fav.game_name}#{fav.tag_line}": fav for fav in favorites}
+    return by_value, [discord.SelectOption(label=v, value=v) for v in by_value]
 
-    async def callback(self, interaction: discord.Interaction):
-        fav = self._by_value[self.values[0]]
+
+def make_favorites_view(cog: RiotCog, favorites: list, callback: InteractionCallback) -> discord.ui.View:
+    by_value, options = _fav_options(favorites)
+
+    async def on_pick(interaction: discord.Interaction, value: str):
         await interaction.response.defer()
-        await self._callback(self.cog, interaction, fav.game_name, fav.tag_line)
+        fav = by_value[value]
+        await callback(cog, interaction, fav.game_name, fav.tag_line)
 
-
-class FavoritesView(discord.ui.View):
-    def __init__(self, cog: RiotCog, favorites: list, callback: InteractionCallback):
-        super().__init__(timeout=120)
-        self.add_item(FavoritesSelect(cog, favorites, callback))
+    return PaginatedSelectView(options, on_pick, placeholder="즐겨찾기한 계정 선택")
 
 
 class FavoriteDeleteView(discord.ui.View):
@@ -244,26 +238,16 @@ async def do_show_favorite(cog: RiotCog, interaction: discord.Interaction, fav: 
     await msg.edit(content=None, attachments=[discord.File(img, "profile.png")], view=view)
 
 
-class FavoriteManageSelect(discord.ui.Select):
-    def __init__(self, cog: RiotCog, favorites: list):
-        self.cog       = cog
-        self._by_value = {f"{fav.game_name}#{fav.tag_line}": fav for fav in favorites}
-        options = [
-            discord.SelectOption(label=value, value=value)
-            for value in self._by_value
-        ][:25]
-        super().__init__(placeholder="즐겨찾기한 계정 선택", options=options)
+def make_favorite_manage_view(
+    cog: RiotCog, favorites: list, _callback: InteractionCallback | None = None,
+) -> discord.ui.View:
+    by_value, options = _fav_options(favorites)
 
-    async def callback(self, interaction: discord.Interaction):
-        fav = self._by_value[self.values[0]]
+    async def on_pick(interaction: discord.Interaction, value: str):
         await interaction.response.defer()
-        await do_show_favorite(self.cog, interaction, fav)
+        await do_show_favorite(cog, interaction, by_value[value])
 
-
-class FavoriteManageView(discord.ui.View):
-    def __init__(self, cog: RiotCog, favorites: list, _callback: InteractionCallback | None = None):
-        super().__init__(timeout=120)
-        self.add_item(FavoriteManageSelect(cog, favorites))
+    return PaginatedSelectView(options, on_pick, placeholder="즐겨찾기한 계정 선택")
 
 
 class QueueSelectView(discord.ui.View):

@@ -21,14 +21,12 @@ from api.crud.analytics_crud import (
 from bot.cogs.analytics.renderer import (
     render_overview_card, render_user_stat_card, render_server_overall_card, format_duration,
 )
-from bot.cogs.analytics.views import UserPickView
 
 _BACKFILL_BATCH = 200
 _RANK_LIMIT = 15
-_PICK_LIMIT = 25
-_SCAN_TTL = 30       # 조회 명령들이 30초 안에선 같은 스캔 결과 재사용
-_MEMBER_TTL = 600    # get_member 실패(서버 나간 사람)로 fetch한 결과만 10분 캐시
-_MAX_ELAPSED = 24 * 3600  # 이벤트 간격/게임 세션 상한 (봇 행/눌러앉기 방어)
+_SCAN_TTL = 30
+_MEMBER_TTL = 600
+_MAX_ELAPSED = 24 * 3600
 _TOP_GAMES = 5
 _TOP_MATES = 5
 
@@ -48,11 +46,10 @@ class Analytics(commands.Cog):
         self._member_cache: dict[int, tuple[float, tuple[str, str]]] = {}
         self._scan_cache: dict[str, tuple[float, list]] = {}
         self._ready = asyncio.Event()
-        self._vc: dict[int, tuple[set[int], datetime.datetime]] = {}   # channel_id -> (멤버 uid set, 이 조합 시작 시각)
-        self._playing: dict[int, tuple[str, datetime.datetime]] = {}   # user_id -> (게임명, 시작 시각)
+        self._vc: dict[int, tuple[set[int], datetime.datetime]] = {}
+        self._playing: dict[int, tuple[str, datetime.datetime]] = {}
 
     async def _resolve_member(self, guild: discord.Guild, user_id: int) -> tuple[str, str]:
-        # get_member는 로컬 게이트웨이 캐시 = 공짜 + 항상 최신 → 현재 멤버는 캐시 안 함.
         member = guild.get_member(user_id)
         if member is not None:
             return member.display_name, member.display_avatar.url
@@ -135,13 +132,10 @@ class Analytics(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # DB의 열린 세션과 실제 음성 채널 상태를 대조하고, _vc / _playing 을 라이브 상태로 재구성한다.
-        # 다운타임 중 통화·게임 시간은 알 수 없어 버린다 (과소집계, 절대 과대집계 안 함).
-        # ponytail: 재연결 중 퇴장을 놓친 live 세션은 여기서 못 잡음 → close 시 _MAX_SESSION_SECONDS 클램프로 상한만 방어
         try:
             now = datetime.datetime.utcnow()
             for guild in self.bot.guilds:
-                live: dict[int, int] = {}  # uid -> channel_id
+                live: dict[int, int] = {}
                 for vc in guild.voice_channels:
                     mset = {m.id for m in vc.members if not m.bot}
                     if mset:
@@ -151,7 +145,7 @@ class Analytics(commands.Cog):
                 async with SessionLocal() as session:
                     for s in await scan_open_voice_sessions(session):
                         if any(sk == s.sk for sk, _ in self.active_voice.values()):
-                            continue  # 이번 프로세스가 만든 살아있는 세션
+                            continue
                         await drop_voice_session(session, s.user_id, s.sk)
                     for uid, ch_id in live.items():
                         if uid in self.active_voice:
@@ -178,10 +172,10 @@ class Analytics(commands.Cog):
     ):
         if member.bot:
             return
-        await self._ready.wait()  # on_ready 재구성이 끝나기 전 이벤트는 대기
+        await self._ready.wait()
         bc, ac = before.channel, after.channel
         if bc == ac:
-            return  # 음소거/화면공유 등 — 채널 안 바뀜
+            return
         now = datetime.datetime.utcnow()
         if bc is not None:
             await self._leave_channel(member.id, bc.id, now, moving=ac is not None)
@@ -197,7 +191,7 @@ class Analytics(commands.Cog):
         old = self._playing.get(after.id)
         old_game = old[0] if old else None
         if new_game == old_game:
-            return  # presence는 자주 뜨지만 게임이 안 바뀌면 무시
+            return
         now = datetime.datetime.utcnow()
         if old:
             elapsed = min(int((now - old[1]).total_seconds()), _MAX_ELAPSED)
@@ -358,48 +352,27 @@ class Analytics(commands.Cog):
 
     @stat_group.command(name="유저통계")
     async def user_stat(self, ctx: commands.Context):
-        msg = await ctx.reply(GENERATING_MSG, mention_author=False)
-        await self._ensure_backfill(ctx.guild)
-        chat_stats = await self._chat_stats()
-        voice_stats = await self._voice_stats()
+        await ctx.reply("통계를 볼 유저를 선택하세요:", view=UserStatPickView(self), mention_author=False)
 
-        chat_map = {s.user_id: s.message_count for s in chat_stats}
-        voice_map = {s.user_id: s.total_seconds for s in voice_stats}
-        active_ids = set(chat_map) | set(voice_map)
-        if not active_ids:
-            await msg.edit(content="아직 기록된 통계가 없습니다.")
-            return
-
-        entries = []
-        for uid in active_ids:
-            name, _ = await self._resolve_member(ctx.guild, uid)
-            entries.append((uid, name, chat_map.get(uid, 0)))
-        entries.sort(key=lambda e: e[2], reverse=True)
-        entries = entries[:_PICK_LIMIT]
-
-        view = UserPickView(self, entries)
-        await msg.edit(content="통계를 확인할 유저를 선택하세요:", view=view)
-
-    async def show_user_stat(self, interaction: discord.Interaction, user_id: int):
+    async def _user_stat_image(self, guild: discord.Guild, user_id: int):
         all_chat = await self._chat_stats()
         all_voice = await self._voice_stats()
         async with SessionLocal() as session:
             chat_hourly_rows = await get_chat_hourly_for_user(session, user_id)
             voice_hourly_rows = await get_voice_hourly_for_user(session, user_id)
-
         chat = next((s for s in all_chat if s.user_id == user_id), None)
         voice = next((s for s in all_voice if s.user_id == user_id), None)
-
-        msg = await interaction.followup.send(GENERATING_MSG, wait=True)
+        mates = await self._mate_rows(guild, user_id, await self._voice_pairs())
+        if chat is None and voice is None and not mates:
+            return None
 
         message_rank, message_total = _rank_of(all_chat, user_id, key=lambda s: s.message_count)
         voice_rank, voice_total = _rank_of(all_voice, user_id, key=lambda s: s.total_seconds)
-        name, avatar = await self._resolve_member(interaction.guild, user_id)
+        name, avatar = await self._resolve_member(guild, user_id)
         chat_hourly = _build_hourly(chat_hourly_rows, key=lambda r: r.message_count)
         voice_hourly = _build_hourly(voice_hourly_rows, key=lambda r: r.total_seconds)
-        mates = await self._mate_rows(interaction.guild, user_id, await self._voice_pairs())
 
-        img = await render_user_stat_card(
+        return await render_user_stat_card(
             name=name,
             avatar=avatar,
             message_count=chat.message_count if chat else 0,
@@ -410,7 +383,6 @@ class Analytics(commands.Cog):
             chat_hourly=chat_hourly, voice_hourly=voice_hourly,
             mates=mates,
         )
-        await msg.edit(content=None, attachments=[discord.File(img, "user_stat.png")])
 
     async def _best_couple(self, guild: discord.Guild) -> dict | None:
         pairs = await self._voice_pairs()
@@ -505,6 +477,23 @@ def _rank_games(stats: list, *, limit: int) -> list[dict]:
         out.append({"name": "기타", "pct": round(rest / total * 100, 1),
                     "label": format_duration(rest), "opacity": 0.18})
     return out
+
+
+class UserStatPickView(discord.ui.View):
+    def __init__(self, cog: "Analytics"):
+        super().__init__(timeout=120)
+        self.cog = cog
+
+    @discord.ui.select(cls=discord.ui.UserSelect, placeholder="통계를 볼 유저를 선택하세요", min_values=1, max_values=1)
+    async def pick(self, interaction: discord.Interaction, select: discord.ui.UserSelect):
+        member = select.values[0]
+        await interaction.response.defer()
+        await self.cog._ensure_backfill(interaction.guild)
+        img = await self.cog._user_stat_image(interaction.guild, member.id)
+        if img is None:
+            await interaction.followup.send(f"**{member.display_name}** 의 기록이 아직 없습니다.", ephemeral=True)
+            return
+        await interaction.followup.send(file=discord.File(img, "user_stat.png"))
 
 
 async def setup(bot: commands.Bot):

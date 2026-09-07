@@ -3,7 +3,7 @@ from discord.ext import commands
 
 from bot.cogs.control import category_embed
 from bot.cogs.riot.views import (
-    RiotMenuView, FavoriteManageView,
+    RiotMenuView, make_favorite_manage_view,
     do_fetch_profile, do_fetch_history, do_fetch_stats, do_fetch_game_analysis,
 )
 
@@ -55,7 +55,7 @@ class RiotCog(commands.Cog):
             view=RiotMenuView(
                 self, do_fetch_profile,
                 search_label="➕ 추가", favorites_label="📋 목록",
-                favorites_view=FavoriteManageView,
+                favorites_view=make_favorite_manage_view,
             ),
             mention_author=False,
         )
