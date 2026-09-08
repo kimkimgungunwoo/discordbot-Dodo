@@ -10,6 +10,7 @@ from api.models.chat_hourly import ChatHourly
 from api.models.voice_hourly import VoiceHourly
 from api.models.voice_pair import VoicePair
 from api.models.game_stat import GameStat
+from api.models.game_session import GameSession
 
 
 _MAX_SESSION_SECONDS = 24 * 3600
@@ -144,12 +145,12 @@ async def find_open_voice_session(session: DynamoSession, user_id: int) -> Voice
         Limit=1,
     )
     items = resp.get("Items", [])
-    return _row_to_voice_session(items[0]) if items else None
+    return _row_to_voice_session(items[0]) if items and not items[0].get("left_at") else None
 
 
 async def scan_open_voice_sessions(session: DynamoSession) -> list[VoiceSession]:
     table = await session.table("voice_session")
-    return [_row_to_voice_session(i) for i in await _scan_all(table)]
+    return [_row_to_voice_session(i) for i in await _scan_all(table) if not i.get("left_at")]
 
 
 async def drop_voice_session(session: DynamoSession, user_id: int, sk: str):
@@ -163,33 +164,12 @@ async def close_voice_session(
     table = await session.table("voice_session")
     resp = await table.get_item(Key={"user_id": user_id, "sk": sk})
     item = resp.get("Item")
-    if item is None:
+    if item is None or item.get("left_at"):
         return 0
     joined_at = datetime.datetime.fromisoformat(item["joined_at"])
     duration = min(max(int((left_at - joined_at).total_seconds()), 0), _MAX_SESSION_SECONDS)
     await table.delete_item(Key={"user_id": user_id, "sk": sk})
     await _increment_voice_stat(session, user_id, duration, left_at, bump_count)
-    for hour, seconds in _voice_hourly_chunks(joined_at, joined_at + datetime.timedelta(seconds=duration)):
-        await _add_voice_hourly(session, user_id, hour, seconds)
-    return duration
-
-
-async def checkpoint_voice_session(session: DynamoSession, user_id: int, sk: str, now: datetime.datetime) -> int:
-    table = await session.table("voice_session")
-    resp = await table.get_item(Key={"user_id": user_id, "sk": sk})
-    item = resp.get("Item")
-    if item is None:
-        return 0
-    joined_at = datetime.datetime.fromisoformat(item["joined_at"])
-    duration = min(max(int((now - joined_at).total_seconds()), 0), _MAX_SESSION_SECONDS)
-    if duration <= 0:
-        return 0
-    await table.update_item(
-        Key={"user_id": user_id, "sk": sk},
-        UpdateExpression="SET joined_at = :t",
-        ExpressionAttributeValues={":t": now.isoformat()},
-    )
-    await _increment_voice_stat(session, user_id, duration, now, bump_count=False)
     for hour, seconds in _voice_hourly_chunks(joined_at, joined_at + datetime.timedelta(seconds=duration)):
         await _add_voice_hourly(session, user_id, hour, seconds)
     return duration
@@ -273,6 +253,39 @@ async def scan_game_stats(session: DynamoSession) -> list[GameStat]:
     table = await session.table("game_stat")
     return [
         GameStat(user_id=int(i["user_id"]), game_name=i["game_name"], total_seconds=int(i.get("total_seconds", 0)))
+        for i in await _scan_all(table)
+    ]
+
+
+async def start_game_session(session: DynamoSession, user_id: int, game_name: str, started_at: datetime.datetime):
+    table = await session.table("game_session")
+    await table.put_item(Item={"user_id": user_id, "game_name": game_name, "started_at": started_at.isoformat()})
+
+
+async def end_game_session(session: DynamoSession, user_id: int, now: datetime.datetime) -> int:
+    table = await session.table("game_session")
+    resp = await table.get_item(Key={"user_id": user_id})
+    item = resp.get("Item")
+    if item is None:
+        return 0
+    started_at = datetime.datetime.fromisoformat(item["started_at"])
+    duration = min(max(int((now - started_at).total_seconds()), 0), _MAX_SESSION_SECONDS)
+    await table.delete_item(Key={"user_id": user_id})
+    if duration > 0:
+        await add_game_stat(session, user_id, item["game_name"], duration)
+    return duration
+
+
+async def drop_game_session(session: DynamoSession, user_id: int):
+    table = await session.table("game_session")
+    await table.delete_item(Key={"user_id": user_id})
+
+
+async def scan_open_game_sessions(session: DynamoSession) -> list[GameSession]:
+    table = await session.table("game_session")
+    return [
+        GameSession(user_id=int(i["user_id"]), game_name=i["game_name"],
+                    started_at=datetime.datetime.fromisoformat(i["started_at"]))
         for i in await _scan_all(table)
     ]
 

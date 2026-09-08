@@ -146,6 +146,11 @@ TABLES = [
         "KeySchema": [{"AttributeName": "guild_id", "KeyType": "HASH"}],
         "AttributeDefinitions": [{"AttributeName": "guild_id", "AttributeType": "N"}],
     },
+    {
+        "name": "game_session",
+        "KeySchema": [{"AttributeName": "user_id", "KeyType": "HASH"}],
+        "AttributeDefinitions": [{"AttributeName": "user_id", "AttributeType": "N"}],
+    },
 ]
 
 
