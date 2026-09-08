@@ -603,12 +603,13 @@ class UserStatPickView(discord.ui.View):
     async def pick(self, interaction: discord.Interaction, select: discord.ui.UserSelect):
         member = select.values[0]
         await interaction.response.defer()
+        msg = await interaction.followup.send(GENERATING_MSG, wait=True)
         await self.cog._ensure_backfill(interaction.guild)
         img = await self.cog._user_stat_image(interaction.guild, member.id)
         if img is None:
-            await interaction.followup.send(f"**{member.display_name}** 의 기록이 아직 없습니다.", ephemeral=True)
+            await msg.edit(content=f"**{member.display_name}** 의 기록이 아직 없습니다.")
             return
-        await interaction.followup.send(file=discord.File(img, "user_stat.png"))
+        await msg.edit(content=None, attachments=[discord.File(img, "user_stat.png")])
 
 
 async def setup(bot: commands.Bot):
