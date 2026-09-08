@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import asyncio
 import datetime
 import itertools
@@ -12,7 +12,7 @@ from api.crud.analytics_crud import (
     increment_chat_stat, scan_chat_stats, delete_all_chat_stats,
     increment_chat_hourly, increment_chat_hourly_by_hour, scan_chat_hourly,
     get_chat_hourly_for_user, delete_all_chat_hourly, kst_hour,
-    start_voice_session, close_voice_session, find_open_voice_session,
+    start_voice_session, close_voice_session, checkpoint_voice_session, find_open_voice_session,
     scan_open_voice_sessions, drop_voice_session,
     scan_voice_stats, scan_voice_hourly, get_voice_hourly_for_user,
     add_voice_pair, scan_voice_pairs, add_game_stat, scan_game_stats,
@@ -29,6 +29,7 @@ _MEMBER_TTL = 600
 _MAX_ELAPSED = 24 * 3600
 _TOP_GAMES = 5
 _TOP_MATES = 5
+_CHECKPOINT_MIN = 10
 
 
 def _game_name(member: discord.Member) -> str | None:
@@ -48,6 +49,16 @@ class Analytics(commands.Cog):
         self._ready = asyncio.Event()
         self._vc: dict[int, tuple[set[int], datetime.datetime]] = {}
         self._playing: dict[int, tuple[str, datetime.datetime]] = {}
+        self._checkpoint_loop.start()
+
+    async def cog_load(self):
+        if self.bot.is_ready():
+            await self._reconcile()
+
+    async def cog_unload(self):
+        self._checkpoint_loop.cancel()
+        for task in self._backfill_tasks.values():
+            task.cancel()
 
     async def _resolve_member(self, guild: discord.Guild, user_id: int) -> tuple[str, str]:
         member = guild.get_member(user_id)
@@ -132,6 +143,9 @@ class Analytics(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
+        await self._reconcile()
+
+    async def _reconcile(self):
         try:
             now = datetime.datetime.utcnow()
             for guild in self.bot.guilds:
@@ -157,6 +171,25 @@ class Analytics(commands.Cog):
                         self._playing.setdefault(m.id, (g, now))
         finally:
             self._ready.set()
+
+    @tasks.loop(minutes=_CHECKPOINT_MIN)
+    async def _checkpoint_loop(self):
+        try:
+            now = datetime.datetime.utcnow()
+            async with SessionLocal() as session:
+                for uid, (sk, _) in list(self.active_voice.items()):
+                    await checkpoint_voice_session(session, uid, sk, now)
+            for ch_id in list(self._vc):
+                await self._flush_pairs(ch_id, now)
+                members = self._vc[ch_id][0]
+                self._vc[ch_id] = (members, now)
+        except Exception as e:
+            print(f"[Analytics] checkpoint 실패: {e}")
+
+    @_checkpoint_loop.before_loop
+    async def _before_checkpoint(self):
+        await self.bot.wait_until_ready()
+        await self._ready.wait()
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

@@ -174,6 +174,27 @@ async def close_voice_session(
     return duration
 
 
+async def checkpoint_voice_session(session: DynamoSession, user_id: int, sk: str, now: datetime.datetime) -> int:
+    table = await session.table("voice_session")
+    resp = await table.get_item(Key={"user_id": user_id, "sk": sk})
+    item = resp.get("Item")
+    if item is None:
+        return 0
+    joined_at = datetime.datetime.fromisoformat(item["joined_at"])
+    duration = min(max(int((now - joined_at).total_seconds()), 0), _MAX_SESSION_SECONDS)
+    if duration <= 0:
+        return 0
+    await table.update_item(
+        Key={"user_id": user_id, "sk": sk},
+        UpdateExpression="SET joined_at = :t",
+        ExpressionAttributeValues={":t": now.isoformat()},
+    )
+    await _increment_voice_stat(session, user_id, duration, now, bump_count=False)
+    for hour, seconds in _voice_hourly_chunks(joined_at, joined_at + datetime.timedelta(seconds=duration)):
+        await _add_voice_hourly(session, user_id, hour, seconds)
+    return duration
+
+
 async def _increment_voice_stat(
     session: DynamoSession, user_id: int, seconds: int, when: datetime.datetime, bump_count: bool = True,
 ):
