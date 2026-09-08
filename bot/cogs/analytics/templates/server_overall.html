@@ -150,7 +150,7 @@
             <circle cx="70" cy="70" r="{{ r }}" fill="none" stroke="var(--bg-track)" stroke-width="20"/>
             {% for g in top_games %}
               {% set seg = (g.pct / 100 * circ) | round(3) %}
-              <circle cx="70" cy="70" r="{{ r }}" fill="none" stroke="var(--warn)" stroke-opacity="{{ g.opacity }}"
+              <circle cx="70" cy="70" r="{{ r }}" fill="none" stroke="{{ g.color }}"
                 stroke-width="20" stroke-dasharray="{{ seg }} {{ (circ - seg) | round(3) }}"
                 stroke-dashoffset="{{ (-ns.off) | round(3) }}" transform="rotate(-90 70 70)"/>
               {% set ns.off = ns.off + seg %}
@@ -159,7 +159,7 @@
           <div class="games-legend">
             {% for g in top_games %}
             <div class="games-legrow">
-              <span class="games-dot" style="background:var(--warn);opacity:{{ g.opacity }}"></span>
+              <span class="games-dot" style="background:{{ g.color }}"></span>
               <span class="games-gname">{{ g.name }}</span>
               <span class="games-gpct">{{ g.pct }}%</span>
             </div>

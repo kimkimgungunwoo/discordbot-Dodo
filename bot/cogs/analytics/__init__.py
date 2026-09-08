@@ -141,6 +141,15 @@ class Analytics(commands.Cog):
             if sk:
                 await close_voice_session(session, uid, sk, now, bump_count=not moving)
 
+    async def _flush_game(self, uid: int, now: datetime.datetime):
+        old = self._playing.pop(uid, None)
+        if not old:
+            return
+        elapsed = min(int((now - old[1]).total_seconds()), _MAX_ELAPSED)
+        if elapsed > 0:
+            async with SessionLocal() as session:
+                await add_game_stat(session, uid, old[0], elapsed)
+
     @commands.Cog.listener()
     async def on_ready(self):
         await self._reconcile()
@@ -166,9 +175,10 @@ class Analytics(commands.Cog):
                             continue
                         sk = await start_voice_session(session, uid, now, ch_id)
                         self.active_voice[uid] = (sk, now)
-                for m in guild.members:
-                    if not m.bot and (g := _game_name(m)):
-                        self._playing.setdefault(m.id, (g, now))
+                for uid in live:
+                    m = guild.get_member(uid)
+                    if m and (g := _game_name(m)):
+                        self._playing.setdefault(uid, (g, now))
         finally:
             self._ready.set()
 
@@ -179,6 +189,11 @@ class Analytics(commands.Cog):
             async with SessionLocal() as session:
                 for uid, (sk, _) in list(self.active_voice.items()):
                     await checkpoint_voice_session(session, uid, sk, now)
+                for uid, (game, since) in list(self._playing.items()):
+                    elapsed = min(int((now - since).total_seconds()), _MAX_ELAPSED)
+                    if elapsed > 0:
+                        await add_game_stat(session, uid, game, elapsed)
+                    self._playing[uid] = (game, now)
             for ch_id in list(self._vc):
                 await self._flush_pairs(ch_id, now)
                 members = self._vc[ch_id][0]
@@ -212,29 +227,28 @@ class Analytics(commands.Cog):
         now = datetime.datetime.utcnow()
         if bc is not None:
             await self._leave_channel(member.id, bc.id, now, moving=ac is not None)
+            if ac is None:
+                await self._flush_game(member.id, now)
         if ac is not None:
             await self._join_channel(member.id, ac.id, now)
+            if bc is None and (g := _game_name(member)):
+                self._playing[member.id] = (g, now)
 
     @commands.Cog.listener()
     async def on_presence_update(self, before: discord.Member, after: discord.Member):
         if after.bot:
             return
         await self._ready.wait()
+        if after.id not in self.active_voice:  # 통화방에 있을 때만 게임 집계
+            self._playing.pop(after.id, None)
+            return
         new_game = _game_name(after)
-        old = self._playing.get(after.id)
-        old_game = old[0] if old else None
-        if new_game == old_game:
+        if new_game == (self._playing.get(after.id) or (None,))[0]:
             return
         now = datetime.datetime.utcnow()
-        if old:
-            elapsed = min(int((now - old[1]).total_seconds()), _MAX_ELAPSED)
-            if elapsed > 0:
-                async with SessionLocal() as session:
-                    await add_game_stat(session, after.id, old_game, elapsed)
+        await self._flush_game(after.id, now)
         if new_game:
             self._playing[after.id] = (new_game, now)
-        else:
-            self._playing.pop(after.id, None)
 
     async def _ensure_backfill(self, guild: discord.Guild):
         task = self._backfill_tasks.get(guild.id)
@@ -488,7 +502,7 @@ def _rank_of(stats: list, user_id: int, *, key) -> tuple[int | None, int]:
     return None, len(ranked)
 
 
-_GAME_OPACITY = [1.0, 0.78, 0.58, 0.42, 0.3]
+_GAME_COLORS = ["#f0a641", "#5aa9e6", "#63c187", "#c98bdb", "#ef7a7a", "#7f8896"]
 
 
 def _rank_games(stats: list, *, limit: int) -> list[dict]:
@@ -502,13 +516,13 @@ def _rank_games(stats: list, *, limit: int) -> list[dict]:
     head = ranked[:limit]
     out = [
         {"name": name, "pct": round(sec / total * 100, 1),
-         "label": format_duration(sec), "opacity": _GAME_OPACITY[i]}
+         "label": format_duration(sec), "color": _GAME_COLORS[i]}
         for i, (name, sec) in enumerate(head)
     ]
     rest = total - sum(sec for _, sec in head)
     if rest > 0:
         out.append({"name": "기타", "pct": round(rest / total * 100, 1),
-                    "label": format_duration(rest), "opacity": 0.18})
+                    "label": format_duration(rest), "color": _GAME_COLORS[-1]})
     return out
 
 
