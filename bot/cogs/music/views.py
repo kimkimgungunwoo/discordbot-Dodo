@@ -4,6 +4,7 @@ import wavelink
 from typing import TYPE_CHECKING
 
 from bot.cogs.music.renderer import render_playlist_card
+from bot.cogs.util import GENERATING_MSG
 
 if TYPE_CHECKING:
     from bot.cogs.music import Music
@@ -133,7 +134,7 @@ class MusicSelect(discord.ui.Select):
 
         # 새 메시지 대신 검색 결과 메시지를 계속 편집해서 최종적으로 "대기열 추가" 문구 하나만 남긴다.
         await interaction.response.defer()
-        await interaction.edit_original_response(content="🔍 곡 정보를 불러오는 중...", embed=None, view=None)
+        await interaction.edit_original_response(content=GENERATING_MSG, embed=None, view=None)
 
         vc: wavelink.Player | None = interaction.guild.voice_client
         if vc is None:
@@ -308,16 +309,16 @@ async def load_playlist(cog: "Music", interaction: discord.Interaction, url: str
     await cog.switch_mode(interaction.guild, "playlist")
     await cog.advance(interaction.guild, "playlist")
 
+    msg = await interaction.followup.send(GENERATING_MSG, ephemeral=True, wait=True)
     note = f" (최대 {PLAYLIST_MAX}곡까지만)" if len(tracks) >= PLAYLIST_MAX else ""
     img = await render_playlist_card(
         cog.playlist_meta[guild_id],
         cog.playlist_current.get(guild_id),
         cog.playlist_queues.get(guild_id, []),
     )
-    await interaction.followup.send(
+    await msg.edit(
         content=f"✅ **{title}**{note} 재생을 시작합니다 — 총 {len(tracks)}곡",
-        file=discord.File(img, "playlist.png"),
-        ephemeral=True,
+        attachments=[discord.File(img, "playlist.png")],
     )
 
 
@@ -373,6 +374,7 @@ class PlaylistControlView(discord.ui.View):
             return
 
         await interaction.response.defer(ephemeral=True)
+        msg = await interaction.followup.send(GENERATING_MSG, ephemeral=True, wait=True)
         await self.cog.switch_mode(interaction.guild, "playlist")
         await self.cog.advance(interaction.guild, "playlist")
 
@@ -381,10 +383,9 @@ class PlaylistControlView(discord.ui.View):
             self.cog.playlist_current.get(guild_id),
             self.cog.playlist_queues.get(guild_id, []),
         )
-        await interaction.followup.send(
+        await msg.edit(
             content=f"▶️ **{meta['title']}** 재생을 재개합니다.",
-            file=discord.File(img, "playlist.png"),
-            ephemeral=True,
+            attachments=[discord.File(img, "playlist.png")],
         )
 
     @discord.ui.button(label="⏸️ 중지", style=discord.ButtonStyle.secondary)

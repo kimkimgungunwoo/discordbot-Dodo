@@ -83,8 +83,9 @@ async def do_fetch_profile(interaction: discord.Interaction, player_id: str):
     if profile.games_played == 0:
         await interaction.followup.send(f"❌ {NO_STATS_MSG}", ephemeral=True)
         return
+    msg = await interaction.followup.send(GENERATING_MSG, wait=True)
     img = await render_profile_card(profile)
-    await _send_view(interaction, player_id, profile, img)
+    await _send_view(interaction, player_id, profile, img, msg=msg)
 
 
 async def do_fetch_analysis(interaction: discord.Interaction, player_id: str):
