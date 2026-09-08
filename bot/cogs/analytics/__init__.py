@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import asyncio
 import datetime
 import itertools
@@ -12,12 +12,16 @@ from api.crud.analytics_crud import (
     increment_chat_stat, scan_chat_stats, delete_all_chat_stats,
     increment_chat_hourly, increment_chat_hourly_by_hour, scan_chat_hourly,
     get_chat_hourly_for_user, delete_all_chat_hourly, kst_hour,
-    start_voice_session, close_voice_session, checkpoint_voice_session, find_open_voice_session,
-    scan_open_voice_sessions, drop_voice_session,
+    start_voice_session, close_voice_session, find_open_voice_session,
+    scan_open_voice_sessions, drop_voice_session, _voice_hourly_chunks,
     scan_voice_stats, scan_voice_hourly, get_voice_hourly_for_user,
-    add_voice_pair, scan_voice_pairs, add_game_stat, scan_game_stats,
+    add_voice_pair, scan_voice_pairs, scan_game_stats,
+    start_game_session, end_game_session, drop_game_session, scan_open_game_sessions,
     get_backfill_progress, set_backfill_progress, delete_all_backfill_progress,
 )
+from api.models.voice_stat import VoiceStat
+from api.models.voice_pair import VoicePair
+from api.models.game_stat import GameStat
 from bot.cogs.analytics.renderer import (
     render_overview_card, render_user_stat_card, render_server_overall_card, format_duration,
 )
@@ -29,7 +33,6 @@ _MEMBER_TTL = 600
 _MAX_ELAPSED = 24 * 3600
 _TOP_GAMES = 5
 _TOP_MATES = 5
-_CHECKPOINT_MIN = 10
 
 
 def _game_name(member: discord.Member) -> str | None:
@@ -49,14 +52,12 @@ class Analytics(commands.Cog):
         self._ready = asyncio.Event()
         self._vc: dict[int, tuple[set[int], datetime.datetime]] = {}
         self._playing: dict[int, tuple[str, datetime.datetime]] = {}
-        self._checkpoint_loop.start()
 
     async def cog_load(self):
         if self.bot.is_ready():
             await self._reconcile()
 
     async def cog_unload(self):
-        self._checkpoint_loop.cancel()
         for task in self._backfill_tasks.values():
             task.cancel()
 
@@ -120,14 +121,18 @@ class Analytics(commands.Cog):
             for a, b in itertools.combinations(sorted(members), 2):
                 await add_voice_pair(session, a, b, elapsed)
 
-    async def _join_channel(self, uid: int, channel_id: int, now: datetime.datetime):
+    async def _join_channel(self, uid: int, channel_id: int, now: datetime.datetime, game: str | None = None):
         await self._flush_pairs(channel_id, now)
         members = self._vc.get(channel_id, (set(), now))[0]
         members.add(uid)
         self._vc[channel_id] = (members, now)
         async with SessionLocal() as session:
             sk = await start_voice_session(session, uid, now, channel_id)
+            if game:
+                await start_game_session(session, uid, game, now)
         self.active_voice[uid] = (sk, now)
+        if game:
+            self._playing[uid] = (game, now)
 
     async def _leave_channel(self, uid: int, channel_id: int, now: datetime.datetime, moving: bool):
         await self._flush_pairs(channel_id, now)
@@ -142,13 +147,9 @@ class Analytics(commands.Cog):
                 await close_voice_session(session, uid, sk, now, bump_count=not moving)
 
     async def _flush_game(self, uid: int, now: datetime.datetime):
-        old = self._playing.pop(uid, None)
-        if not old:
-            return
-        elapsed = min(int((now - old[1]).total_seconds()), _MAX_ELAPSED)
-        if elapsed > 0:
-            async with SessionLocal() as session:
-                await add_game_stat(session, uid, old[0], elapsed)
+        self._playing.pop(uid, None)
+        async with SessionLocal() as session:
+            await end_game_session(session, uid, now)
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -158,53 +159,117 @@ class Analytics(commands.Cog):
         try:
             now = datetime.datetime.utcnow()
             for guild in self.bot.guilds:
-                live: dict[int, int] = {}
-                for vc in guild.voice_channels:
-                    mset = {m.id for m in vc.members if not m.bot}
-                    if mset:
+                async with SessionLocal() as session:
+                    open_sessions = await scan_open_voice_sessions(session)
+                    known_sks = {sk for sk, _ in self.active_voice.values()}
+                    live: dict[int, int] = {}
+
+                    for vc in guild.voice_channels:
+                        mset = {m.id for m in vc.members if not m.bot}
+                        if not mset:
+                            continue
                         self._vc[vc.id] = (mset, now)
                         for uid in mset:
                             live[uid] = vc.id
-                async with SessionLocal() as session:
-                    for s in await scan_open_voice_sessions(session):
-                        if any(sk == s.sk for sk, _ in self.active_voice.values()):
+
+                    for s in open_sessions:
+                        if s.sk in known_sks:
                             continue
-                        await drop_voice_session(session, s.user_id, s.sk)
+                        if s.user_id in live:
+                            self.active_voice[s.user_id] = (s.sk, s.joined_at)  # 아직 통화 중 → 이어받기
+                        else:
+                            await drop_voice_session(session, s.user_id, s.sk)  # 봇 꺼진 동안 나감
+
                     for uid, ch_id in live.items():
                         if uid in self.active_voice:
                             continue
                         sk = await start_voice_session(session, uid, now, ch_id)
                         self.active_voice[uid] = (sk, now)
-                for uid in live:
-                    m = guild.get_member(uid)
-                    if m and (g := _game_name(m)):
-                        self._playing.setdefault(uid, (g, now))
+
+                    for gs in await scan_open_game_sessions(session):
+                        m = guild.get_member(gs.user_id) if gs.user_id in live else None
+                        if m and _game_name(m) == gs.game_name:
+                            self._playing[gs.user_id] = (gs.game_name, gs.started_at)  # 같은 게임 계속 → 이어받기
+                        else:
+                            await drop_game_session(session, gs.user_id)  # 바뀜/중단/통화 나감
+
+                    for uid in live:
+                        if uid in self._playing:
+                            continue
+                        m = guild.get_member(uid)
+                        if m and (g := _game_name(m)):
+                            self._playing[uid] = (g, now)
+                            await start_game_session(session, uid, g, now)
         finally:
             self._ready.set()
 
-    @tasks.loop(minutes=_CHECKPOINT_MIN)
-    async def _checkpoint_loop(self):
-        try:
-            now = datetime.datetime.utcnow()
-            async with SessionLocal() as session:
-                for uid, (sk, _) in list(self.active_voice.items()):
-                    await checkpoint_voice_session(session, uid, sk, now)
-                for uid, (game, since) in list(self._playing.items()):
-                    elapsed = min(int((now - since).total_seconds()), _MAX_ELAPSED)
-                    if elapsed > 0:
-                        await add_game_stat(session, uid, game, elapsed)
-                    self._playing[uid] = (game, now)
-            for ch_id in list(self._vc):
-                await self._flush_pairs(ch_id, now)
-                members = self._vc[ch_id][0]
-                self._vc[ch_id] = (members, now)
-        except Exception as e:
-            print(f"[Analytics] checkpoint 실패: {e}")
+    def _live_voice_secs(self, user_id: int | None = None) -> dict[int, int]:
+        now = datetime.datetime.utcnow()
+        out: dict[int, int] = {}
+        for uid, (_, joined_at) in self.active_voice.items():
+            if user_id is not None and uid != user_id:
+                continue
+            d = min(int((now - joined_at).total_seconds()), _MAX_ELAPSED)
+            if d > 0:
+                out[uid] = d
+        return out
 
-    @_checkpoint_loop.before_loop
-    async def _before_checkpoint(self):
-        await self.bot.wait_until_ready()
-        await self._ready.wait()
+    def _live_voice_hourly(self, user_id: int | None = None) -> dict[int, int]:
+        now = datetime.datetime.utcnow()
+        out: dict[int, int] = {}
+        for uid, (_, joined_at) in self.active_voice.items():
+            if user_id is not None and uid != user_id:
+                continue
+            for hour, sec in _voice_hourly_chunks(joined_at, now):
+                out[hour] = out.get(hour, 0) + sec
+        return out
+
+    async def _voice_stats_live(self) -> list:
+        extra = self._live_voice_secs()
+        base = await self._voice_stats()
+        if not extra:
+            return base
+        seen = set()
+        out = []
+        for s in base:
+            add = extra.get(s.user_id, 0)
+            out.append(VoiceStat(s.user_id, s.total_seconds + add, s.session_count, s.last_left_at))
+            seen.add(s.user_id)
+        for uid, d in extra.items():
+            if uid not in seen:
+                out.append(VoiceStat(uid, d, 0, None))
+        return out
+
+    async def _game_stats_live(self) -> list:
+        base = list(await self._game_stats())
+        now = datetime.datetime.utcnow()
+        for uid, (game, since) in self._playing.items():
+            d = min(int((now - since).total_seconds()), _MAX_ELAPSED)
+            if d > 0:
+                base.append(GameStat(uid, game, d))
+        return base
+
+    async def _voice_pairs_live(self) -> list:
+        base = await self._voice_pairs()
+        now = datetime.datetime.utcnow()
+        extra: dict[tuple[int, int], int] = {}
+        for members, since in self._vc.values():
+            if len(members) < 2:
+                continue
+            d = min(int((now - since).total_seconds()), _MAX_ELAPSED)
+            if d <= 0:
+                continue
+            for a, b in itertools.combinations(sorted(members), 2):
+                extra[(a, b)] = extra.get((a, b), 0) + d
+        if not extra:
+            return base
+        out = []
+        for p in base:
+            add = extra.pop((p.a, p.b), 0)
+            out.append(VoicePair(p.a, p.b, p.total_seconds + add) if add else p)
+        for (a, b), d in extra.items():
+            out.append(VoicePair(a, b, d))
+        return out
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -230,9 +295,8 @@ class Analytics(commands.Cog):
             if ac is None:
                 await self._flush_game(member.id, now)
         if ac is not None:
-            await self._join_channel(member.id, ac.id, now)
-            if bc is None and (g := _game_name(member)):
-                self._playing[member.id] = (g, now)
+            game = _game_name(member) if bc is None else None
+            await self._join_channel(member.id, ac.id, now, game)
 
     @commands.Cog.listener()
     async def on_presence_update(self, before: discord.Member, after: discord.Member):
@@ -249,6 +313,8 @@ class Analytics(commands.Cog):
         await self._flush_game(after.id, now)
         if new_game:
             self._playing[after.id] = (new_game, now)
+            async with SessionLocal() as session:
+                await start_game_session(session, after.id, new_game, now)
 
     async def _ensure_backfill(self, guild: discord.Guild):
         task = self._backfill_tasks.get(guild.id)
@@ -351,12 +417,12 @@ class Analytics(commands.Cog):
     @stat_group.command(name="통화통계")
     async def voice_overall(self, ctx: commands.Context):
         msg = await ctx.reply(GENERATING_MSG, mention_author=False)
-        stats = await self._voice_stats()
+        stats = await self._voice_stats_live()
         hourly_rows = await self._voice_hourly()
         rows, total, avg = await self._build_rank_rows(
             ctx.guild, stats, key=lambda s: s.total_seconds, fmt=format_duration,
         )
-        hourly = _build_hourly(hourly_rows, key=lambda r: r.total_seconds)
+        hourly = _build_hourly(hourly_rows, key=lambda r: r.total_seconds, extra=self._live_voice_hourly())
         img = await render_overview_card(
             kind="voice", guild_name=ctx.guild.name, guild_icon=_guild_icon(ctx.guild),
             total_label=format_duration(total), active_count=len(stats),
@@ -369,9 +435,9 @@ class Analytics(commands.Cog):
         msg = await ctx.reply(GENERATING_MSG, mention_author=False)
         await self._ensure_backfill(ctx.guild)
         chat_stats = await self._chat_stats()
-        voice_stats = await self._voice_stats()
+        voice_stats = await self._voice_stats_live()
         chat_hourly = _build_hourly(await self._chat_hourly(), key=lambda r: r.message_count)
-        voice_hourly = _build_hourly(await self._voice_hourly(), key=lambda r: r.total_seconds)
+        voice_hourly = _build_hourly(await self._voice_hourly(), key=lambda r: r.total_seconds, extra=self._live_voice_hourly())
 
         chat_total = sum(s.message_count for s in chat_stats)
         voice_total = sum(s.total_seconds for s in voice_stats)
@@ -385,7 +451,7 @@ class Analytics(commands.Cog):
             top_voice.append((name, format_duration(s.total_seconds)))
 
         best_couple = await self._best_couple(ctx.guild)
-        top_games = _rank_games(await self._game_stats(), limit=_TOP_GAMES)
+        top_games = _rank_games(await self._game_stats_live(), limit=_TOP_GAMES)
 
         img = await render_server_overall_card(
             guild_name=ctx.guild.name, guild_icon=_guild_icon(ctx.guild), member_count=ctx.guild.member_count,
@@ -403,13 +469,13 @@ class Analytics(commands.Cog):
 
     async def _user_stat_image(self, guild: discord.Guild, user_id: int):
         all_chat = await self._chat_stats()
-        all_voice = await self._voice_stats()
+        all_voice = await self._voice_stats_live()
         async with SessionLocal() as session:
             chat_hourly_rows = await get_chat_hourly_for_user(session, user_id)
             voice_hourly_rows = await get_voice_hourly_for_user(session, user_id)
         chat = next((s for s in all_chat if s.user_id == user_id), None)
         voice = next((s for s in all_voice if s.user_id == user_id), None)
-        mates = await self._mate_rows(guild, user_id, await self._voice_pairs())
+        mates = await self._mate_rows(guild, user_id, await self._voice_pairs_live())
         if chat is None and voice is None and not mates:
             return None
 
@@ -417,7 +483,7 @@ class Analytics(commands.Cog):
         voice_rank, voice_total = _rank_of(all_voice, user_id, key=lambda s: s.total_seconds)
         name, avatar = await self._resolve_member(guild, user_id)
         chat_hourly = _build_hourly(chat_hourly_rows, key=lambda r: r.message_count)
-        voice_hourly = _build_hourly(voice_hourly_rows, key=lambda r: r.total_seconds)
+        voice_hourly = _build_hourly(voice_hourly_rows, key=lambda r: r.total_seconds, extra=self._live_voice_hourly(user_id))
 
         return await render_user_stat_card(
             name=name,
@@ -432,7 +498,7 @@ class Analytics(commands.Cog):
         )
 
     async def _best_couple(self, guild: discord.Guild) -> dict | None:
-        pairs = await self._voice_pairs()
+        pairs = await self._voice_pairs_live()
         if not pairs:
             return None
         top = max(pairs, key=lambda p: p.total_seconds)
@@ -481,10 +547,12 @@ class Analytics(commands.Cog):
         return rows, total, avg
 
 
-def _build_hourly(rows: list, *, key) -> list[dict]:
+def _build_hourly(rows: list, *, key, extra: dict[int, int] | None = None) -> list[dict]:
     by_hour: dict[int, int] = {}
     for r in rows:
         by_hour[r.hour] = by_hour.get(r.hour, 0) + key(r)
+    for h, v in (extra or {}).items():
+        by_hour[h] = by_hour.get(h, 0) + v
     values = [by_hour.get(h, 0) for h in range(24)]
     best = max(values) or 1
     return [{"hour": h, "pct": round(values[h] / best * 100, 1)} for h in range(24)]
