@@ -30,11 +30,15 @@
   {% if voice_hourly %}{{ a.hourly_chart("⏰ 통화 시간대별 활동 (KST)", voice_hourly, 1100, 70) }}{% endif %}
 
   {% if mates %}
+  {% set mate_palette = ['#8b7cf6', '#4aa8ff', '#5fd08a', '#ffcf5c', '#ff6b74'] %}
   <div class="mates">
     <div class="sl">🤝 통화메이트</div>
-    <div class="matebar">{% for m in mates %}<i style="width:{{ m.pct }}%;opacity:{{ m.opacity }}"></i>{% endfor %}</div>
+    <div class="matebar">{% for m in mates %}<i style="width:{{ m.pct }}%;background:{{ mate_palette[loop.index0 % 5] }}"></i>{% endfor %}</div>
     {% for m in mates %}
-    <div class="materow"><span class="mr">{{ loop.index }}</span><span class="mn">{{ m.name }}</span><span class="mp">{{ m.pct }}%</span><span class="mt">{{ m.label }}</span></div>
+    <div class="materow">
+      <span class="dot" style="background:{{ mate_palette[loop.index0 % 5] }}"></span>
+      <span class="mr">{{ loop.index }}</span><span class="mn">{{ m.name }}</span><span class="mp">{{ m.pct }}%</span><span class="mt">{{ m.label }}</span>
+    </div>
     {% endfor %}
   </div>
   {% endif %}
