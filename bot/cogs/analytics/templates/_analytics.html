@@ -1,0 +1,89 @@
+{# 서버 통계 카드 캐주얼 공용 CSS + 매크로.
+   <style> 안: {% include "_analytics.html" %}   /   <body>: {% import "_analytics.html" as a %} #}
+.a-hdr { display:flex; align-items:center; gap:14px; padding:20px 24px;
+  background:linear-gradient(120deg,#3b3e47,#2f2b3d); border-bottom:2px solid var(--line); }
+.a-hdr .ic { font-size:24px; }
+.a-hdr .tt { font-family:var(--disp); font-weight:800; font-size:20px; }
+.a-hdr .sub { font-family:var(--disp); font-weight:600; font-size:12.5px; color:var(--muted); margin-top:3px; }
+.a-hdr .g { margin-left:auto; display:flex; align-items:center; gap:9px; font-family:var(--disp); font-weight:700; font-size:13px; color:var(--ink-dim); }
+.a-hdr .gi { width:34px; height:34px; border-radius:10px; object-fit:cover; background:var(--card-2); }
+.a-hdr .ga { width:44px; height:44px; border-radius:12px; object-fit:cover; background:var(--card-2); }
+
+.a-sum { display:grid; grid-template-columns:repeat(3,1fr); border-bottom:2px solid var(--line); }
+.a-sum > div { padding:18px 24px; border-right:2px solid var(--line); text-align:center; }
+.a-sum > div:last-child { border-right:0; }
+.a-sum .v { font-family:var(--disp); font-weight:800; font-size:22px; color:var(--gold); }
+.a-sum .sub { font-family:var(--disp); font-weight:600; font-size:11.5px; color:var(--muted); margin-top:3px; }
+
+.rankwrap { padding:20px 24px 22px; }
+.rankwrap .sec { display:block; margin-bottom:12px; }
+.rrow { display:flex; align-items:center; gap:12px; padding:8px 0; }
+.rrow .rn { width:26px; text-align:center; font-family:var(--disp); font-weight:800; font-size:14px; color:var(--muted); }
+.rrow .ra { width:32px; height:32px; border-radius:50%; object-fit:cover; background:var(--card-2); flex-shrink:0; }
+.rrow .rname { width:180px; flex-shrink:0; font-family:var(--disp); font-weight:700; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rrow .rbar { flex:1; height:10px; border-radius:999px; background:var(--card-2); overflow:hidden; }
+.rrow .rbar i { display:block; height:100%; background:var(--grape); border-radius:999px; }
+.rrow .rval { width:120px; text-align:right; font-family:var(--disp); font-weight:800; font-size:13px; color:var(--gold); }
+.empty { font-family:var(--disp); font-weight:600; font-size:13px; color:var(--muted); padding:10px 0; }
+
+.chartwrap { margin:18px 24px 22px; padding:16px 20px 12px; background:var(--card-2); border-radius:12px; }
+.chartwrap .sec { display:block; margin-bottom:8px; }
+.chartwrap svg { width:100%; height:auto; display:block; overflow:visible; }
+.xaxis { display:flex; margin-top:5px; }
+.xaxis span { flex:1; text-align:center; font-family:var(--disp); font-weight:600; font-size:9px; color:var(--muted); }
+
+.cols { display:grid; grid-template-columns:1fr 1fr; }
+.col { padding:20px 24px; }
+.cols .col:first-child { border-right:2px solid var(--line); }
+.col .ct { font-family:var(--disp); font-weight:800; font-size:15px; margin-bottom:14px; }
+.mini { display:flex; gap:14px; margin-bottom:14px; }
+.ms { flex:1; background:var(--card-2); border-radius:12px; padding:12px 14px; text-align:center; }
+.ms .ml { font-family:var(--disp); font-weight:600; font-size:10.5px; color:var(--muted); margin-bottom:5px; }
+.ms .mv { font-family:var(--disp); font-weight:800; font-size:16px; color:var(--gold); }
+.trow { display:flex; justify-content:space-between; padding:6px 0; border-bottom:2px solid var(--line); }
+.trow:last-child { border-bottom:none; }
+.trow .tnm { font-family:var(--disp); font-weight:700; font-size:13px; }
+.trow .tv { font-family:var(--disp); font-weight:800; font-size:13px; color:var(--gold); }
+.subsec { margin-top:16px; padding-top:14px; border-top:2px solid var(--line); }
+.subsec .sl { font-family:var(--disp); font-weight:700; font-size:11px; color:var(--muted); margin-bottom:10px; }
+.couple { display:flex; align-items:center; justify-content:center; gap:10px; }
+.couple .ca { width:36px; height:36px; border-radius:50%; object-fit:cover; background:var(--card-2); }
+.couple .cn { font-family:var(--disp); font-weight:800; font-size:15px; }
+.couple-t { text-align:center; font-family:var(--disp); font-weight:700; font-size:13px; color:var(--rose); margin-top:8px; }
+.games { display:flex; align-items:center; gap:20px; }
+.glegend { flex:1; display:flex; flex-direction:column; gap:7px; }
+.gleg { display:flex; align-items:center; gap:9px; font-family:var(--disp); font-weight:700; font-size:13px; }
+.gdot { width:11px; height:11px; border-radius:3px; flex-shrink:0; }
+.gpct { margin-left:auto; color:var(--gold); font-weight:800; }
+
+.mates { margin:16px 24px; padding:16px 20px; background:var(--card-2); border-radius:12px; }
+.mates .sl { font-family:var(--disp); font-weight:700; font-size:12px; color:var(--muted); margin-bottom:11px; }
+.matebar { display:flex; height:13px; border-radius:999px; overflow:hidden; background:#4b4f5a; margin-bottom:12px; gap:2px; }
+.matebar i { display:block; height:100%; background:var(--grape); border-radius:3px; }
+.materow { display:flex; align-items:center; gap:10px; padding:5px 0; font-family:var(--disp); }
+.materow .mr { width:20px; font-weight:800; font-size:12px; color:var(--muted); text-align:center; }
+.materow .mn { flex:1; font-weight:700; font-size:13px; }
+.materow .mp { width:50px; text-align:right; font-weight:600; font-size:12px; color:var(--muted); }
+.materow .mt { width:120px; text-align:right; font-weight:800; font-size:13px; color:var(--gold); }
+
+{% macro _poly(hourly, cw, ch) %}{% set n = hourly|length %}{% set ns = namespace(p='') %}{% for h in hourly %}{% set x = ((loop.index0 / (n - 1)) * cw)|round(1) if n > 1 else (cw / 2)|round(1) %}{% set y = (ch - (h.pct / 100 * ch))|round(1) %}{% set ns.p = ns.p ~ x|string ~ ',' ~ y|string ~ ' ' %}{% endfor %}{{ ns.p }}{% endmacro %}
+
+{% macro hourly_chart(title, hourly, cw=1100, ch=70) %}
+<div class="chartwrap">
+  <span class="sec">{{ title }}</span>
+  <svg viewBox="0 0 {{ cw }} {{ ch }}" preserveAspectRatio="none">
+    <polyline points="{{ _poly(hourly, cw, ch)|trim }}" fill="none" stroke="var(--gold)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <div class="xaxis"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>
+</div>
+{% endmacro %}
+
+{% macro spark(hourly, cw=700, ch=44) %}
+<div class="subsec">
+  <div class="sl">⏰ 시간대별 활동 (KST)</div>
+  <svg viewBox="0 0 {{ cw }} {{ ch }}" preserveAspectRatio="none" style="width:100%;height:auto;display:block">
+    <polyline points="{{ _poly(hourly, cw, ch)|trim }}" fill="none" stroke="var(--gold)" stroke-width="2"/>
+  </svg>
+  <div class="xaxis"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>
+</div>
+{% endmacro %}

@@ -1,0 +1,48 @@
+{# 롤 카드 캐주얼 테마 토큰 — riot 전용 (공용 _tokens.html 은 건드리지 않는다). <style> 안에 include. #}
+:root{
+  --ground:#2b2d33;
+  --card-top:#3b3e47; --card-bot:#33353d; --card-2:#3d404a;
+  --line:#4a4d56; --line-soft:#3f424b;
+  --ink:#f6f7f9; --ink-dim:#cfd3dc; --muted:#a9aebb;
+  --grape:#8b7cf6; --sky:#4aa8ff; --rose:#ff6b74; --lime:#5fd08a; --gold:#ffcf5c;
+  --win:#5fd08a; --lose:#ff6b74; --warn:#ffcf5c; --carry:#ff9d5c;
+  --disp:'Baloo 2',ui-rounded,'Segoe UI',sans-serif;
+  --sans:'Gothic A1','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:transparent; color:#f6f7f9;
+  font-family:'Gothic A1','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  font-size:14.5px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+#card {
+  background:#35373f;
+  background:linear-gradient(162deg,var(--card-top),var(--card-bot));
+  display:inline-block;
+}
+.n { font-family:var(--disp); font-variant-numeric:tabular-nums; }
+.rule { height:2px; background:var(--line); }
+.lbl { font-family:var(--disp); font-weight:600; font-size:12px; color:var(--muted); letter-spacing:.03em; }
+.emblem { flex-shrink:0; display:block; }
+.pill {
+  display:inline-flex; align-items:center; justify-content:center;
+  font-family:var(--disp); font-weight:700; border-radius:999px;
+  padding:3px 11px; font-size:13px; line-height:1.3;
+}
+.pill.good { background:#5fd08a26; color:var(--lime); }
+.pill.mid  { background:#ffcf5c26; color:var(--gold); }
+.pill.bad  { background:#ff6b7426; color:var(--rose); }
+/* 챔프 얼굴 (실제 아이콘 로드 실패 시 배경만) */
+.cface {
+  flex-shrink:0; border-radius:50%; object-fit:cover;
+  background:linear-gradient(150deg,#4b4f5a,#2f323b);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+}
+/* AI 코멘트 (riot 캐주얼 — 공용 _ai_comment.css 안 씀) */
+.ai {
+  margin:18px 24px 22px; padding:16px 20px; border-radius:16px;
+  background:linear-gradient(135deg,#8b7cf622,#4aa8ff1c);
+  border:1px solid #8b7cf655;
+}
+.ai .k { font-family:var(--disp); font-weight:800; font-size:13px; color:var(--grape); letter-spacing:.02em; margin-bottom:7px; }
+.ai .t { font-size:15px; font-weight:500; color:var(--ink); line-height:1.6; }
