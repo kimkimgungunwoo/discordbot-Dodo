@@ -12,4 +12,7 @@ CLAUDE.md
 .claude/
 
 # 개인 문서
-docs/
+docs/dynamodb-data/
+
+# 로컬 DynamoDB 데이터 (파일 기반)
+/dynamodb-data/

@@ -2,141 +2,42 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Gothic+A1:wght@400;500;700;800&display=swap" rel="stylesheet">
 <style>
-{% include "_tokens.html" %}
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:transparent; font-family:'Noto Sans KR','Segoe UI',Arial,sans-serif; }
-
-  #card {
-    background:var(--bg-card);
-    border-radius:16px;
-    overflow:hidden;
-    width:1200px;
-    display:inline-block;
-  }
-
-  .header {
-    padding:22px 28px;
-    background:
-      linear-gradient(120deg, #20242eee 0%, #241f3dee 65%, #241f3dcc 100%),
-      url('{{ avatar }}');
-    background-size:cover; background-position:center;
-    border-bottom:1px solid var(--border);
-    display:flex; align-items:center; gap:16px;
-  }
-  .avatar {
-    width:56px; height:56px; border-radius:50%; object-fit:cover;
-    background:var(--border); border:2px solid #ffffff30;
-  }
-  .name { font-size:20px; font-weight:800; color:var(--text-primary); }
-  .sub { font-size:13px; font-weight:600; color:var(--text-muted); margin-top:3px; }
-
-  .summary { display:flex; }
-  .stat-box { flex:1; padding:20px 26px; border-right:1px solid var(--border); }
-  .stat-box:last-child { border-right:none; }
-  .stat-label { font-size:12px; color:var(--text-muted); font-weight:700; letter-spacing:.4px; margin-bottom:7px; }
-  .stat-val { font-size:24px; font-weight:800; color:var(--warn); }
-  .stat-sub { font-size:12px; font-weight:600; color:var(--text-muted); margin-top:4px; }
-
-  .section-label { font-size:13px; font-weight:700; color:var(--text-secondary); margin-bottom:14px; }
-  .hourly-wrap {
-    margin:16px 26px;
-    padding:16px 20px 12px;
-    background:var(--bg-surface-2);
-    border-radius:12px;
-  }
-
-  .mates-wrap { margin:16px 26px; padding:16px 20px; background:var(--bg-surface-2); border-radius:12px; }
-  .mates-bar { display:flex; height:14px; border-radius:7px; overflow:hidden; background:var(--bg-track); margin-bottom:12px; }
-  .mates-seg { background:var(--warn); }
-  .mates-row { display:flex; align-items:center; gap:10px; padding:5px 0; }
-  .mates-rank { width:20px; font-size:12px; font-weight:800; color:var(--text-muted); text-align:center; flex-shrink:0; }
-  .mates-name { flex:1; font-size:13px; font-weight:700; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .mates-pct { width:52px; text-align:right; font-size:12px; font-weight:700; color:var(--text-muted); }
-  .mates-time { width:120px; text-align:right; font-size:13px; font-weight:800; color:var(--warn); }
-  .hourly-chart { position:relative; margin-top:6px; }
-  .hourly-labels { display:flex; margin-top:6px; }
-  .hourly-labels span { flex:1; text-align:center; font-size:9px; font-weight:600; color:var(--text-muted); }
+{% include "_casual.html" %}
+{% include "_analytics.html" %}
+  #card { width:1200px; }
 </style>
 </head>
 <body>
+{% import "_analytics.html" as a %}
 <div id="card">
-
-  <div class="header">
-    <img class="avatar" src="{{ avatar }}" onerror="this.style.opacity=0" alt="">
-    <div>
-      <div class="name">{{ name }}</div>
-      <div class="sub">유저 통계</div>
-    </div>
+  <div class="a-hdr">
+    <img class="ga" src="{{ avatar }}" onerror="this.style.visibility='hidden'" alt="">
+    <div><div class="tt">{{ name }}</div><div class="sub">유저 통계</div></div>
   </div>
 
-  <div class="summary">
-    <div class="stat-box">
-      <div class="stat-label">💬 메시지 수</div>
-      <div class="stat-val">{{ message_count|intfmt }}개</div>
-      <div class="stat-sub">{{ (({1:'🥇 ',2:'🥈 ',3:'🥉 '}.get(message_rank, '')) ~ message_rank ~ '위 / ' ~ message_total_users ~ '명') if message_rank else '기록 없음' }}</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">🎙️ 통화시간</div>
-      <div class="stat-val">{{ voice_label }}</div>
-      <div class="stat-sub">{{ (({1:'🥇 ',2:'🥈 ',3:'🥉 '}.get(voice_rank, '')) ~ voice_rank ~ '위 / ' ~ voice_total_users ~ '명') if voice_rank else '기록 없음' }}</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">📞 통화 세션 수</div>
-      <div class="stat-val">{{ session_count }}회</div>
-    </div>
+  {% set m_medal = {1:'🥇 ',2:'🥈 ',3:'🥉 '} %}
+  <div class="a-sum">
+    <div><span class="lbl">💬 메시지 수</span><div class="v">{{ message_count|intfmt }}개</div>
+      <div class="sub">{{ (m_medal.get(message_rank,'') ~ message_rank ~ '위 / ' ~ message_total_users ~ '명') if message_rank else '기록 없음' }}</div></div>
+    <div><span class="lbl">🎙️ 통화시간</span><div class="v">{{ voice_label }}</div>
+      <div class="sub">{{ (m_medal.get(voice_rank,'') ~ voice_rank ~ '위 / ' ~ voice_total_users ~ '명') if voice_rank else '기록 없음' }}</div></div>
+    <div><span class="lbl">📞 통화 세션 수</span><div class="v">{{ session_count }}회</div></div>
   </div>
 
-  {% macro hourly_chart(title, hourly) %}
-  {% set cw = 1100 %}
-  {% set ch = 70 %}
-  {% set n = hourly|length %}
-  {% set ns = namespace(pts='') %}
-  {% for h in hourly %}
-    {% set x = ((loop.index0 / (n - 1)) * cw)|round(1) if n > 1 else (cw / 2)|round(1) %}
-    {% set y = (ch - (h.pct / 100 * ch))|round(1) %}
-    {% set ns.pts = ns.pts ~ x|string ~ ',' ~ y|string ~ ' ' %}
-  {% endfor %}
-  <div class="hourly-wrap">
-    <div class="section-label">{{ title }}</div>
-    <div class="hourly-chart">
-      <svg viewBox="0 0 {{ cw }} {{ ch }}" width="100%" height="{{ ch }}">
-        <polyline points="{{ ns.pts }}" fill="none" style="stroke:var(--warn)"
-          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-        {% for h in hourly %}
-          {% set x = ((loop.index0 / (n - 1)) * cw)|round(1) if n > 1 else (cw / 2)|round(1) %}
-          {% set y = (ch - (h.pct / 100 * ch))|round(1) %}
-        <circle cx="{{ x }}" cy="{{ y }}" r="3" style="fill:var(--warn)" />
-        {% endfor %}
-      </svg>
-    </div>
-    <div class="hourly-labels">
-      {% for h in hourly %}<span>{{ h.hour if h.hour % 3 == 0 else '' }}</span>{% endfor %}
-    </div>
-  </div>
-  {% endmacro %}
-
-  {% if chat_hourly %}{{ hourly_chart("⏰ 채팅 시간대별 활동 (KST)", chat_hourly) }}{% endif %}
-  {% if voice_hourly %}{{ hourly_chart("⏰ 통화 시간대별 활동 (KST)", voice_hourly) }}{% endif %}
+  {% if chat_hourly %}{{ a.hourly_chart("⏰ 채팅 시간대별 활동 (KST)", chat_hourly, 1100, 70) }}{% endif %}
+  {% if voice_hourly %}{{ a.hourly_chart("⏰ 통화 시간대별 활동 (KST)", voice_hourly, 1100, 70) }}{% endif %}
 
   {% if mates %}
-  <div class="mates-wrap">
-    <div class="section-label">🤝 통화메이트</div>
-    <div class="mates-bar">
-      {% for m in mates %}<div class="mates-seg" style="width:{{ m.pct }}%;opacity:{{ m.opacity }}"></div>{% endfor %}
-    </div>
+  <div class="mates">
+    <div class="sl">🤝 통화메이트</div>
+    <div class="matebar">{% for m in mates %}<i style="width:{{ m.pct }}%;opacity:{{ m.opacity }}"></i>{% endfor %}</div>
     {% for m in mates %}
-    <div class="mates-row">
-      <span class="mates-rank">{{ loop.index }}</span>
-      <span class="mates-name">{{ m.name }}</span>
-      <span class="mates-pct">{{ m.pct }}%</span>
-      <span class="mates-time">{{ m.label }}</span>
-    </div>
+    <div class="materow"><span class="mr">{{ loop.index }}</span><span class="mn">{{ m.name }}</span><span class="mp">{{ m.pct }}%</span><span class="mt">{{ m.label }}</span></div>
     {% endfor %}
   </div>
   {% endif %}
-
 </div>
 </body>
 </html>

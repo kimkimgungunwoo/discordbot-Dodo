@@ -1,0 +1,21 @@
+{# 오버워치 카드 캐주얼 공용 스타일 — <style> 안에서 {% include "_ow.html" %} #}
+.ow-role-tank { color:#5aa9ff } .ow-role-damage { color:#ff9d5c } .ow-role-support { color:#5fd08a }
+
+.ow-hdr { display:flex; align-items:center; gap:16px; padding:22px 24px; }
+.ow-hdr .av { width:60px; height:60px; border-radius:50%; flex-shrink:0; object-fit:cover; background:linear-gradient(150deg,#5b4bd0,#8b7cf6); }
+.ow-hdr .nm { font-family:var(--disp); font-weight:800; font-size:22px; }
+.ow-hdr .tt { font-family:var(--disp); font-weight:600; font-size:13px; color:var(--muted); margin-top:2px; }
+.ow-hdr .end { margin-left:auto; flex-shrink:0; display:flex; align-items:center; gap:8px; font-family:var(--disp); font-weight:800; font-size:15px; color:var(--ink-dim); }
+.ow-hdr .end img { width:30px; height:30px; }
+
+.ow-stats { display:grid; grid-template-columns:repeat(4,1fr); border-top:2px solid var(--line); }
+.ow-stats > div { padding:16px 24px; border-right:2px solid var(--line); }
+.ow-stats > div:last-child { border-right:0; }
+.ow-stats .lbl { display:block; margin-bottom:5px; }
+.ow-stats .v { font-family:var(--disp); font-weight:800; font-size:20px; font-variant-numeric:tabular-nums; }
+.ow-stats .v.hi { color:var(--lime); } .ow-stats .v.lo { color:var(--rose); }
+.ow-stats .sub { font-family:var(--disp); font-weight:600; font-size:11.5px; color:var(--muted); margin-top:3px; }
+
+.wrchip { font-family:var(--disp); font-weight:800; font-size:12px; border-radius:999px; padding:3px 10px; }
+.wrchip.hi { background:#5fd08a22; color:var(--lime); } .wrchip.lo { background:#ff6b7422; color:var(--rose); }
+.sec { font-family:var(--disp); font-weight:700; font-size:13px; color:var(--ink-dim); }

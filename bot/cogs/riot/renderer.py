@@ -17,22 +17,27 @@ _env = Environment(
 
 def _score_color(score: int) -> str:
     if score >= 65:
-        return "#3ba55c"
+        return "#5fd08a"
     if score >= 45:
-        return "#faa61a"
-    return "#c94d47"
+        return "#ffcf5c"
+    return "#ff6b74"
+
+
+def _score_class(score: int) -> str:
+    return "good" if score >= 65 else "mid" if score >= 45 else "bad"
 
 
 def _tier_color(tier: str | None) -> str:
     return {
-        "IRON": "#5b5b5b", "BRONZE": "#b87333", "SILVER": "#a8b8c0",
-        "GOLD": "#e4a200", "PLATINUM": "#4fc4cf", "EMERALD": "#52b788",
-        "DIAMOND": "#6e7fde", "MASTER": "#b44de4",
-        "GRANDMASTER": "#e84040", "CHALLENGER": "#f4c84a",
-    }.get(tier or "", "#5865f2")
+        "IRON": "#a6a6a6", "BRONZE": "#c07f45", "SILVER": "#b9c6cf",
+        "GOLD": "#efc250", "PLATINUM": "#5cc3d6", "EMERALD": "#43cf94",
+        "DIAMOND": "#8fa4ff", "MASTER": "#c983e6",
+        "GRANDMASTER": "#ef6a60", "CHALLENGER": "#f4cf62",
+    }.get(tier or "", "#8b7cf6")
 
 
 _env.filters["score_color"] = _score_color
+_env.filters["score_class"] = _score_class
 _env.filters["tier_color"]  = _tier_color
 _env.filters["intfmt"]      = lambda v: f"{int(v):,}"
 _env.filters["pct"]         = lambda v: f"{round(v)}%"

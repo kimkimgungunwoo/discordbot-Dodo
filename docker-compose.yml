@@ -3,7 +3,11 @@ services:
     image: amazon/dynamodb-local:latest
     ports:
       - "8000:8000"
-    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    # 파일 기반 저장 — 컨테이너를 내려도(down) 데이터 유지. 초기화하려면 ./dynamodb-data 폴더 삭제.
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    user: root
+    volumes:
+      - ./dynamodb-data:/home/dynamodblocal/data
 
   lavalink:
     image: ghcr.io/lavalink-devs/lavalink:4
