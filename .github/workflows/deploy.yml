@@ -10,6 +10,31 @@ jobs:
     env:
       ENV_FILE: ${{ secrets.ENV_FILE }}
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # ENV_FILE Secret에 든 POT_TOKEN/POT_VISITOR_DATA은 최초 등록 시점 값이라 배포 시점엔 이미
+      # 만료돼 있을 수 있다(토큰 수명 ~12시간). refresh-pot-token.yml 이 서버에 직접 박아둔 최신 토큰이
+      # 배포할 때 ENV_FILE 내용으로 덮어써지며 도로 예전 값이 되는 걸 막기 위해, 배포 때도 매번
+      # 새로 생성해서 ENV_FILE 내용 위에 덮어쓴다.
+      - name: PoToken 재생성
+        id: gen
+        working-directory: scripts/pot-token
+        run: |
+          npm install --no-audit --no-fund
+          node generate.mjs > token.env
+          {
+            echo "token_line<<EOF"
+            grep '^POT_TOKEN=' token.env
+            echo "EOF"
+            echo "visitor_line<<EOF"
+            grep '^POT_VISITOR_DATA=' token.env
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       # .env는 서버에 직접 두지 않고 매 배포마다 GitHub Secrets(ENV_FILE, .env 전체 내용)로부터 새로 생성한다.
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1
@@ -17,13 +42,19 @@ jobs:
           host: ${{ secrets.LIGHTSAIL_HOST }}
           username: ${{ secrets.LIGHTSAIL_USER }}
           key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
-          envs: ENV_FILE
+          envs: ENV_FILE,POT_TOKEN_LINE,POT_VISITOR_LINE
           script: |
             cd ~/discordbot
             git fetch origin main
             git reset --hard origin/main
             [ -f .env ] && cp .env .env.bak
             printf '%s\n' "$ENV_FILE" > .env
+            # 방금 새로 생성한 PoToken으로 덮어쓴다 (ENV_FILE에 든 값이 오래됐을 수 있어서)
+            grep -q '^POT_TOKEN=' .env && sed -i "s|^POT_TOKEN=.*|$POT_TOKEN_LINE|" .env || echo "$POT_TOKEN_LINE" >> .env
+            grep -q '^POT_VISITOR_DATA=' .env && sed -i "s|^POT_VISITOR_DATA=.*|$POT_VISITOR_LINE|" .env || echo "$POT_VISITOR_LINE" >> .env
             docker compose -f docker-compose.prod.yml build bot
             docker compose -f docker-compose.prod.yml run --rm --no-deps bot python -m scripts.init_dynamodb
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
+        env:
+          POT_TOKEN_LINE: ${{ steps.gen.outputs.token_line }}
+          POT_VISITOR_LINE: ${{ steps.gen.outputs.visitor_line }}

@@ -49,6 +49,13 @@ plugins:
       url: "http://yt-cipher:8001"
       password: "${YT_CIPHER_TOKEN:}"
       userAgent: "discordbot-dodo"
+    # PoToken — "Sign in to confirm you're not a bot" 벽을 WEB/WEBEMBEDDED 클라이언트에서 우회하는
+    # 공식 방법. 클라우드/데이터센터 IP(Lightsail 포함)일수록 이 벽에 자주 걸린다.
+    # bgutils-js 로 생성 — ~12시간(43200초)마다 만료되어 갱신 필요(자동 갱신 아님, 수동/스크립트).
+    # 비어있으면(둘 다 미설정) 플러그인이 그냥 PoToken 없이 동작 — 필수 아님, 있으면 도움.
+    pot:
+      token: "${POT_TOKEN:}"
+      visitorData: "${POT_VISITOR_DATA:}"
 
 metrics:
   prometheus:

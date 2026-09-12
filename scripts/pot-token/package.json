@@ -1,0 +1,10 @@
+{
+  "name": "pot-token-refresh",
+  "private": true,
+  "type": "module",
+  "description": "Lavalink youtube-plugin용 PoToken(POT_TOKEN/POT_VISITOR_DATA) 재생성. .github/workflows/refresh-pot-token.yml 에서 주기 실행.",
+  "dependencies": {
+    "bgutils-js": "3.2.0",
+    "jsdom": "^27.1.0"
+  }
+}

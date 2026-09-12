@@ -13,6 +13,8 @@ services:
       LAVALINK_SERVER_PASSWORD: ${LAVALINK_PASSWORD}
       YOUTUBE_OAUTH_REFRESH_TOKEN: ${YOUTUBE_OAUTH_REFRESH_TOKEN:-}
       YT_CIPHER_TOKEN: ${YT_CIPHER_TOKEN:-}
+      POT_TOKEN: ${POT_TOKEN:-}
+      POT_VISITOR_DATA: ${POT_VISITOR_DATA:-}
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
     depends_on:
