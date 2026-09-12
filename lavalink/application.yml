@@ -42,9 +42,12 @@ plugins:
       refreshToken: "${YOUTUBE_OAUTH_REFRESH_TOKEN:}"
       skipInitialization: false
     # 2026-06부터 유튜브가 플레이어 스크립트 난독화 방식을 바꿔서 youtube-source의 자체 서명(cipher)
-    # 해독이 깨짐(메인테이너 공식 답변: "remote cipher server 써라") — 무료 공개 서버로 우회.
+    # 해독이 깨짐(메인테이너 공식 답변: "remote cipher server 써라"). 처음엔 공개 서버
+    # (cipher.kikkia.dev)로 우회했는데, 남의 무료 서버라 느려지거나 죽을 수 있어서
+    # 같은 docker-compose 안의 yt-cipher 컨테이너로 자가 호스팅함(요청 제한 없음, 오디오는 안 거침).
     remoteCipher:
-      url: "https://cipher.kikkia.dev/"
+      url: "http://yt-cipher:8001"
+      password: "${YT_CIPHER_TOKEN:}"
       userAgent: "discordbot-dodo"
 
 metrics:
