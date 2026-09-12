@@ -1,0 +1,54 @@
+name: Refresh PoToken
+
+# Lavalink youtube-plugin의 PoToken은 ~12시간 뒤 만료된다 (scripts/pot-token/generate.mjs 참고).
+# 만료되면 유튜브의 "Sign in to confirm you're not a bot" 벽에 다시 걸려서 재생 실패가 늘어난다 —
+# 특히 Lightsail 같은 클라우드 IP에서 심함. 그래서 10시간마다 새로 발급해서 서버에 바로 반영한다.
+on:
+  schedule:
+    - cron: "0 */10 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: PoToken 재생성
+        id: gen
+        working-directory: scripts/pot-token
+        run: |
+          npm install --no-audit --no-fund
+          node generate.mjs > token.env
+          # 값 자체는 로그에 안 남기고(토큰이라 민감할 수 있음) GITHUB_OUTPUT으로만 전달
+          {
+            echo "token_line<<EOF"
+            grep '^POT_TOKEN=' token.env
+            echo "EOF"
+            echo "visitor_line<<EOF"
+            grep '^POT_VISITOR_DATA=' token.env
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Lightsail .env 갱신 + lavalink/bot 재시작
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.LIGHTSAIL_HOST }}
+          username: ${{ secrets.LIGHTSAIL_USER }}
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          envs: POT_TOKEN_LINE,POT_VISITOR_LINE
+          script: |
+            cd ~/discordbot
+            # 기존 POT_TOKEN=/POT_VISITOR_DATA= 줄을 새 값으로 치환 (없으면 추가)
+            grep -q '^POT_TOKEN=' .env && sed -i "s|^POT_TOKEN=.*|$POT_TOKEN_LINE|" .env || echo "$POT_TOKEN_LINE" >> .env
+            grep -q '^POT_VISITOR_DATA=' .env && sed -i "s|^POT_VISITOR_DATA=.*|$POT_VISITOR_LINE|" .env || echo "$POT_VISITOR_LINE" >> .env
+            # lavalink를 재생성하면 봇의 wavelink 연결이 끊기므로 bot도 같이 재시작해야 한다
+            # (직접 겪은 문제 — 안 그러면 "입장하자마자 나가는" 증상 발생)
+            docker compose -f docker-compose.prod.yml up -d --force-recreate lavalink bot
+        env:
+          POT_TOKEN_LINE: ${{ steps.gen.outputs.token_line }}
+          POT_VISITOR_LINE: ${{ steps.gen.outputs.visitor_line }}

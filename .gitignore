@@ -16,3 +16,7 @@ docs/dynamodb-data/
 
 # 로컬 DynamoDB 데이터 (파일 기반)
 /dynamodb-data/
+
+# scripts/pot-token (PoToken 재생성 스크립트) 의존성
+scripts/pot-token/node_modules/
+scripts/pot-token/token.env
