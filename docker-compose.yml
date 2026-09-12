@@ -16,5 +16,14 @@ services:
     environment:
       LAVALINK_SERVER_PASSWORD: ${LAVALINK_PASSWORD:-youshallnotpass}
       YOUTUBE_OAUTH_REFRESH_TOKEN: ${YOUTUBE_OAUTH_REFRESH_TOKEN:-}
+      YT_CIPHER_TOKEN: ${YT_CIPHER_TOKEN:-}
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+    depends_on:
+      - yt-cipher
+
+  # 유튜브 cipher(서명) 자가 호스팅 — 오디오는 안 거치고 서명 계산만 함, 아주 가벼움.
+  yt-cipher:
+    image: ghcr.io/kikkia/yt-cipher:master
+    environment:
+      API_TOKEN: ${YT_CIPHER_TOKEN:-}

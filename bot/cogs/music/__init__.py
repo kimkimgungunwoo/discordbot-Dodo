@@ -16,11 +16,30 @@ from bot.cogs.util import GENERATING_MSG
 # 진입점 하나만 막으면 재생목록 관련 View/버튼은 애초에 사용자에게 노출되지 않는다.
 PLAYLIST_DISABLED = True
 PLAYLIST_DISABLED_MSG = "🚧 재생목록 기능은 원인 불명 버그로 현재 일시적으로 사용할 수 없습니다."
-MIN_RESUME_MS = 5000
-RETRY_CHAIN_RESET_MS = 1000
-RETRY_RESTART_DELAY_SEC = 1.0
-MAX_PLAY_RETRIES = 10  # 재생 준비(vc.play) 자체가 이 횟수 넘게 연속 실패하면 무한 재시도 대신 건너뜀
-                        # (LavalinkException은 이제 즉시 스킵 대상이라, 여기 걸리는 건 진짜 일시적 네트워크/노드 실패뿐)
+MIN_RESUME_MS = 5000            # 마지막 재생 위치가 이 값 이상이면 이어 재생, 아니면 처음부터
+STABLE_PLAYBACK_MS = 15000      # 이만큼 끊김 없이 재생되면 "복구됨"으로 보고 실패 체인/안내 메시지 초기화
+RETRY_CHAIN_RESET_MS = STABLE_PLAYBACK_MS  # (구 이름 호환)
+# 유튜브 연결 실패는 큐를 건너뛰지 않고 무한 재시도한다.
+#   - 영구 재생불가로 분류된 곡(_fatal_tracks) 과 유저의 수동 !음악 스킵 만 예외.
+#   - 재시도 간격은 백오프 (1→3→8→15→30초, 마지막 값에서 고정) — Lavalink/유튜브를 계속 때리지 않도록.
+RETRY_DELAYS_SEC = [1, 3, 8, 15, 30]
+NOTICE_LINGER_SEC = 6          # "재생 재개" 안내를 이 시간만 보여주고 삭제
+
+# Lavalink TrackException 메시지를 실제 사유별로 분류 — 재시도 무의미한 "영구 재생불가"만 여기 걸린다.
+# 클라이언트 자체 버그로 나는 메시지(예: TV 클라이언트의 "page needs to be reloaded")는 영상과 무관하게
+# 뜨므로 절대 넣지 않는다 — 넣으면 멀쩡한 영상까지 오분류되어 건너뛰게 된다.
+FATAL_MARKERS: list[tuple[str, tuple[str, ...]]] = [
+    ("login",   ("requires login", "sign in to confirm", "confirm your age")),
+    ("region",  ("not available in your country", "not available in your region")),
+    ("removed", ("video unavailable", "video is no longer available", "video has been removed", "video is private")),
+    ("blocked", ("playability status", "video player configuration error")),
+]
+FATAL_LABELS = {
+    "login":   "연령제한/로그인이 필요한 영상이라",
+    "region":  "지역 제한이 걸린 영상이라",
+    "removed": "삭제되었거나 비공개 처리된 영상이라",
+    "blocked": "유튜브에서 재생을 막아둔 영상이라",
+}
 
 
 class Music(commands.Cog):
@@ -56,7 +75,12 @@ class Music(commands.Cog):
         # guild_id -> Task: 비정상 종료/재생 실패 후 재복구를 예약한다.
         self._retry_tasks: dict[int, asyncio.Task] = {}
         # guild_id -> set[track_key]: 자동 복구 가치가 낮은 치명적 에러로 분류된 트랙.
-        self._fatal_tracks: dict[int, set[str]] = {}
+        self._fatal_tracks: dict[int, dict[str, str]] = {}  # track_key -> 분류 사유(FATAL_LABELS 키)
+        # guild_id -> discord.Message: "재시도 중" 안내 메시지 (길드당 딱 1개, 자리에서 갱신).
+        self._retry_notices: dict[int, discord.Message] = {}
+        # guild_id -> discord.abc.Messageable: 안내를 보낼 텍스트 채널. Player가 재생성돼도
+        # 살아남도록 vc.home 과 별개로 여기에도 보관한다.
+        self._home: dict[int, discord.abc.Messageable] = {}
 
     async def cog_unload(self):
         """Cog가 내려갈 때(핫리로드 포함) 호출된다. 여기서 정리하지 않으면
@@ -71,6 +95,12 @@ class Music(commands.Cog):
             except Exception as e:
                 print(f"[Music] cog_unload 중 음성 연결 정리 실패: {e}")
 
+        for msg in list(self._retry_notices.values()):
+            try:
+                await msg.delete()
+            except Exception:
+                pass
+
         self.queues.clear()
         self.current.clear()
         self.playlist_queues.clear()
@@ -82,6 +112,8 @@ class Music(commands.Cog):
         self._last_positions.clear()
         self._retry_starts.clear()
         self._fatal_tracks.clear()
+        self._retry_notices.clear()
+        self._home.clear()
         for task in self._retry_tasks.values():
             task.cancel()
         self._retry_tasks.clear()
@@ -108,6 +140,8 @@ class Music(commands.Cog):
         self._last_positions.pop(guild_id, None)
         self._retry_starts.pop(guild_id, None)
         self._fatal_tracks.pop(guild_id, None)
+        self._retry_notices.pop(guild_id, None)  # 참조만 버림 — 메시지 삭제는 _dismiss_retry_notice 담당
+        self._home.pop(guild_id, None)
         task = self._retry_tasks.pop(guild_id, None)
         if task is not None:
             task.cancel()
@@ -139,7 +173,7 @@ class Music(commands.Cog):
                 self._last_positions.pop(guild_id, None)
         fatal_map = self._fatal_tracks.get(guild_id)
         if fatal_map is not None:
-            fatal_map.discard(self._track_key(track))
+            fatal_map.pop(self._track_key(track), None)
             if not fatal_map:
                 self._fatal_tracks.pop(guild_id, None)
 
@@ -154,24 +188,79 @@ class Music(commands.Cog):
             return 0
         return self._last_positions.get(guild_id, {}).get(self._track_key(track), 0)
 
-    def _mark_fatal(self, guild_id: int, track: Track):
-        self._fatal_tracks.setdefault(guild_id, set()).add(self._track_key(track))
+    def _mark_fatal(self, guild_id: int, track: Track, category: str):
+        self._fatal_tracks.setdefault(guild_id, {})[self._track_key(track)] = category
 
     def _is_fatal(self, guild_id: int, track: Track | None) -> bool:
         if track is None:
             return False
-        return self._track_key(track) in self._fatal_tracks.get(guild_id, set())
+        return self._track_key(track) in self._fatal_tracks.get(guild_id, {})
 
-    def _is_unrecoverable_exception(self, message: str, cause: str) -> bool:
+    def _fatal_label(self, guild_id: int, track: Track | None) -> str:
+        """스킵 안내에 쓸 사람이 읽을 사유. '~영상이라' 로 끝나서 문장에 그대로 붙는다."""
+        category = None
+        if track is not None:
+            category = self._fatal_tracks.get(guild_id, {}).get(self._track_key(track))
+        return FATAL_LABELS.get(category, "재생할 수 없는 영상이라")
+
+    def _classify_fatal(self, message: str, cause: str) -> str | None:
+        """Lavalink TrackException 메시지를 실제 사유별로 분류한다. 매칭 안 되면 None(=일시적, 재시도 대상)."""
         haystack = f"{message}\n{cause}".lower()
-        markers = (
-            "requires login",
-            "video player configuration error",
-            "playability status",
-        )
-        return any(marker in haystack for marker in markers)
+        for category, markers in FATAL_MARKERS:
+            if any(marker in haystack for marker in markers):
+                return category
+        return None
 
-    def _schedule_retry(self, guild: discord.Guild, mode: str, track: Track, *, start: int, reason: str):
+    def _retry_delay(self, attempt: int) -> float:
+        """재시도 횟수(1부터)에 따른 백오프 대기(초). 마지막 값에서 고정."""
+        idx = min(max(attempt, 1) - 1, len(RETRY_DELAYS_SEC) - 1)
+        return RETRY_DELAYS_SEC[idx]
+
+    def _home_channel(self, guild: discord.Guild) -> "discord.abc.Messageable | None":
+        vc = guild.voice_client
+        return self._home.get(guild.id) or getattr(vc, "home", None)
+
+    async def _show_retry_notice(self, guild: discord.Guild, track: Track, attempt: int, delay: float):
+        """'재시도 중' 안내를 길드당 한 개만 유지하며 자리에서 갱신한다."""
+        home = self._home_channel(guild)
+        if home is None:
+            return
+        text = (
+            f"🔄 유튜브 연결이 불안정합니다 — **{track.title}** 재생을 다시 시도하고 있어요.\n"
+            f"⏳ {int(delay)}초 후 재시도 (총 {attempt}회째) · 연결되면 끊긴 지점부터 자동으로 이어서 재생됩니다."
+        )
+        msg = self._retry_notices.get(guild.id)
+        try:
+            if msg is None:
+                self._retry_notices[guild.id] = await home.send(text)
+            else:
+                await msg.edit(content=text)
+        except discord.HTTPException:
+            self._retry_notices.pop(guild.id, None)
+
+    async def _dismiss_retry_notice(self, guild_id: int, *, resumed_title: str | None = None):
+        """재시도 안내를 없앤다. resumed_title 이 있으면 '재개' 문구로 잠깐 바꿨다가 삭제."""
+        msg = self._retry_notices.pop(guild_id, None)
+        if msg is None:
+            return
+        try:
+            if resumed_title:
+                await msg.edit(content=f"▶️ 연결이 복구되어 **{resumed_title}** 재생을 이어갑니다.")
+                await asyncio.sleep(NOTICE_LINGER_SEC)
+            await msg.delete()
+        except discord.HTTPException:
+            pass
+
+    async def _notify_skip(self, guild: discord.Guild, title: str, why: str):
+        home = self._home_channel(guild)
+        if home is None:
+            return
+        try:
+            await home.send(f"⚠️ **{title}** 은(는) {why} 다음 곡으로 넘어갑니다.")
+        except discord.HTTPException:
+            pass
+
+    def _schedule_retry(self, guild: discord.Guild, mode: str, track: Track, *, start: int, reason: str, attempt: int = 1):
         guild_id = guild.id
         queues, currents = self._state(mode)
         currents.pop(guild_id, None)
@@ -184,9 +273,12 @@ class Music(commands.Cog):
         if existing is not None:
             existing.cancel()
 
+        delay = self._retry_delay(attempt)
+        self.bot.loop.create_task(self._show_retry_notice(guild, track, attempt, delay))
+
         async def _runner():
             try:
-                await asyncio.sleep(RETRY_RESTART_DELAY_SEC)
+                await asyncio.sleep(delay)
                 await self.advance(guild, mode)
             except asyncio.CancelledError:
                 return
@@ -197,7 +289,7 @@ class Music(commands.Cog):
 
         self._retry_tasks[guild_id] = self.bot.loop.create_task(_runner())
         print(
-            f"[Music] 자동 복구 예약: '{track.title}' reason={reason} start={start}ms delay={RETRY_RESTART_DELAY_SEC}s",
+            f"[Music] 자동 복구 예약: '{track.title}' reason={reason} attempt={attempt} start={start}ms delay={delay}s",
             flush=True,
         )
 
@@ -210,6 +302,13 @@ class Music(commands.Cog):
         old_mode = self.active_mode.get(guild_id)
 
         if old_mode is not None and old_mode != mode:
+            # 이전 모드가 유튜브 재시도 대기 중이었다면 그 타이머와 안내를 정리한다
+            # (트랙 자체는 아래에서 이전 모드 큐 맨 앞에 보존되므로 잃어버리지 않는다).
+            rt = self._retry_tasks.pop(guild_id, None)
+            if rt is not None:
+                rt.cancel()
+            await self._dismiss_retry_notice(guild_id)
+
             # _playing_mode 판단이 어떤 이유로든 어긋나 있어도 대기열을 잃어버리면 안 되니,
             # "재생 중이라고 믿는지"와 무관하게 이전 모드의 current는 항상 큐 맨 앞으로 되돌린다.
             old_queue, old_current = self._state(old_mode)
@@ -253,42 +352,32 @@ class Music(commands.Cog):
 
                 try:
                     await vc.play(track.playable, start=start)
-                except wavelink.LavalinkException as e:
-                    # vc.play()가 LavalinkException을 던진다는 것 자체가 youtube-source 내부에서
-                    # WEB→ANDROID_VR→WEBEMBEDDED→TV 전체 클라이언트 폴백체인이 이미 다 실패해서
-                    # Lavalink가 정식 에러 응답(REST ErrorResponse)을 준 것 — 재시도해봐야 그 폴백체인을
-                    # 같은 영상에 또 돌리는 것뿐이라 즉시 스킵한다. (기존엔 여기서 _is_unrecoverable_exception
-                    # 으로 문자열 키워드 매칭을 시도했는데, wavelink의 LavalinkException.__str__엔 Lavalink
-                    # ErrorResponse의 status/error(HTTP 에러 클래스명)만 담기고 실제 사유 문구(message 필드,
-                    # 예: "This video requires login.")는 라이브러리가 애초에 안 담아줘서 절대 매칭될 수 없는
-                    # 죽은 코드였음 — wavelink/exceptions.py 소스로 확인. 대신 예외 타입 자체로 판별한다.)
-                    print(
-                        f"[Music] '{track.title}' 재생 준비 실패(전 클라이언트 실패, 즉시 스킵): "
-                        f"status={e.status} reason={e.error}",
-                        flush=True,
-                    )
-                    self._playing_mode.pop(guild.id, None)
-                    currents.pop(guild.id, None)
-                    self._clear_retry(guild.id, track, clear_position=True)
-                    continue
                 except Exception as e:
-                    # LavalinkException이 아닌 경우(노드 연결 끊김/타임아웃 등 진짜 일시적 실패 가능성)만
-                    # 재시도한다. vc.play() 한 번의 실패가 곧 클라이언트 폴백체인 한 바퀴 실패를 뜻하므로
-                    # MAX_PLAY_RETRIES는 "유튜브 요청 횟수"가 아니라 "폴백체인 재시도 횟수"다.
-                    print(f"[Music] '{track.title}' 재생 준비 실패(일시적 가능성, 재시도): {e}", flush=True)
+                    # vc.play() 실패 = 이 시점에 유튜브 연결/클라이언트 폴백체인이 안 되는 상태.
+                    # 예전엔 LavalinkException이면 "폴백 다 실패 = 무의미"라며 즉시 스킵했는데,
+                    # 유튜브가 일시적으로 맛이 가면 '모든 영상'이 이렇게 실패해서 큐 전체가 순식간에
+                    # 스킵돼 버렸다. 그래서 이제는 스킵하지 않고 무한 재시도한다 —
+                    # 영구 재생불가로 분류된 곡(_is_fatal)만 예외.
                     self._playing_mode.pop(guild.id, None)
                     currents.pop(guild.id, None)
 
-                    retry_no = self._consume_retry(guild.id, track)
-                    if retry_no > MAX_PLAY_RETRIES:
-                        print(f"[Music] 재생 준비 {MAX_PLAY_RETRIES}회 연속 실패로 건너뜀: '{track.title}'", flush=True)
+                    if self._is_fatal(guild.id, track):
+                        reason = self._fatal_label(guild.id, track)
+                        print(f"[Music] 재생 불가로 건너뜀: '{track.title}' ({e!r})", flush=True)
                         self._clear_retry(guild.id, track, clear_position=True)
+                        self.bot.loop.create_task(self._notify_skip(guild, track.title, reason))
                         continue
 
-                    self._schedule_retry(guild, mode, track, start=start, reason=f"play_failed_{retry_no}")
+                    retry_no = self._consume_retry(guild.id, track)
+                    print(f"[Music] '{track.title}' 재생 준비 실패 — 재시도 예약: {e!r}", flush=True)
+                    self._schedule_retry(guild, mode, track, start=start, reason="play_failed", attempt=retry_no)
                     return
+
+                # 재생 시작 성공 — 재시도 안내가 떠 있었으면 정리한다.
                 if start > 0:
                     print(f"[Music] 이어 재생 복구 성공: '{track.title}' start={start}ms", flush=True)
+                if guild.id in self._retry_notices:
+                    self.bot.loop.create_task(self._dismiss_retry_notice(guild.id, resumed_title=track.title))
                 return
 
             currents.pop(guild.id, None)
@@ -318,6 +407,7 @@ class Music(commands.Cog):
 
         if payload.reason == "finished" or was_expected:
             self._clear_retry(guild_id, current, clear_position=True)
+            self.bot.loop.create_task(self._dismiss_retry_notice(guild_id))
             await self.advance(player.guild, mode)
             return
 
@@ -329,23 +419,27 @@ class Music(commands.Cog):
             return
 
         if self._is_fatal(guild_id, current):
+            # 영구 재생불가(로그인 필요 등) — 무한 재시도해봐야 소용없으니 건너뛴다.
+            reason = self._fatal_label(guild_id, current)
             queues, currents = self._state(mode)
             currents.pop(guild_id, None)
-            queue = queues.setdefault(guild_id, [])
-            if not queue or queue[0] is not current:
-                queue.insert(0, current)
-            self._retry_starts.setdefault(guild_id, {})[self._track_key(current)] = 0
-            print(f"[Music] 치명적 오류로 자동 복구 중단: '{title}'", flush=True)
+            self._clear_retry(guild_id, current, clear_position=True)
+            print(f"[Music] 재생 불가로 건너뜀: '{title}' reason={reason}", flush=True)
+            self.bot.loop.create_task(self._notify_skip(player.guild, title, reason))
+            await self.advance(player.guild, mode)
             return
 
         retry_no = self._consume_retry(guild_id, current)
         last_position = self._get_last_position(guild_id, current)
         resume_from = last_position if last_position >= MIN_RESUME_MS else 0
         print(
-            f"[Music] 비정상 종료 자동 재복구: '{title}' attempt={retry_no} resume_from={resume_from}ms",
+            f"[Music] 비정상 종료 — 재시도 예약(무한): '{title}' attempt={retry_no} resume_from={resume_from}ms",
             flush=True,
         )
-        self._schedule_retry(player.guild, mode, current, start=resume_from, reason=f"track_end_{payload.reason}")
+        self._schedule_retry(
+            player.guild, mode, current, start=resume_from,
+            reason=f"track_end_{payload.reason}", attempt=retry_no,
+        )
 
     @commands.Cog.listener()
     async def on_wavelink_player_update(self, payload: wavelink.PlayerUpdateEventPayload):
@@ -368,12 +462,14 @@ class Music(commands.Cog):
 
         retry_count = self._retry_counts.get(guild_id, {}).get(track_key)
         retry_start = self._retry_starts.get(guild_id, {}).get(track_key, 0)
-        if retry_count and payload.position >= max(RETRY_CHAIN_RESET_MS, retry_start + RETRY_CHAIN_RESET_MS):
+        if retry_count and payload.position >= retry_start + STABLE_PLAYBACK_MS:
             print(
                 f"[Music] 재생 안정화로 실패 체인 초기화: '{current.title}' position={payload.position}ms",
                 flush=True,
             )
             self._clear_retry(guild_id, current, clear_position=False)
+            if guild_id in self._retry_notices:
+                self.bot.loop.create_task(self._dismiss_retry_notice(guild_id, resumed_title=current.title))
 
     @commands.Cog.listener()
     async def on_wavelink_track_exception(self, payload: wavelink.TrackExceptionEventPayload):
@@ -399,9 +495,10 @@ class Music(commands.Cog):
             flush=True,
         )
 
-        if self._is_unrecoverable_exception(message, cause):
-            self._mark_fatal(guild_id, current)
-            print(f"[Music] 치명적 재생 불가로 분류: '{current.title}'", flush=True)
+        category = self._classify_fatal(message, cause)
+        if category is not None:
+            self._mark_fatal(guild_id, current, category)
+            print(f"[Music] 치명적 재생 불가로 분류: '{current.title}' category={category}", flush=True)
 
     @commands.Cog.listener()
     async def on_wavelink_inactive_player(self, player: wavelink.Player):
@@ -412,8 +509,9 @@ class Music(commands.Cog):
         if guild is None:
             return
 
-        home = getattr(player, "home", None)
+        home = self._home_channel(guild)
         await player.disconnect()
+        await self._dismiss_retry_notice(guild.id)
         self._clear_guild_state(guild.id)
 
         if home is not None:
@@ -445,6 +543,7 @@ class Music(commands.Cog):
             vc = await channel.connect(cls=wavelink.Player)
 
         vc.home = ctx.channel  # 자동 퇴장 안내를 보낼 텍스트 채널 기억
+        self._home[ctx.guild.id] = ctx.channel  # 재시도 안내도 여기로
 
         await ctx.reply(f"🎙️ **{channel.name}** 채널에 입장했습니다.", mention_author=False)
 
@@ -457,6 +556,7 @@ class Music(commands.Cog):
             return
 
         await vc.disconnect()
+        await self._dismiss_retry_notice(ctx.guild.id)
         self._clear_guild_state(ctx.guild.id)
 
         await ctx.reply("👋 음성 채널에서 퇴장했습니다.", mention_author=False)
@@ -582,16 +682,36 @@ class Music(commands.Cog):
 
     @music_group.command(name="스킵")
     async def skip(self, ctx: commands.Context):
-        """현재 재생 중인 곡을 건너뜁니다 (일반 재생/재생목록 둘 다 지원)."""
+        """현재 재생 중인 곡을 건너뜁니다 (유튜브 연결 실패로 재시도 대기 중인 곡도 포함)."""
         vc: wavelink.Player | None = ctx.voice_client
+        guild_id = ctx.guild.id
+        mode = self.active_mode.get(guild_id, "single")
+
+        # 유튜브 연결 실패로 재시도 대기 중이면 — 그 곡을 포기하고 다음 곡으로.
+        retry_task = self._retry_tasks.get(guild_id)
+        if vc is not None and retry_task is not None and not vc.playing:
+            retry_task.cancel()
+            self._retry_tasks.pop(guild_id, None)
+            queues, _ = self._state(mode)
+            queue = queues.get(guild_id, [])
+            skipped = queue.pop(0) if queue else None
+            if skipped is not None:
+                self._clear_retry(guild_id, skipped, clear_position=True)
+            await self._dismiss_retry_notice(guild_id)
+            await ctx.reply(
+                f"⏭️ **{skipped.title if skipped else '곡'}** (재시도 중이던 곡) 을(를) 건너뜁니다.",
+                mention_author=False,
+            )
+            await self.advance(ctx.guild, mode)
+            return
+
         if vc is None or not vc.playing:
             await ctx.reply("현재 재생 중인 곡이 없습니다.", mention_author=False)
             return
 
-        mode = self.active_mode.get(ctx.guild.id, "single")
         _, currents = self._state(mode)
-        current = currents.get(ctx.guild.id)
-        self._expected_stop.add(ctx.guild.id)
+        current = currents.get(guild_id)
+        self._expected_stop.add(guild_id)
         await vc.stop()  # on_wavelink_track_end이 자동으로 advance 호출
         await ctx.reply(
             f"⏭️ **{current.title if current else '곡'}** 을(를) 건너뜁니다.",
