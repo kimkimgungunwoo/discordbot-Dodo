@@ -42,6 +42,30 @@
     {% endfor %}
   </div>
   {% endif %}
+
+  {% if games %}
+  <div class="mates">
+    <div class="sl">🎮 게임 비율</div>
+    {% set r = 52 %}{% set circ = (2 * 3.14159265 * r)|round(3) %}
+    {% set ns = namespace(off=0) %}
+    <div class="games">
+      <svg viewBox="0 0 140 140" width="130" height="130" style="flex-shrink:0">
+        <circle cx="70" cy="70" r="{{ r }}" fill="none" stroke="#4b4f5a" stroke-width="20"/>
+        {% for gme in games %}
+          {% set seg = (gme.pct / 100 * circ)|round(3) %}
+          <circle cx="70" cy="70" r="{{ r }}" fill="none" stroke="{{ gme.color }}" stroke-width="20"
+            stroke-dasharray="{{ seg }} {{ (circ - seg)|round(3) }}" stroke-dashoffset="{{ (-ns.off)|round(3) }}" transform="rotate(-90 70 70)"/>
+          {% set ns.off = ns.off + seg %}
+        {% endfor %}
+      </svg>
+      <div class="glegend">
+        {% for gme in games %}
+        <div class="gleg"><span class="gdot" style="background:{{ gme.color }}"></span>{{ gme.name }} <span class="gpct">{{ gme.pct }}%</span></div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 </body>
 </html>

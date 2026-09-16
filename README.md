@@ -55,7 +55,9 @@
 | `!음악 정지` | 일시정지 |
 | `!음악 재생` | 일시정지한 곡 재개 |
 | `!음악 스킵` | 현재 곡 스킵 |
-| `!음악 플레이리스트` | 재생목록 재생/제거/중지 버튼 (일반 재생과 상호 배타적으로 동작) |
+| `!음악 퇴장` | 봇 음성 채널 퇴장 (5분간 활동 없으면 자동 퇴장) |
+
+유튜브 쪽 재생 오류는 스킵하지 않고 자동 재시도합니다. 영상 자체가 재생 불가(연령제한 등)인 경우에만 사유를 안내하고 다음 곡으로 넘어갑니다.
 
 ---
 
@@ -76,8 +78,8 @@ Google Gemini 기반. 단발성 질문과 멀티턴 대화 모두 지원합니�
 
 | 명령어 | 설명 |
 |--------|------|
-| `!g <질문>` | 단발성 질문 (별칭: `!ai`) |
-| `!c` | 멀티턴 챗봇 스레드 시작 (최대 10회, 별칭: `!chat`) |
+| `!AI 질문 <질문>` | 단발성 질문 |
+| `!AI 대화` | 멀티턴 대화 (최대 30턴) |
 
 ---
 
@@ -104,21 +106,60 @@ Riot API 연동. 소환사 이름으로 프로필과 최근 전적을 조회합�
 
 ---
 
+### 🕹️ 오버워치
+OverFast API 연동. 별도 API 키 없이 배틀태그로 프로필을 조회합니다.
+
+| 명령어 | 설명 |
+|--------|------|
+| `!오버워치 프로필` | 프로필 확인 |
+| `!오버워치 즐겨찾기` | 즐겨찾기 목록 / 추가 |
+| `!오버워치 분석` | 프로필 + AI 종합 분석 |
+| `!오버워치 영웅분석` | 상위 10개 영웅 + AI 분석 |
+
+---
+
+### 📊 서버 통계
+서버 내 채팅·통화·게임(디스코드 활동상태) 활동을 자동 집계합니다.
+
+| 명령어 | 설명 |
+|--------|------|
+| `!통계 채팅통계` | 채팅 순위 |
+| `!통계 통화통계` | 통화 순위 |
+| `!통계 유저통계` | 개인 통계 (채팅/통화량, 통화메이트, 게임 비율, 시간대별 활동) |
+| `!통계 서버전체통계` | 서버 종합 대시보드 (인기 게임, 베스트 커플 등) |
+
+통화·게임 기록은 기능이 켜진 이후부터 쌓입니다.
+
+---
+
 ## 실행
+
+인프라(DynamoDB, Lavalink, yt-cipher)는 Docker Compose로 띄우고, 봇 자체는 로컬에서 직접 실행합니다.
 
 ```bash
 # 의존성 설치
 pip install -r requirements.txt
 
+# 인프라 실행 (DynamoDB Local, Lavalink, yt-cipher)
+docker compose up -d
+
 # 환경 변수 설정 (.env)
 token=<Discord Bot 토큰>
 GEMINI_API_KEY=<Google Gemini API 키>
-DATABASE_URL=postgresql+asyncpg://<user>@<host>:<port>/<db>
-RIOT_API_KEY=<Riot API 키>  # developer.riotgames.com 에서 발급
+RIOT_API_KEY=<Riot API 키>              # developer.riotgames.com 에서 발급
+AWS_REGION=ap-northeast-2
+AWS_ACCESS_KEY_ID=dummy                 # DynamoDB Local이면 아무 값
+AWS_SECRET_ACCESS_KEY=dummy
+DYNAMODB_ENDPOINT_URL=http://localhost:8000
+LAVALINK_URI=http://localhost:2333
+LAVALINK_PASSWORD=youshallnotpass
+YT_CIPHER_TOKEN=<openssl rand -hex 16>  # yt-cipher ↔ Lavalink 인증용, 로컬/서버 아무 값이나 통일만 되면 됨
 
-# DB 마이그레이션
-alembic upgrade head
+# DynamoDB 테이블 생성 (최초 1회)
+python -m scripts.init_dynamodb
 
 # 실행
 python -m bot.main
 ```
+
+유튜브가 "봇으로 의심됨" 벽에 막힐 때 우회용 PoToken(`POT_TOKEN`/`POT_VISITOR_DATA`)이 필요할 수 있습니다 — `scripts/pot-token/generate.mjs`로 생성합니다(수명 ~12시간). 프로덕션은 `.github/workflows/refresh-pot-token.yml`이 주기적으로 재생성해 Lavalink에 재시작 없이 반영합니다.
