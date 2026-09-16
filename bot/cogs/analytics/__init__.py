@@ -476,7 +476,9 @@ class Analytics(commands.Cog):
         chat = next((s for s in all_chat if s.user_id == user_id), None)
         voice = next((s for s in all_voice if s.user_id == user_id), None)
         mates = await self._mate_rows(guild, user_id, await self._voice_pairs_live())
-        if chat is None and voice is None and not mates:
+        my_games = [g for g in await self._game_stats_live() if g.user_id == user_id]
+        games = _rank_games(my_games, limit=_TOP_GAMES)
+        if chat is None and voice is None and not mates and not games:
             return None
 
         message_rank, message_total = _rank_of(all_chat, user_id, key=lambda s: s.message_count)
@@ -494,7 +496,7 @@ class Analytics(commands.Cog):
             voice_rank=voice_rank, voice_total_users=voice_total,
             session_count=voice.session_count if voice else 0,
             chat_hourly=chat_hourly, voice_hourly=voice_hourly,
-            mates=mates,
+            mates=mates, games=games,
         )
 
     async def _best_couple(self, guild: discord.Guild) -> dict | None:

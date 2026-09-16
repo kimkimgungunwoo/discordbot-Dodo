@@ -63,7 +63,7 @@ async def render_user_stat_card(
     voice_seconds: int, voice_rank: int | None, voice_total_users: int,
     session_count: int,
     chat_hourly: list[dict] | None = None, voice_hourly: list[dict] | None = None,
-    mates: list[dict] | None = None,
+    mates: list[dict] | None = None, games: list[dict] | None = None,
 ) -> io.BytesIO:
     ctx = {
         "name": name, "avatar": avatar,
@@ -73,7 +73,7 @@ async def render_user_stat_card(
         "voice_rank": voice_rank, "voice_total_users": voice_total_users,
         "session_count": session_count,
         "chat_hourly": chat_hourly or [], "voice_hourly": voice_hourly or [],
-        "mates": mates or [],
+        "mates": mates or [], "games": games or [],
     }
     return await _render("user_stat.html", ctx, width=1200)
 
