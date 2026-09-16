@@ -5,6 +5,30 @@
 import asyncio
 from api.database import TABLE_PREFIX, _boto_session, _resource_kwargs
 
+_GUILD_SK = {
+    "KeySchema": [
+        {"AttributeName": "guild_id", "KeyType": "HASH"},
+        {"AttributeName": "sk", "KeyType": "RANGE"},
+    ],
+    "AttributeDefinitions": [
+        {"AttributeName": "guild_id", "AttributeType": "N"},
+        {"AttributeName": "sk", "AttributeType": "S"},
+    ],
+}
+
+# economy(user/attendance/게임·도박 기록/point_history)는 전부 길드 스코프 없이 전역 —
+# 여러 서버에 걸쳐 같은 지갑/전적을 쓰는 걸로 결정됨. guild_id가 붙는 건 analytics(채팅/통화/게임 통계)뿐.
+_USER_SK = {
+    "KeySchema": [
+        {"AttributeName": "user_id", "KeyType": "HASH"},
+        {"AttributeName": "sk", "KeyType": "RANGE"},
+    ],
+    "AttributeDefinitions": [
+        {"AttributeName": "user_id", "AttributeType": "N"},
+        {"AttributeName": "sk", "AttributeType": "S"},
+    ],
+}
+
 TABLES = [
     {
         "name": "user",
@@ -22,39 +46,9 @@ TABLES = [
             {"AttributeName": "attendance_date", "AttributeType": "S"},
         ],
     },
-    {
-        "name": "game_log",
-        "KeySchema": [
-            {"AttributeName": "user_id", "KeyType": "HASH"},
-            {"AttributeName": "sk", "KeyType": "RANGE"},
-        ],
-        "AttributeDefinitions": [
-            {"AttributeName": "user_id", "AttributeType": "N"},
-            {"AttributeName": "sk", "AttributeType": "S"},
-        ],
-    },
-    {
-        "name": "gamble_log",
-        "KeySchema": [
-            {"AttributeName": "user_id", "KeyType": "HASH"},
-            {"AttributeName": "sk", "KeyType": "RANGE"},
-        ],
-        "AttributeDefinitions": [
-            {"AttributeName": "user_id", "AttributeType": "N"},
-            {"AttributeName": "sk", "AttributeType": "S"},
-        ],
-    },
-    {
-        "name": "point_history",
-        "KeySchema": [
-            {"AttributeName": "user_id", "KeyType": "HASH"},
-            {"AttributeName": "sk", "KeyType": "RANGE"},
-        ],
-        "AttributeDefinitions": [
-            {"AttributeName": "user_id", "AttributeType": "N"},
-            {"AttributeName": "sk", "AttributeType": "S"},
-        ],
-    },
+    {"name": "game_log", **_USER_SK},
+    {"name": "gamble_log", **_USER_SK},
+    {"name": "point_history", **_USER_SK},
     {
         "name": "riot_favorite",
         "KeySchema": [
@@ -77,80 +71,24 @@ TABLES = [
             {"AttributeName": "player_id", "AttributeType": "S"},
         ],
     },
-    {
-        "name": "chat_stat",
-        "KeySchema": [{"AttributeName": "user_id", "KeyType": "HASH"}],
-        "AttributeDefinitions": [{"AttributeName": "user_id", "AttributeType": "N"}],
-    },
-    {
-        "name": "voice_session",
-        "KeySchema": [
-            {"AttributeName": "user_id", "KeyType": "HASH"},
-            {"AttributeName": "sk", "KeyType": "RANGE"},
-        ],
-        "AttributeDefinitions": [
-            {"AttributeName": "user_id", "AttributeType": "N"},
-            {"AttributeName": "sk", "AttributeType": "S"},
-        ],
-    },
-    {
-        "name": "voice_stat",
-        "KeySchema": [{"AttributeName": "user_id", "KeyType": "HASH"}],
-        "AttributeDefinitions": [{"AttributeName": "user_id", "AttributeType": "N"}],
-    },
+    {"name": "chat_stat", **_GUILD_SK},
+    {"name": "voice_session", **_GUILD_SK},
+    {"name": "voice_stat", **_GUILD_SK},
     {
         "name": "backfill_progress",
         "KeySchema": [{"AttributeName": "channel_id", "KeyType": "HASH"}],
         "AttributeDefinitions": [{"AttributeName": "channel_id", "AttributeType": "N"}],
     },
-    {
-        "name": "chat_hourly",
-        "KeySchema": [
-            {"AttributeName": "user_id", "KeyType": "HASH"},
-            {"AttributeName": "hour", "KeyType": "RANGE"},
-        ],
-        "AttributeDefinitions": [
-            {"AttributeName": "user_id", "AttributeType": "N"},
-            {"AttributeName": "hour", "AttributeType": "N"},
-        ],
-    },
-    {
-        "name": "voice_hourly",
-        "KeySchema": [
-            {"AttributeName": "user_id", "KeyType": "HASH"},
-            {"AttributeName": "hour", "KeyType": "RANGE"},
-        ],
-        "AttributeDefinitions": [
-            {"AttributeName": "user_id", "AttributeType": "N"},
-            {"AttributeName": "hour", "AttributeType": "N"},
-        ],
-    },
-    {
-        "name": "voice_pair",
-        "KeySchema": [{"AttributeName": "pair", "KeyType": "HASH"}],
-        "AttributeDefinitions": [{"AttributeName": "pair", "AttributeType": "S"}],
-    },
-    {
-        "name": "game_stat",
-        "KeySchema": [
-            {"AttributeName": "user_id", "KeyType": "HASH"},
-            {"AttributeName": "game_name", "KeyType": "RANGE"},
-        ],
-        "AttributeDefinitions": [
-            {"AttributeName": "user_id", "AttributeType": "N"},
-            {"AttributeName": "game_name", "AttributeType": "S"},
-        ],
-    },
+    {"name": "chat_hourly", **_GUILD_SK},
+    {"name": "voice_hourly", **_GUILD_SK},
+    {"name": "voice_pair", **_GUILD_SK},
+    {"name": "game_stat", **_GUILD_SK},
     {
         "name": "guild_config",
         "KeySchema": [{"AttributeName": "guild_id", "KeyType": "HASH"}],
         "AttributeDefinitions": [{"AttributeName": "guild_id", "AttributeType": "N"}],
     },
-    {
-        "name": "game_session",
-        "KeySchema": [{"AttributeName": "user_id", "KeyType": "HASH"}],
-        "AttributeDefinitions": [{"AttributeName": "user_id", "AttributeType": "N"}],
-    },
+    {"name": "game_session", **_GUILD_SK},
 ]
 
 
