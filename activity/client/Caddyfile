@@ -1,0 +1,22 @@
+dodobirdactivity.kro.kr {
+	# kro.kr은 공용 도메인이라 Let's Encrypt 발급 한도를 다른 kro.kr 유저와 나눠 씀 —
+	# 종종 한도가 이미 차 있을 수 있어서 ZeroSSL을 먼저 시도하고, 안 되면 Let's Encrypt로 폴백한다.
+	tls {
+		issuer acme https://acme.zerossl.com/v2/DV90 {
+			email gunwoo7179@gmail.com
+		}
+		issuer acme https://acme-v02.api.letsencrypt.org/directory {
+			email gunwoo7179@gmail.com
+		}
+	}
+	handle /api/* {
+		reverse_proxy activity-server:3001
+	}
+	handle /ws {
+		reverse_proxy activity-server:3001
+	}
+	handle {
+		root * /srv
+		file_server
+	}
+}

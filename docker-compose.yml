@@ -9,23 +9,49 @@ services:
     volumes:
       - ./dynamodb-data:/home/dynamodblocal/data
 
-  lavalink:
-    image: ghcr.io/lavalink-devs/lavalink:4
-    ports:
-      - "2333:2333"
+  # 피카츄배구 Activity — 로컬은 이미지 빌드 없이 node 베이스 이미지 + 볼륨 마운트로 바로 실행.
+  # 운영용 activity/Dockerfile(멀티스테이지 빌드)은 배포 단계에서 별도로 작성.
+  activity-client:
+    image: node:22-alpine
+    working_dir: /app
     environment:
-      LAVALINK_SERVER_PASSWORD: ${LAVALINK_PASSWORD:-youshallnotpass}
-      YOUTUBE_OAUTH_REFRESH_TOKEN: ${YOUTUBE_OAUTH_REFRESH_TOKEN:-}
-      YT_CIPHER_TOKEN: ${YT_CIPHER_TOKEN:-}
-      POT_TOKEN: ${POT_TOKEN:-}
-      POT_VISITOR_DATA: ${POT_VISITOR_DATA:-}
+      ACTIVITY_PROXY_TARGET: http://activity-server:3001
     volumes:
-      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
-    depends_on:
-      - yt-cipher
+      - ./activity/client:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev"
 
-  # 유튜브 cipher(서명) 자가 호스팅 — 오디오는 안 거치고 서명 계산만 함, 아주 가벼움.
-  yt-cipher:
-    image: ghcr.io/kikkia/yt-cipher:master
+  activity-server:
+    image: node:22-alpine
+    working_dir: /app
     environment:
-      API_TOKEN: ${YT_CIPHER_TOKEN:-}
+      ACTIVITY_INTERNAL_SECRET: ${ACTIVITY_INTERNAL_SECRET:-}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      # 봇도 같은 compose 네트워크에서 도커로 뜰 때는 host.docker.internal 대신 서비스명으로 접근.
+      BOT_INTERNAL_URL: http://bot:3002
+    volumes:
+      - ./activity/server:/app
+      - /app/node_modules
+    ports:
+      - "3001:3001"
+    command: sh -c "npm install && npm run dev"
+
+  # 봇을 컨테이너로 띄울 때용 — .env는 전부 localhost 기준이라 같은 네트워크의 서비스명으로 덮어쓴다.
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
+      ACTIVITY_SERVER_URL: http://activity-server:3001
+      BOT_INTERNAL_HOST: 0.0.0.0
+    # 이미지는 빌드 시점 스냅샷이라 소스만 고치면 컨테이너 안 코드와 어긋난다 — 소스를 그대로 덮어써서
+    # bot/core/bot.py의 기존 핫리로드(watchfiles)가 실제로 동작하게 한다.
+    volumes:
+      - .:/app
+    depends_on:
+      - dynamodb-local
+      - activity-server
+      - activity-client

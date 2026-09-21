@@ -2,7 +2,7 @@
 
 친목 서버를 위한 올인원 Discord 봇입니다.
 
-포인트 경제 시스템을 중심으로 미니게임과 도박으로 경쟁하고, 파티를 모집하고, 음악을 틀고, AI와 대화하고, 리그 오브 레전드 전적까지 조회할 수 있습니다. 서버에서 자주 하는 것들을 하나의 봇으로 해결합니다.
+포인트 경제 시스템을 중심으로 미니게임과 도박으로 경쟁하고, 파티를 모집하고, AI와 대화하고, 리그 오브 레전드 전적까지 조회할 수 있습니다. 서버에서 자주 하는 것들을 하나의 봇으로 해결합니다.
 
 ---
 
@@ -39,25 +39,6 @@
 |------|------|------|
 | 홀짝 | 1~100 주사위, 홀/짝 선택 | 승 +100% / 패 -100% |
 | 경마 | 말 3마리 중 하나에 배팅 | 1등 +150% / 2등 -50% / 3등 -100% |
-
----
-
-### 🎵 음악
-유튜브 검색 후 드롭다운으로 선택 재생. 서버 음성 채널에서 사용합니다.
-
-| 명령어 | 설명 |
-|--------|------|
-| `!음악 입장` | 현재 음성 채널에 봇 입장 |
-| `!음악 추가` | 검색창을 열어 유튜브 검색 후 선택 재생 |
-| `!음악 목록` | 현재 재생곡 + 다음 4곡 카드로 확인 |
-| `!음악 대기목록` | 전체 대기열 (페이지네이션) |
-| `!음악 제거` | 드롭다운으로 대기열 곡 제거 |
-| `!음악 정지` | 일시정지 |
-| `!음악 재생` | 일시정지한 곡 재개 |
-| `!음악 스킵` | 현재 곡 스킵 |
-| `!음악 퇴장` | 봇 음성 채널 퇴장 (5분간 활동 없으면 자동 퇴장) |
-
-유튜브 쪽 재생 오류는 스킵하지 않고 자동 재시도합니다. 영상 자체가 재생 불가(연령제한 등)인 경우에만 사유를 안내하고 다음 곡으로 넘어갑니다.
 
 ---
 
@@ -134,13 +115,13 @@ OverFast API 연동. 별도 API 키 없이 배틀태그로 프로필을 조회�
 
 ## 실행
 
-인프라(DynamoDB, Lavalink, yt-cipher)는 Docker Compose로 띄우고, 봇 자체는 로컬에서 직접 실행합니다.
+인프라(DynamoDB)는 Docker Compose로 띄우고, 봇 자체는 로컬에서 직접 실행합니다.
 
 ```bash
 # 의존성 설치
 pip install -r requirements.txt
 
-# 인프라 실행 (DynamoDB Local, Lavalink, yt-cipher)
+# 인프라 실행 (DynamoDB Local)
 docker compose up -d
 
 # 환경 변수 설정 (.env)
@@ -151,9 +132,6 @@ AWS_REGION=ap-northeast-2
 AWS_ACCESS_KEY_ID=dummy                 # DynamoDB Local이면 아무 값
 AWS_SECRET_ACCESS_KEY=dummy
 DYNAMODB_ENDPOINT_URL=http://localhost:8000
-LAVALINK_URI=http://localhost:2333
-LAVALINK_PASSWORD=youshallnotpass
-YT_CIPHER_TOKEN=<openssl rand -hex 16>  # yt-cipher ↔ Lavalink 인증용, 로컬/서버 아무 값이나 통일만 되면 됨
 
 # DynamoDB 테이블 생성 (최초 1회)
 python -m scripts.init_dynamodb
@@ -161,5 +139,3 @@ python -m scripts.init_dynamodb
 # 실행
 python -m bot.main
 ```
-
-유튜브가 "봇으로 의심됨" 벽에 막힐 때 우회용 PoToken(`POT_TOKEN`/`POT_VISITOR_DATA`)이 필요할 수 있습니다 — `scripts/pot-token/generate.mjs`로 생성합니다(수명 ~12시간). 프로덕션은 `.github/workflows/refresh-pot-token.yml`이 주기적으로 재생성해 Lavalink에 재시작 없이 반영합니다.

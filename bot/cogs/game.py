@@ -134,7 +134,15 @@ class Game(commands.Cog):
         self.bot = bot
 
     @commands.command(name="game", aliases=["게임"])
-    async def game(self, ctx: commands.Context):
+    async def game(self, ctx: commands.Context, *, _: str = ""):
+        dodovolley = self.bot.get_cog("DodoVolley")
+        if dodovolley is None:
+            await ctx.send("배구 기능을 지금 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
+            return
+        await dodovolley.select_mode(ctx)
+
+    @commands.command(name="minigame", aliases=["미니게임"])
+    async def minigame(self, ctx: commands.Context):
         await ctx.send("게임을 선택하세요", view=GameSelectView(self))
 
     async def start_cham(self, interaction: discord.Interaction):

@@ -12,43 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: PoToken 재생성
-        id: gen
-        working-directory: scripts/pot-token
-        run: |
-          npm install --no-audit --no-fund
-          node generate.mjs > token.env
-          {
-            echo "token_line<<EOF"
-            grep '^POT_TOKEN=' token.env
-            echo "EOF"
-            echo "visitor_line<<EOF"
-            grep '^POT_VISITOR_DATA=' token.env
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.LIGHTSAIL_HOST }}
           username: ${{ secrets.LIGHTSAIL_USER }}
           key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
-          envs: ENV_FILE,POT_TOKEN_LINE,POT_VISITOR_LINE
+          envs: ENV_FILE
           script: |
             cd ~/discordbot
             git fetch origin main
             git reset --hard origin/main
             [ -f .env ] && cp .env .env.bak
             printf '%s\n' "$ENV_FILE" > .env
-            grep -q '^POT_TOKEN=' .env && sed -i "s|^POT_TOKEN=.*|$POT_TOKEN_LINE|" .env || echo "$POT_TOKEN_LINE" >> .env
-            grep -q '^POT_VISITOR_DATA=' .env && sed -i "s|^POT_VISITOR_DATA=.*|$POT_VISITOR_LINE|" .env || echo "$POT_VISITOR_LINE" >> .env
-            docker compose -f docker-compose.prod.yml build bot
+            docker compose -f docker-compose.prod.yml build
             docker compose -f docker-compose.prod.yml run --rm --no-deps bot python -m scripts.init_dynamodb
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
-        env:
-          POT_TOKEN_LINE: ${{ steps.gen.outputs.token_line }}
-          POT_VISITOR_LINE: ${{ steps.gen.outputs.visitor_line }}
