@@ -18,7 +18,6 @@ logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("aiobotocore").setLevel(logging.WARNING)
 logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("aioboto3").setLevel(logging.WARNING)
-logging.getLogger("wavelink").setLevel(logging.WARNING)
 
 load_dotenv()
 token = os.getenv("token")

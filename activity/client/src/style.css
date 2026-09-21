@@ -1,0 +1,47 @@
+:root { font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; color: #303b36; background: #f8f6ed; font-synthesis: none; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, a:focus-visible { outline: 3px solid #668eac; outline-offset: 5px; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.shell { max-width: 1012px; margin: auto; padding: 8px 12px; }
+.heading { display: flex; align-items: center; justify-content: space-between; margin: 0 0 21px; }
+h1 { font-size: 30px; letter-spacing: -1.5px; margin: 0; }
+h1 span { color: #8c9282; font: 11px monospace; letter-spacing: 2px; margin-left: 15px; }
+.quiet { background: none; border: 1px solid #d6d9ca; padding: 8px 12px; font-size: 12px; color: #626d5d; }
+.arcade { border: 2px solid #303b36; box-shadow: 5px 5px 0 #dce0d0; }
+.scoreboard { min-height: 80px; padding: 13px 25px; display: flex; align-items: center; justify-content: space-between; background: #fcfaf2; border-bottom: 2px solid #303b36; }
+.competitor { display: flex; align-items: center; gap: 10px; width: 25%; font-size: 14px; font-weight: 700; }
+.competitor small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 9px monospace; color: #858e7e; margin-top: 5px; }
+.player-details { min-width: 0; }
+.player-name { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tag { flex-shrink: 0; }
+.opponent { justify-content: end; text-align: right; }
+.tag { display: grid; place-items: center; width: 34px; height: 34px; font: bold 12px monospace; border: 1px solid currentColor; }
+.orange { color: #ad663d; background: #f3e7d7; }.blue { color: #50748c; background: #e5ece9; }
+.score { display: flex; align-items: center; gap: 27px; }.score b { font: bold 36px monospace; }.score > span { font-size: 11px; text-align: center; color: #707c68; }.score small { display: block; font: 8px monospace; letter-spacing: 1px; margin-top: 6px; }
+.court { position: relative; background: #f3efdf; }
+canvas { width: 100%; height: auto; display: block; image-rendering: pixelated; }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; background: #f3efdf55; }
+.overlay[hidden] { display: none; }
+.start-card { width: min(300px, 76%); text-align: center; background: #faf7ebf5; border: 2px solid #303b36; box-shadow: 5px 5px 0 #303b3620; padding: 20px 24px 14px; }
+h2 { overflow-wrap: anywhere; font-size: 25px; line-height: 1.2; letter-spacing: -1px; margin: 0 0 20px; }
+.start-card > p { overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; color: #7e8575; margin: 10px 0; }
+.primary { display: flex; justify-content: center; align-items: center; width: 100%; border: 0; color: #fff9e9; background: #303b36; padding: 13px 17px; font-size: 14px; font-weight: bold; }
+.primary:hover { background: #4a594c; }.start-card .host-note { font-size: 9px; margin-bottom: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.guide { display: flex; justify-content: center; gap: 26px; padding: 24px 0; border-bottom: 1px solid #dadccd; }
+.guide > div { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #69765f; }.guide small { display: block; color: #99a08d; font-size: 9px; margin-top: 3px; }
+kbd { min-width: 25px; padding: 5px; border: 1px solid #d2d7c5; box-shadow: 0 2px 0 #d2d7c5; background: #fffdf5; font: 12px monospace; text-align: center; }
+.touch-controls { display: none; justify-content: space-between; margin-top: 15px; }.touch-controls div { display: flex; gap: 8px; }.touch-controls button { min-width: 54px; height: 48px; border: 1px solid #303b36; background: #e7e9dc; color: #303b36; touch-action: none; user-select: none; }
+@media (pointer: coarse) { .touch-controls { display: flex; } }
+@media (max-width: 650px) {
+  .shell { padding: 8px 12px; }.heading { margin: 0 0 14px; }h1 { font-size: 23px; }h1 span { display: block; margin: 5px 0 0; font-size: 9px; }
+  .scoreboard { padding: 10px; min-height: 65px; }.competitor { font-size: 11px; gap: 5px; }.competitor small { font-size: 7px; }.tag { width: 25px; height: 28px; }.score { gap: 12px; }.score b { font-size: 28px; }.score small { font-size: 6px; }
+  .court { min-height: 240px; display: grid; align-items: end; }.start-card { padding: 16px 20px 10px; width: 250px; }h2 { font-size: 23px; margin: 0 0 16px; }.start-card > p { font-size: 11px; }
+  .guide { flex-wrap: wrap; gap: 14px; padding: 18px 0; }
+}
+
+.connection-status { display: block; min-height: 1.5em; padding: 6px 10px; font-size: 13px; color: #4d5949; overflow-wrap: anywhere; }

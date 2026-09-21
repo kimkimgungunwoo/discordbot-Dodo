@@ -4,25 +4,27 @@ services:
     restart: unless-stopped
     env_file: .env
     depends_on:
-      - lavalink
+      - activity-server
 
-  lavalink:
-    image: ghcr.io/lavalink-devs/lavalink:4
+  activity-server:
+    build: ./activity/server
     restart: unless-stopped
-    environment:
-      LAVALINK_SERVER_PASSWORD: ${LAVALINK_PASSWORD}
-      YOUTUBE_OAUTH_REFRESH_TOKEN: ${YOUTUBE_OAUTH_REFRESH_TOKEN:-}
-      YT_CIPHER_TOKEN: ${YT_CIPHER_TOKEN:-}
-      POT_TOKEN: ${POT_TOKEN:-}
-      POT_VISITOR_DATA: ${POT_VISITOR_DATA:-}
+    env_file: .env
+
+  # 정적으로 빌드한 activity-client + Caddy(HTTPS 리버스 프록시, 인증서 자동 발급).
+  # dodobirdactivity.kro.kr의 80/443만 외부에 열려있고, bot/activity-server 내부 포트는 노출 안 됨.
+  caddy:
+    build: ./activity/client
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
     volumes:
-      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
-      - yt-cipher
+      - activity-server
 
-  # 유튜브 cipher(서명) 자가 호스팅 — 오디오는 안 거치고 서명 계산만 함, 아주 가벼움.
-  yt-cipher:
-    image: ghcr.io/kikkia/yt-cipher:master
-    restart: unless-stopped
-    environment:
-      API_TOKEN: ${YT_CIPHER_TOKEN:-}
+volumes:
+  caddy_data:
+  caddy_config:
