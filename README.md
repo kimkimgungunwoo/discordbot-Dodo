@@ -2,7 +2,7 @@
 
 친목 서버를 위한 올인원 Discord 봇입니다.
 
-포인트 경제 시스템을 중심으로 미니게임과 도박으로 경쟁하고, 파티를 모집하고, AI와 대화하고, 리그 오브 레전드 전적까지 조회할 수 있습니다. 서버에서 자주 하는 것들을 하나의 봇으로 해결합니다.
+포인트 경제 시스템을 중심으로 미니게임과 도박으로 경쟁하고, 배구 게임으로 대결하고, 파티를 모집하고, AI와 대화하고, 리그 오브 레전드 전적까지 조회할 수 있습니다. 서버에서 자주 하는 것들을 하나의 봇으로 해결합니다.
 
 ---
 
@@ -22,13 +22,25 @@
 ---
 
 ### 🎮 미니게임
-`!게임` 명령어로 드롭다운에서 선택. 승패에 따라 포인트가 변동됩니다.
+`!미니게임` 명령어로 드롭다운에서 선택. 승패에 따라 포인트가 변동됩니다.
 
 | 게임 | 규칙 | 포인트 |
 |------|------|--------|
 | 참참참 | 봇과 방향이 다르면 승리 | 승 +100P / 패 -100P |
 | 가위바위보 | 봇과 대결 | 승 +100P / 비 0P / 패 -100P |
 | 제비뽑기 | 승 60% / 패 40% | 승 +100~500P / 패 -100~700P |
+
+---
+
+### 🏐 도도새배구
+`!게임` 명령어로 봇전(난이도 선택) 또는 대결(PVP) 중 선택. 7점 선취 실시간 대전 미니게임으로, 채팅에 뜨는 링크를 눌러 Discord 계정으로 로그인하면 브라우저에서 바로 플레이합니다.
+
+| 항목 | 내용 |
+|------|------|
+| 봇전 | 쉬움 / 보통 / 어려움 / 극한 난이도 중 선택, 바로 시작 |
+| 대결 | 방장이 방을 만들면 다른 유저가 참가 후 방장이 시작 |
+| 관전 | 진행 중인 경기도 관전 가능 |
+| 재경기 | 경기 종료 후 같은 링크에서 바로 재대결(대결은 양쪽 모두 동의 필요) |
 
 ---
 
@@ -115,13 +127,13 @@ OverFast API 연동. 별도 API 키 없이 배틀태그로 프로필을 조회�
 
 ## 실행
 
-인프라(DynamoDB)는 Docker Compose로 띄우고, 봇 자체는 로컬에서 직접 실행합니다.
+인프라(DynamoDB Local, 도도새배구 Activity 서버/클라이언트)는 Docker Compose로 띄우고, 봇 자체는 로컬에서 직접 실행합니다.
 
 ```bash
 # 의존성 설치
 pip install -r requirements.txt
 
-# 인프라 실행 (DynamoDB Local)
+# 인프라 실행 (DynamoDB Local + activity-server + activity-client)
 docker compose up -d
 
 # 환경 변수 설정 (.env)
@@ -132,6 +144,15 @@ AWS_REGION=ap-northeast-2
 AWS_ACCESS_KEY_ID=dummy                 # DynamoDB Local이면 아무 값
 AWS_SECRET_ACCESS_KEY=dummy
 DYNAMODB_ENDPOINT_URL=http://localhost:8000
+
+# 도도새배구 Activity 연동 — 상세 설정은 activity/README.md 참고
+ACTIVITY_SERVER_URL=http://localhost:3001
+ACTIVITY_PUBLIC_URL=http://localhost:5173
+ACTIVITY_INTERNAL_SECRET=<openssl rand -hex 32 로 생성>
+BOT_INTERNAL_HOST=0.0.0.0
+BOT_INTERNAL_PORT=3002
+DISCORD_CLIENT_ID=<Discord Developer Portal Application ID>
+DISCORD_CLIENT_SECRET=<Discord Developer Portal OAuth2 Client Secret>
 
 # DynamoDB 테이블 생성 (최초 1회)
 python -m scripts.init_dynamodb

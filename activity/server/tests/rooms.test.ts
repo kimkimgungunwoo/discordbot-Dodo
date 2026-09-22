@@ -59,7 +59,7 @@ test("PVP needs matching player results; spectators cannot finish or take a seat
   const room = new RelayRoom(definition), host = participant("1"), guest = participant("2"), spectator = participant("3");
   for (const participant of [host, guest, spectator]) room.join(participant.peer);
   input(room, host.peer, 1); input(room, guest.peer, 1);
-  const result = { tick: 1, score: { left: 5, right: 2 } };
+  const result = { tick: 1, score: { left: 7, right: 2 } };
   room.report(spectator.peer, result); room.report(host.peer, result);
   assert.equal(room.result, null);
   room.report(guest.peer, result);
@@ -71,7 +71,7 @@ test("CPU relays host input only and a CPU victory has null winnerId", () => {
   const room = new RelayRoom({ ...definition, p2Id: null, mode: "CPU" }), host = participant("1");
   room.join(host.peer); input(room, host.peer, 1);
   assert.equal(room.history[0].right, null);
-  room.report(host.peer, { tick: 1, score: { left: 0, right: 5 } });
+  room.report(host.peer, { tick: 1, score: { left: 0, right: 7 } });
   assert.equal(room.result!.winnerId, null);
 });
 
@@ -89,8 +89,8 @@ test("mismatched results abort and rooms do not share inputs", () => {
   room.join(host.peer); room.join(guest.peer);
   input(room, host.peer, 1); input(room, guest.peer, 1);
   assert.equal(other.history.length, 0);
-  room.report(host.peer, { tick: 1, score: { left: 5, right: 2 } });
-  room.report(guest.peer, { tick: 1, score: { left: 2, right: 5 } });
+  room.report(host.peer, { tick: 1, score: { left: 7, right: 2 } });
+  room.report(guest.peer, { tick: 1, score: { left: 2, right: 7 } });
   assert.equal(room.result!.aborted, true);
 });
 
@@ -126,7 +126,7 @@ test("spectator capacity reserves both player seats and rejects duplicate specta
 test("finished rooms replay history and final result to reconnecting spectators", () => {
   const room = new RelayRoom({ ...definition, p2Id: null, mode: "CPU" });
   const host = participant("1"); room.join(host.peer); input(room, host.peer, 1);
-  room.report(host.peer, { tick: 1, score: { left: 5, right: 1 } });
+  room.report(host.peer, { tick: 1, score: { left: 7, right: 1 } });
   const pending = participant("3"); room.join(pending.peer);
   assert.equal(pending.messages.at(-1).type, "RESULT_PENDING");
   room.delivered = true;

@@ -19,5 +19,5 @@ export const MOVING_SPIKE_SPEED = 22;
 export const RECEIVE_MIN_LIFT = 12;
 export const RECEIVE_MAX_LIFT = 14;
 export const CEILING_DROP_SPEED = 1;
-export const WIN_SCORE = 5;
+export const WIN_SCORE = 7;
 export const TICK_MS = 1000 / 60;

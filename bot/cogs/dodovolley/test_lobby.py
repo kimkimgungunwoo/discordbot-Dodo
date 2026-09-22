@@ -74,7 +74,7 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
         await self.cog.action(self.room_id, "join", self.interaction(2))
         await self.cog.action(self.room_id, "start", self.interaction(1))
         self.assertEqual(self.cog.http.post.call_args.kwargs["json"]["p2Id"], "2")
-        payload = {"roomId": self.room_id, "matchId": self.room["matchId"], "winnerId": "2", "score": {"left": 1, "right": 5}}
+        payload = {"roomId": self.room_id, "matchId": self.room["matchId"], "winnerId": "2", "score": {"left": 1, "right": 7}}
         request = SimpleNamespace(headers={}, json=AsyncMock(return_value=payload))
         self.assertEqual((await self.cog.game_result(request)).status, 401)
         request.headers["Authorization"] = "Bearer " + self.cog.secret
@@ -112,7 +112,7 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
             await self.cog.cog_load()
         port = self.cog.runner.addresses[0][1]
         self.room["handoff"] = True
-        payload = {"roomId": self.room_id, "winnerId": None, "score": {"left": 0, "right": 5}}
+        payload = {"roomId": self.room_id, "winnerId": None, "score": {"left": 0, "right": 7}}
         async with aiohttp.ClientSession() as client:
             async with client.post(f"http://127.0.0.1:{port}/internal/game-results", json=payload,
                                    headers={"Authorization": "Bearer " + self.cog.secret}) as response:
@@ -159,7 +159,7 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({item.custom_id for item in LobbyView(self.cog, room["roomId"]).children},
                          {"dodo:start", "dodo:spectate", "dodo:close"})
         request = SimpleNamespace(headers={"Authorization": "Bearer " + self.cog.secret},
-            json=AsyncMock(return_value={"roomId": room["roomId"], "matchId": room["matchId"], "winnerId": "1", "score": {"left": 5, "right": 2}}))
+            json=AsyncMock(return_value={"roomId": room["roomId"], "matchId": room["matchId"], "winnerId": "1", "score": {"left": 7, "right": 2}}))
         await self.cog.game_result(request)
         await self.cog.action(room["roomId"], "start", self.interaction(1))
         self.assertEqual(self.cog.http.post.call_args.kwargs["json"]["difficulty"], "hard")
@@ -184,10 +184,10 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
             if old_payload:
                 await self.cog.game_result(SimpleNamespace(headers=headers, json=AsyncMock(return_value=old_payload)))
                 self.assertEqual(self.room["status"], "PLAYING")
-            result = {"roomId": self.room_id, "matchId": current, "winnerId": "1", "score": {"left": 5, "right": index}}
+            result = {"roomId": self.room_id, "matchId": current, "winnerId": "1", "score": {"left": 7, "right": index}}
             await self.cog.game_result(SimpleNamespace(headers=headers, json=AsyncMock(return_value=result)))
             self.assertEqual(self.room["status"], "WAITING")
-            self.assertIn(f"5 : {index}", self.room["last_result"])
+            self.assertIn(f"7 : {index}", self.room["last_result"])
             payload = {"roomId": self.room_id, "matchId": current, "hostId": "1", "p2Id": None}
             req = SimpleNamespace(headers=headers, json=AsyncMock(return_value=payload))
             response = await self.cog.game_rematch(req)

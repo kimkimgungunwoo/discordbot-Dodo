@@ -69,7 +69,7 @@ test("CPU/PVP rematches synchronize via bot, preserve difficulty and reject stal
         const players = [host, ...(guest ? [guest] : [])];
         for (const player of players) player.socket.send(JSON.stringify({ type: "INPUT", matchId: definition.matchId, tick: 1, seq: 1, input: { x: 0, y: 0, hit: false, jump: false } }));
         await until(() => host.messages.some(message => message.type === "FRAME"));
-        for (const player of players) player.socket.send(JSON.stringify({ type: "RESULT", matchId: definition.matchId, tick: 1, score: { left: 5, right: round } }));
+        for (const player of players) player.socket.send(JSON.stringify({ type: "RESULT", matchId: definition.matchId, tick: 1, score: { left: 7, right: round } }));
         await until(() => host.messages.some(message => message.type === "RESULT_PENDING"));
         const late = await connect(definition, "4"); // Can recover before bot delivery too.
         await until(() => host.messages.some(message => message.type === "FINISHED"));
