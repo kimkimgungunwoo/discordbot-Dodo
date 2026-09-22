@@ -15,6 +15,17 @@ dodobirdactivity.kro.kr {
 	handle /ws {
 		reverse_proxy activity-server:3001
 	}
+	# Discord 앱 인증(App Verification)용 공개 약관/정책 페이지 — 로그인 불필요.
+	handle /terms {
+		rewrite * /terms.html
+		root * /srv
+		file_server
+	}
+	handle /privacy {
+		rewrite * /privacy.html
+		root * /srv
+		file_server
+	}
 	handle {
 		root * /srv
 		file_server
