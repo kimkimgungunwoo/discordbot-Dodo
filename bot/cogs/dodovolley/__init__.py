@@ -82,7 +82,7 @@ class ModeView(discord.ui.View):
             except discord.HTTPException:
                 log.warning("Could not remove Dodo mode selection buttons")
         if mode == "CPU":
-            await self.cog.action(room["roomId"], "start", interaction, deferred=True)
+            await interaction.followup.send("게임을 시작했습니다. 위 방 메시지의 [배구 하러 가기] 버튼으로 들어오세요.", ephemeral=True)
         else:
             await interaction.followup.send("대결 방을 만들었습니다. 상대 참가 후 시작해주세요.", ephemeral=True)
 
@@ -99,22 +99,15 @@ class LobbyView(discord.ui.View):
         if playing:
             # PLAYING 중엔 참가/참가취소/게임시작만 숨김 — 방장이 꼬인 경기를 강제로 닫을 수 있게
             # 관전(dodo:spectate)/방닫기(dodo:close)는 그대로 남겨두고, 이 메시지를 보는 모두가
-            # (2P 포함) 직접 Activity를 열 수 있게 dodo:open을 새로 추가한다.
+            # (2P 포함) 직접 들어올 수 있게 일반 링크 버튼을 추가한다.
+            # Discord Activity(launch_activity)가 아니라 그냥 웹사이트 링크라 팀/테스터 제한이 없다.
             for item in list(self.children):
                 if item.custom_id not in ("dodo:spectate", "dodo:close"):
                     self.remove_item(item)
-            open_button = discord.ui.Button(label="Activity 열기", style=discord.ButtonStyle.primary, custom_id="dodo:open")
-            open_button.callback = self.open_activity
-            self.add_item(open_button)
-
-    async def open_activity(self, interaction: discord.Interaction):
-        try:
-            await interaction.response.launch_activity()
-        except discord.HTTPException:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "Discord 앱에서 Activities 활성화와 URL Mapping을 확인해주세요.", ephemeral=True,
-                )
+            self.add_item(discord.ui.Button(
+                label="배구 하러 가기", style=discord.ButtonStyle.link,
+                url=f"{cog.public_url}/?room={room_id}",
+            ))
 
     @discord.ui.button(label="참가", style=discord.ButtonStyle.success, custom_id="dodo:join")
     async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -150,6 +143,8 @@ class DodoVolley(commands.Cog):
         self.http: aiohttp.ClientSession | None = None
         self.secret = os.getenv("ACTIVITY_INTERNAL_SECRET", "")
         self.server_url = os.getenv("ACTIVITY_SERVER_URL", "").rstrip("/")
+        # 링크 버튼에 쓰는 공개 주소 — activity-server 내부 주소(server_url)와 다름(컨테이너 네트워크 vs 실제 도메인).
+        self.public_url = os.getenv("ACTIVITY_PUBLIC_URL", "").rstrip("/")
 
     async def cog_load(self):
         self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8))
@@ -232,7 +227,7 @@ class DodoVolley(commands.Cog):
         if not ctx.guild:
             await ctx.send("서버 채널에서 사용해주세요.")
             return
-        if not self.server_url or len(self.secret) < 32:
+        if not self.server_url or not self.public_url or len(self.secret) < 32:
             await ctx.send("Activity 서버 연결 설정이 필요합니다.")
             return
         async with self._lock_for(ctx.guild.id):
@@ -243,7 +238,16 @@ class DodoVolley(commands.Cog):
             room = dict(roomId=room_id, guildId=ctx.guild.id, channelId=ctx.channel.id, messageId=None,
                         hostId=ctx.author.id, p2Id=None, spectators=set(), status="WAITING", handoff=False, mode=mode, difficulty=difficulty, matchId=None, previousMatchId=None)
             self.rooms[room_id] = room
-            view = LobbyView(self, room_id)
+            if mode == "CPU":
+                # 대기 화면(게임 시작 버튼 등) 없이 바로 PLAYING 메시지 하나만 보낸다 —
+                # WAITING으로 먼저 보냈다가 바로 edit하면 버튼이 잠깐 깜빡여 보인다.
+                try:
+                    await self._do_handoff(room)
+                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    self.rooms.pop(room_id, None)
+                    await ctx.send("서버 응답을 확인하지 못했습니다. 다시 시도해주세요.")
+                    return
+            view = LobbyView(self, room_id, room["status"] == "PLAYING")
             try:
                 message = await ctx.send(embed=self.embed(room), view=view)
             except Exception:
@@ -252,7 +256,8 @@ class DodoVolley(commands.Cog):
                 raise
             room["messageId"] = message.id
             self.views[room_id] = view
-            self.room_tasks[room_id] = asyncio.create_task(self._room_alarm(room_id))
+            if room["status"] == "WAITING":
+                self.room_tasks[room_id] = asyncio.create_task(self._room_alarm(room_id))
             return room
 
     async def edit_room(self, room, *, closed: str | None = None):
@@ -315,7 +320,7 @@ class DodoVolley(commands.Cog):
             user_id = interaction.user.id
             if action == "spectate":
                 room["spectators"].add(user_id)
-                note = "위 방 메시지의 [Activity 열기] 버튼으로 들어오세요." if room["status"] == "PLAYING" else "경기가 시작되면 위 방 메시지의 [Activity 열기] 버튼으로 들어오세요."
+                note = "위 방 메시지의 [배구 하러 가기] 버튼으로 들어오세요." if room["status"] == "PLAYING" else "경기가 시작되면 위 방 메시지의 [배구 하러 가기] 버튼으로 들어오세요."
                 await interaction.followup.send(f"관전자로 등록했습니다. {note}", ephemeral=True)
                 return
             if action in ("start", "close") and user_id != room["hostId"]:
@@ -359,9 +364,9 @@ class DodoVolley(commands.Cog):
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 await interaction.followup.send("서버 응답을 확인하지 못했습니다. 같은 시작 버튼으로 재시도하거나 방을 닫아주세요.", ephemeral=True)
                 return
-            await interaction.followup.send("게임을 시작했습니다. 위 방 메시지의 [Activity 열기] 버튼으로 들어오세요.", ephemeral=True)
+            await interaction.followup.send("게임을 시작했습니다. 위 방 메시지의 [배구 하러 가기] 버튼으로 들어오세요.", ephemeral=True)
 
-    async def handoff_room(self, room):
+    async def _do_handoff(self, room):
         if not room["handoff"]:
             room["previousMatchId"] = room["matchId"]
             room["matchId"] = uuid.uuid4().hex
@@ -376,6 +381,9 @@ class DodoVolley(commands.Cog):
                 raise aiohttp.ClientError("Handoff rejected")
             await response.json()
         room["status"] = "PLAYING"
+
+    async def handoff_room(self, room):
+        await self._do_handoff(room)
         task = self.room_tasks.pop(room["roomId"], None)
         if task:
             task.cancel()

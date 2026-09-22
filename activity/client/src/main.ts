@@ -8,7 +8,8 @@ import { PracticeSession, type GameSession } from "./session";
 import { connectActivity } from "./discord-session";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
-const embedded = new URLSearchParams(location.search).has("frame_id") || new URLSearchParams(location.search).get("mode") === "online";
+const params = new URLSearchParams(location.search);
+const embedded = params.has("room") || params.has("code") || sessionStorage.getItem("dodo:room") !== null;
 let session: GameSession;
 try {
   if (embedded) app.textContent = "Discord 연결 중";
