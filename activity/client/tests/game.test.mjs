@@ -16,7 +16,7 @@ for (const name of ["game/constants", "game/types", "game/physics", "game/ai", "
 const require = createRequire(import.meta.url);
 const { createInitialState, step, EMPTY_INPUT } = require(join(directory, "game/physics.js"));
 const { PracticeSession } = require(join(directory, "session.js"));
-const { BALL_RADIUS, GROUND_Y, NET_TOP_Y, RECEIVE_MAX_LIFT } = require(join(directory, "game/constants.js"));
+const { BALL_RADIUS, GROUND_Y, NET_TOP_Y, RECEIVE_MAX_LIFT, WIN_SCORE } = require(join(directory, "game/constants.js"));
 after(() => rmSync(directory, { recursive: true, force: true }));
 function playing() { const state = createInitialState(0); state.phase = "playing"; return state; }
 function freeze(value) {
@@ -128,12 +128,12 @@ test("net top bounces upward and center impacts stay finite", () => {
   assert.ok(state.ball.yVelocity < 0); assert.equal(state.ball.y, NET_TOP_Y - GROUND_Y - BALL_RADIUS);
 });
 test("ground contact uses ball radius and awards exactly one winning point", () => {
-  const initial = playing(); initial.right.score = 4;
+  const initial = playing(); initial.right.score = WIN_SCORE - 1;
   initial.ball = { ...initial.ball, x: 70, y: -BALL_RADIUS - 1, yVelocity: 3 };
   const state = step(initial, EMPTY_INPUT, EMPTY_INPUT);
   assert.equal(state.phase, "gameover"); assert.equal(state.winner, "right");
   const next = step(state, EMPTY_INPUT, EMPTY_INPUT);
-  assert.equal(next.right.score, 5); assert.equal(next.events.length, 0);
+  assert.equal(next.right.score, WIN_SCORE); assert.equal(next.events.length, 0);
   assert.ok(next.right.ticksInState > state.right.ticksInState);
 });
 test("ordinary returns have a compact arc without ceiling contact", () => {
@@ -182,7 +182,7 @@ test("only the host can start and rematch resets the match", () => {
   assert.equal(session.requestStart("visitor"), false);
   assert.equal(session.requestStart("local"), true);
   assert.equal(session.requestStart("local"), false);
-  session.state.phase = "gameover"; session.state.left.score = 5;
+  session.state.phase = "gameover"; session.state.left.score = WIN_SCORE;
   assert.equal(session.requestStart("visitor"), false);
   assert.equal(session.requestStart("local"), true);
   assert.equal(session.state.left.score, 0); assert.equal(session.matchId, 2);

@@ -24,11 +24,11 @@ app.innerHTML = `
     <section class="arcade" aria-label="도도새배구 게임">
       <div class="scoreboard">
         <div class="competitor"><span class="tag orange">1P</span><div class="player-details"><span id="left-name" class="player-name"></span><small id="left-role"></small></div></div>
-        <div class="score"><b id="left-score">0</b><span>5점 선취<small id="phase">READY TO PLAY</small></span><b id="right-score">0</b></div>
+        <div class="score"><b id="left-score">0</b><span>7점 선취<small id="phase">READY TO PLAY</small></span><b id="right-score">0</b></div>
         <div class="competitor opponent"><div class="player-details"><span id="right-name" class="player-name"></span><small id="right-role"></small></div><span class="tag blue" id="right-tag">AI</span></div>
       </div>
       <div class="court">
-        <canvas id="game" width="960" height="480" aria-label="왼쪽 도도새를 조작해 5점을 먼저 획득하세요"></canvas>
+        <canvas id="game" width="960" height="480" aria-label="왼쪽 도도새를 조작해 7점을 먼저 획득하세요"></canvas>
         <div id="overlay" class="overlay">
           <div class="start-card">
             <h2 id="card-title">게임 대기</h2>
@@ -153,10 +153,10 @@ function frame(now: number) {
       audio.play(session.consumeEvents());
     }
     updateUi();
-    render(ctx, sprites, session.state, !session.started);
+    render(ctx, sprites, session.state, !session.started, session.info.players.right.isCpu);
   }
   requestAnimationFrame(frame);
 }
 updateUi();
-render(ctx, sprites, session.state, true);
+render(ctx, sprites, session.state, true, session.info.players.right.isCpu);
 requestAnimationFrame(frame);

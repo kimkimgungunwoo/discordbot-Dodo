@@ -15,6 +15,8 @@ log = logging.getLogger(__name__)
 
 
 DIFFICULTIES = {"easy": "쉬움", "normal": "보통", "hard": "어려움", "extreme": "극한"}
+# activity/client의 game/constants.ts WIN_SCORE와 반드시 같은 값이어야 한다.
+WIN_SCORE = 7
 
 
 class ModeView(discord.ui.View):
@@ -441,10 +443,10 @@ class DodoVolley(commands.Cog):
                     return web.json_response({"error": "Invalid score"}, status=400)
                 left, right = score.get("left"), score.get("right")
                 if type(left) is not int or type(right) is not int or not (
-                    (left == 5 and 0 <= right < 5) or (right == 5 and 0 <= left < 5)
+                    (left == WIN_SCORE and 0 <= right < WIN_SCORE) or (right == WIN_SCORE and 0 <= left < WIN_SCORE)
                 ):
                     return web.json_response({"error": "Invalid score"}, status=400)
-                expected = str(room["hostId"]) if left == 5 else str(room["p2Id"]) if room["p2Id"] else None
+                expected = str(room["hostId"]) if left == WIN_SCORE else str(room["p2Id"]) if room["p2Id"] else None
                 if payload.get("winnerId") != expected:
                     return web.json_response({"error": "Invalid winner"}, status=400)
                 winner = f"<@{expected}>" if expected else "CPU"

@@ -45,7 +45,7 @@ function player(ctx: CanvasRenderingContext2D, sprites: SpriteMap, subject: Play
   ctx.drawImage(sprites[key], -60, -96, 120, 96);
   ctx.restore();
 }
-export function render(ctx: CanvasRenderingContext2D, sprites: SpriteMap, state: GameState, preview = false) {
+export function render(ctx: CanvasRenderingContext2D, sprites: SpriteMap, state: GameState, preview = false, rightIsCpu = false) {
   ctx.imageSmoothingEnabled = false;
   background(ctx);
   rect(ctx, INK, NET_X - NET_HALF_WIDTH, NET_TOP_Y, NET_HALF_WIDTH * 2, GROUND_Y - NET_TOP_Y);
@@ -73,6 +73,6 @@ export function render(ctx: CanvasRenderingContext2D, sprites: SpriteMap, state:
     if (state.phase === "countdown") {
       label(ctx, String(Math.ceil(state.phaseTicks / 60)), 480, 198, 66);
     }
-    if (state.phase === "point") label(ctx, state.server === "right" ? "1P POINT!" : "CPU POINT!", 480, 160, 30);
+    if (state.phase === "point") label(ctx, state.server === "right" ? "1P POINT!" : (rightIsCpu ? "CPU POINT!" : "2P POINT!"), 480, 160, 30);
   }
 }

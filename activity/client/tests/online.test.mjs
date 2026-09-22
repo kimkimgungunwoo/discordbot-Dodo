@@ -48,7 +48,7 @@ test("two players and a late spectator reproduce identical PVP states", () => {
   ready(host.socket); ready(guest.socket);
   let expected = createInitialState(42);
   const history = [];
-  for (let tick = 1; tick <= 800 && expected.phase !== "gameover"; tick++) {
+  for (let tick = 1; tick <= 2000 && expected.phase !== "gameover"; tick++) {
     const frame = { tick, left: { ...EMPTY_INPUT, x: tick % 3 - 1, hit: tick % 11 === 0 }, right: { ...EMPTY_INPUT, jump: tick % 30 === 0 } };
     history.push(frame); expected = step(expected, frame.left, frame.right);
     for (const player of [host, guest]) { player.socket.receive({ type: "FRAME", frame }); player.session.advance(EMPTY_INPUT); }

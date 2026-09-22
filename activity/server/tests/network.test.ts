@@ -67,7 +67,7 @@ test("HTTP handoff, verified WS roles, relay, history, callback retry and deleti
     await until(() => spectator.messages.some(message => message.type === "CAUGHT_UP"));
     assert.equal(spectator.messages[0].role, "spectator");
     assert.equal(spectator.messages.find(message => message.type === "HISTORY").frames.length, 1);
-    const result = { type: "RESULT", tick: 1, score: { left: 5, right: 2 } };
+    const result = { type: "RESULT", tick: 1, score: { left: 7, right: 2 } };
     host.socket.send(JSON.stringify(result)); guest.socket.send(JSON.stringify(result));
     await until(() => host.messages.some(message => message.type === "FINISHED"), 12000);
     assert.equal(results.length, 2);

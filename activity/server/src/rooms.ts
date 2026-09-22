@@ -1,5 +1,8 @@
 import { randomInt, randomUUID } from "node:crypto";
 
+// 클라이언트 game/constants.ts의 WIN_SCORE와 반드시 같은 값이어야 한다.
+const WIN_SCORE = 7;
+
 export interface Input { x: -1 | 0 | 1; y: -1 | 0 | 1; jump: boolean; hit: boolean }
 export interface Definition { matchId?: string; roomId: string; guildId: string; hostId: string; p2Id: string | null; mode: "CPU" | "PVP"; difficulty?: "easy" | "normal" | "hard" | "extreme" }
 export interface Frame { tick: number; left: Input; right: Input | null }
@@ -89,7 +92,7 @@ export class RelayRoom {
     if (this.role(peer.id) === "spectator" || this.result) return;
     const score = message.score;
     if (!score || ![score.left, score.right].every(Number.isInteger) ||
-      !((score.left === 5 && score.right >= 0 && score.right < 5) || (score.right === 5 && score.left >= 0 && score.left < 5)) ||
+      !((score.left === WIN_SCORE && score.right >= 0 && score.right < WIN_SCORE) || (score.right === WIN_SCORE && score.left >= 0 && score.left < WIN_SCORE)) ||
       !Number.isSafeInteger(message.tick) || message.tick < 1 || message.tick > this.history.length) throw new Error("잘못된 경기 결과입니다.");
     const report = JSON.stringify({ tick: message.tick, left: score.left, right: score.right });
     this.reports.set(peer.id, report);
@@ -98,7 +101,7 @@ export class RelayRoom {
     if (this.definition.p2Id && host !== this.reports.get(this.definition.p2Id)) {
       this.abort("두 플레이어의 결과가 달라 경기를 중단했습니다."); return;
     }
-    this.result = { matchId: this.matchId, roomId: this.definition.roomId, winnerId: score.left === 5 ? this.definition.hostId : this.definition.p2Id, score: { left: score.left, right: score.right } };
+    this.result = { matchId: this.matchId, roomId: this.definition.roomId, winnerId: score.left === WIN_SCORE ? this.definition.hostId : this.definition.p2Id, score: { left: score.left, right: score.right } };
     this.finishedAt = Date.now();
     this.broadcast({ type: "RESULT_PENDING" });
   }
