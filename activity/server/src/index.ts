@@ -62,12 +62,16 @@ export const server = createServer(async (req, res) => {
       if (!clientId || !process.env.DISCORD_CLIENT_SECRET) return json(res, 503, { error: "Discord 앱 설정이 필요합니다." });
       const value = await body(req);
       if (typeof value.code !== "string" || value.code.length > 2048) return json(res, 400, { error: "Invalid OAuth code" });
+      if (typeof value.redirect_uri !== "string" || value.redirect_uri.length > 2048) return json(res, 400, { error: "Invalid redirect_uri" });
       const response = await fetch("https://discord.com/api/oauth2/token", {
-        method: "POST", body: new URLSearchParams({ client_id: clientId, client_secret: process.env.DISCORD_CLIENT_SECRET, grant_type: "authorization_code", code: value.code }),
+        method: "POST", body: new URLSearchParams({ client_id: clientId, client_secret: process.env.DISCORD_CLIENT_SECRET, grant_type: "authorization_code", code: value.code, redirect_uri: value.redirect_uri }),
         signal: AbortSignal.timeout(8000),
       });
       const token = await response.json() as any;
-      if (!response.ok || !token.access_token) return json(res, 401, { error: "Discord 인증 코드 교환에 실패했습니다." });
+      if (!response.ok || !token.access_token) {
+        console.error("[activity-server] OAuth token exchange rejected:", response.status, token, "redirect_uri sent:", value.redirect_uri);
+        return json(res, 401, { error: "Discord 인증 코드 교환에 실패했습니다." });
+      }
       return json(res, 200, { access_token: token.access_token });
     }
     if (req.method === "GET" && url.pathname === "/api/rooms") {

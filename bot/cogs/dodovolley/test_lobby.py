@@ -14,6 +14,7 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
         self.cog = DodoVolley(self.bot)
         self.cog.secret = "test-secret-" * 4
         self.cog.server_url = "http://activity-server:3001"
+        self.cog.public_url = "https://dodobirdactivity.test"
         self.cog.edit_room = AsyncMock()
         self.cog.http = MagicMock()
         self.cog.http.close = AsyncMock()
@@ -41,10 +42,13 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_buttons_and_player_permissions(self):
         self.assertEqual(len(LobbyView(self.cog, self.room_id).children), 5)
+        playing_children = LobbyView(self.cog, self.room_id, True).children
         self.assertEqual(
-            {item.custom_id for item in LobbyView(self.cog, self.room_id, True).children},
-            {"dodo:spectate", "dodo:close", "dodo:open"},
+            {item.custom_id for item in playing_children if item.custom_id},
+            {"dodo:spectate", "dodo:close"},
         )
+        link_button = next(item for item in playing_children if item.custom_id is None)
+        self.assertEqual(link_button.url, f"https://dodobirdactivity.test/?room={self.room_id}")
         await self.cog.action(self.room_id, "join", self.interaction(1))
         self.assertIsNone(self.room["p2Id"])
         await self.cog.action(self.room_id, "join", self.interaction(2))
