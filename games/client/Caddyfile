@@ -26,8 +26,10 @@ dodobirdactivity.kro.kr {
 		root * /srv
 		file_server
 	}
-	# 배구는 도메인 루트가 아니라 이 경로에 산다 — 루트는 나중에 다른 게임이 쓸 수 있게 비워둔다.
-	handle /volleyball /omok {
+	# 배구/오목은 도메인 루트가 아니라 이 경로들에 산다 — 루트는 나중에 다른 게임이 쓸 수 있게 비워둔다.
+	# handle은 경로를 하나만 받아서, 여러 경로를 한 블록에 묶으려면 named matcher가 필요하다.
+	@web-games path /volleyball /omok
+	handle @web-games {
 		rewrite * /index.html
 		root * /srv
 		file_server
