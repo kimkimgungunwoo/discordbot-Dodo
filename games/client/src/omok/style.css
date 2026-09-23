@@ -41,3 +41,6 @@
 .omok-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; color: #7b846f; font-size: 11px; margin-top: 19px; }
 @media (max-width: 650px) { .omok-shell { padding: 12px 10px; }.omok-stage { padding: 16px 12px; }.board-wrap { margin: 18px auto; padding: 10px; }.trainer { padding: 8px 12px; gap: 9px; width: 80%; }.trainer canvas { width: 60px; height: 48px; }.trainer strong { font-size: 14px; }.trainer-top { margin-bottom: 0; }.trainer-bottom { margin-top: 0; }.omok-toolbar { padding: 10px; }.omok-shell h1 { font-size: 23px; } }
 @media (prefers-reduced-motion: reduce) { .coin, .coin::after { animation: none; } }
+
+.forbidden-mark { z-index: 2; color: #a63c32; font: bold clamp(12px, 2vw, 22px) monospace; pointer-events: none; }
+.intersection.forbidden { cursor: not-allowed; }

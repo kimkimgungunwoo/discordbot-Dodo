@@ -39,8 +39,12 @@ export class RelayRoom {
       message: this.delivered ? undefined : "경기 결과 저장 중..." });
   }
   leave(peer: Peer) { this.peers.delete(peer); this.presence(); }
+  spectators() {
+    return [...this.peers].filter(peer => this.role(peer.id) === "spectator")
+      .map(peer => ({ id: peer.id, displayName: peer.name, avatarUrl: peer.avatarUrl ?? null }));
+  }
   presence() {
-    this.broadcast({ type: "PRESENCE", ready: this.ready(), committedTick: this.history.length, players: [...this.peers].filter(peer => this.role(peer.id) !== "spectator").map(peer => ({ id: peer.id, displayName: peer.name })) });
+    this.broadcast({ type: "PRESENCE", ready: this.ready(), committedTick: this.history.length, spectators: this.spectators(), players: [...this.peers].filter(peer => this.role(peer.id) !== "spectator").map(peer => ({ id: peer.id, displayName: peer.name })) });
   }
   connectionStatus() {
     if (this.result) return;

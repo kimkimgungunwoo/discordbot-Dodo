@@ -1,13 +1,12 @@
 import { randomInt } from "node:crypto";
 import { RelayRoom } from "./volleyball-room.js";
 import type { Definition, Peer } from "./protocol.js";
-import { freshBoard, place, TURN_LIMIT_MS, TOSS_MS, type Stone } from "../../shared/omok.js";
+import { freshBoard, place, legalMoves, chooseMove, TURN_LIMIT_MS, TOSS_MS, type BoardState } from "../../shared/omok.js";
 import { computeCpuMove } from "./ai-move.js";
 
-function randomLegalMove(board: Stone[]): number {
-  const empty: number[] = [];
-  board.forEach((stone, at) => { if (!stone) empty.push(at); });
-  return empty[randomInt(empty.length)];
+function randomLegalMove(state: BoardState): number {
+  const choices = legalMoves(state.board, state.turn);
+  return choices[randomInt(choices.length)];
 }
 
 export class OmokRoom extends RelayRoom {
@@ -17,13 +16,16 @@ export class OmokRoom extends RelayRoom {
   turnDeadline: number | null = null;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private turnTimer: ReturnType<typeof setTimeout> | undefined;
+  private cpuGeneration = 0;
+  private cpuPending = false;
+  private cpuController: AbortController | undefined;
   private names = new Map<string, string>();
   constructor(definition: Definition) { super(definition); }
   get turnSide() { return this.state.turn === 1 ? this.blackSide : this.blackSide === "left" ? "right" : "left"; }
   snapshot() {
     return { type: "OMOK_STATE", matchId: this.matchId, room: this.definition, state: this.state,
       blackSide: this.blackSide, startsAt: this.startsAt, turnDeadline: this.turnDeadline, ready: this.ready(), result: this.result, delivered: this.delivered,
-      players: { left: this.names.get(this.definition.hostId) ?? "1P", right: this.definition.p2Id ? this.names.get(this.definition.p2Id) ?? "2P" : "도도봇" } };
+      spectators: this.spectators(), players: { left: this.names.get(this.definition.hostId) ?? "1P", right: this.definition.p2Id ? this.names.get(this.definition.p2Id) ?? "2P" : "도도봇" } };
   }
   join(peer: Peer) {
     if ([...this.peers].some(p => p.id === peer.id)) throw new Error("이미 다른 창에서 접속 중입니다.");
@@ -34,7 +36,11 @@ export class OmokRoom extends RelayRoom {
     this.scheduleCpu(); this.scheduleTurnTimeout(); this.presence();
   }
   presence() { this.broadcast(this.snapshot()); }
-  leave(peer: Peer) { this.peers.delete(peer); this.dispose(); this.scheduleCpu(); this.scheduleTurnTimeout(); this.presence(); }
+  leave(peer: Peer) {
+    this.peers.delete(peer);
+    if (this.role(peer.id) !== "spectator") { this.dispose(); this.scheduleCpu(); this.scheduleTurnTimeout(); }
+    this.presence();
+  }
   connectionStatus() {
     if (!this.result) this.broadcast({ type: "OMOK_CONNECTION", ready: this.ready(), remainingSeconds: Math.max(0, Math.ceil((300000 - (Date.now() - this.lastActivity)) / 1000)) });
   }
@@ -58,15 +64,24 @@ export class OmokRoom extends RelayRoom {
     this.presence();
   }
   private scheduleCpu() {
-    if (this.timer || this.result || !this.ready() || this.startsAt === null || this.definition.mode !== "CPU" || this.turnSide !== "right") return;
+    if (this.timer || this.cpuPending || this.result || !this.ready() || this.startsAt === null || this.definition.mode !== "CPU" || this.turnSide !== "right") return;
     this.timer = setTimeout(() => {
       this.timer = undefined;
       if (!this.ready() || this.result) return;
-      const requestState = this.state, requestMatch = this.matchId;
-      void computeCpuMove(requestState, this.definition.difficulty!).then(move => {
-        if (this.result || this.matchId !== requestMatch || this.state !== requestState) return;
+      const requestState = this.state, requestMatch = this.matchId, generation = this.cpuGeneration;
+      this.cpuPending = true;
+      this.cpuController = new AbortController();
+      void computeCpuMove(requestState, this.definition.difficulty!, this.cpuController.signal).then(move => {
+        if (generation !== this.cpuGeneration) return;
+        this.cpuPending = false;
+        if (!this.ready() || this.result || this.matchId !== requestMatch || this.state !== requestState) return;
         this.commit(move);
-      }, () => {});
+      }).catch(() => {
+        if (generation !== this.cpuGeneration) return;
+        this.cpuPending = false;
+        if (!this.ready() || this.result || this.state !== requestState) return;
+        this.commit(chooseMove(this.state, "normal"));
+      });
     }, Math.max(500, this.startsAt - Date.now() + 500));
     this.timer.unref();
   }
@@ -78,7 +93,7 @@ export class OmokRoom extends RelayRoom {
     this.turnTimer = setTimeout(() => {
       this.turnTimer = undefined;
       if (!this.ready() || this.result) return;
-      this.commit(randomLegalMove(this.state.board));
+      this.commit(randomLegalMove(this.state));
     }, delay);
     this.turnTimer.unref();
   }
@@ -86,6 +101,8 @@ export class OmokRoom extends RelayRoom {
   report(_peer: Peer, _message: any) {}
   abort(reason: string) { this.dispose(); super.abort(reason); this.presence(); }
   dispose() {
+    this.cpuGeneration++; this.cpuPending = false;
+    this.cpuController?.abort(); this.cpuController = undefined;
     if (this.timer) clearTimeout(this.timer); this.timer = undefined;
     if (this.turnTimer) clearTimeout(this.turnTimer); this.turnTimer = undefined; this.turnDeadline = null;
   }

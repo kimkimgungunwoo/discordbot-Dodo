@@ -225,33 +225,41 @@ class Game(commands.Cog):
         if not self.server_url or not self.public_url or len(self.secret) < 32:
             await ctx.send("Activity 서버 연결 설정이 필요합니다.")
             return
-        async with self._lock_for(ctx.guild.id):
-            if any(room["hostId"] == ctx.author.id and room["guildId"] == ctx.guild.id and room.get("game", "volleyball") == game for room in self.rooms.values()):
-                await ctx.send("이미 만든 방이 있습니다. 기존 방을 이용해주세요.")
-                return
-            room_id = f"{ctx.guild.id}:{ctx.author.id}:{uuid.uuid4().hex}"
-            room = dict(game=game, roomId=room_id, guildId=ctx.guild.id, channelId=ctx.channel.id, messageId=None,
-                        hostId=ctx.author.id, p2Id=None, spectators=set(), status="WAITING", handoff=False, mode=mode, difficulty=difficulty, matchId=None, previousMatchId=None)
-            self.rooms[room_id] = room
-            if mode == "CPU":
+        async with self._lock_for(f"host:{ctx.author.id}"):
+            previous = [room for room in self.rooms.values() if room["hostId"] == ctx.author.id]
+            for old_room in previous:
+                async with self._lock_for(old_room["guildId"]):
+                    if self.rooms.get(old_room["roomId"]) is not old_room:
+                        continue
+                    if not await self.cancel_handoff(old_room):
+                        await ctx.send("기존 방을 닫지 못해 새 방을 만들지 않았습니다. 잠시 후 다시 시도해주세요.")
+                        return
+                    self.remove_room(old_room["roomId"])
+                    await self.edit_room(old_room, closed="방장이 새 방을 만들어 이전 방이 닫혔습니다.")
+            async with self._lock_for(ctx.guild.id):
+                room_id = f"{ctx.guild.id}:{ctx.author.id}:{uuid.uuid4().hex}"
+                room = dict(game=game, roomId=room_id, guildId=ctx.guild.id, channelId=ctx.channel.id, messageId=None,
+                            hostId=ctx.author.id, p2Id=None, spectators=set(), status="WAITING", handoff=False, mode=mode, difficulty=difficulty, matchId=None, previousMatchId=None)
+                self.rooms[room_id] = room
+                if mode == "CPU":
+                    try:
+                        await self._do_handoff(room)
+                    except (aiohttp.ClientError, asyncio.TimeoutError):
+                        self.rooms.pop(room_id, None)
+                        await ctx.send("서버 응답을 확인하지 못했습니다. 다시 시도해주세요.")
+                        return
+                view = LobbyView(self, room_id, room["status"] == "PLAYING")
                 try:
-                    await self._do_handoff(room)
-                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    message = await ctx.send(embed=self.embed(room), view=view)
+                except Exception:
                     self.rooms.pop(room_id, None)
-                    await ctx.send("서버 응답을 확인하지 못했습니다. 다시 시도해주세요.")
-                    return
-            view = LobbyView(self, room_id, room["status"] == "PLAYING")
-            try:
-                message = await ctx.send(embed=self.embed(room), view=view)
-            except Exception:
-                self.rooms.pop(room_id, None)
-                view.stop()
-                raise
-            room["messageId"] = message.id
-            self.views[room_id] = view
-            if room["status"] == "WAITING":
-                self.room_tasks[room_id] = asyncio.create_task(self._room_alarm(room_id))
-            return room
+                    view.stop()
+                    raise
+                room["messageId"] = message.id
+                self.views[room_id] = view
+                if room["status"] == "WAITING":
+                    self.room_tasks[room_id] = asyncio.create_task(self._room_alarm(room_id))
+                return room
 
     async def edit_room(self, room, *, closed: str | None = None):
         old = self.views.pop(room["roomId"], None)
@@ -300,16 +308,19 @@ class Game(commands.Cog):
 
     async def cancel_handoff(self, room):
         if not self.http:
-            return
+            return False
         try:
             async with self.http.delete(
                 self.server_url + "/internal/game-sessions",
                 json={"roomId": room["roomId"]},
                 headers={"Authorization": "Bearer " + self.secret},
             ) as response:
+                response.raise_for_status()
                 await response.read()
+            return True
         except (aiohttp.ClientError, asyncio.TimeoutError):
             log.warning("Game room cancellation failed; server expiry will clean it up")
+            return False
 
     async def action(self, room_id, action, interaction, *, deferred=False):
         if not deferred:

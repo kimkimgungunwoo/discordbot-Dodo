@@ -223,3 +223,23 @@ test("aborted game and stalled input are visible without waiting for gameover ph
   assert.equal(player.session.canRematch, true);
   assert.equal(player.session.message, "연결 시간 초과");
 });
+
+test("spectators receive live sounds and profile updates without sending player input", () => {
+  const { session, socket } = connect("spectator", "CPU");
+  ready(socket);
+  const spectators = [{ id: "3", displayName: "관전자", avatarUrl: "https://cdn.discordapp.com/embed/avatars/0.png" }];
+  socket.receive({ type: "PRESENCE", ready: true, committedTick: 0, players: [], spectators });
+  assert.deepEqual(session.info.spectators, spectators);
+  let state = createInitialState(42), events = [];
+  for (let tick = 1; tick <= 600; tick++) {
+    const frame = { tick, left: { ...EMPTY_INPUT, jump: tick % 40 === 0 }, right: null };
+    state = step(state, frame.left, computeAiInput(state, state.right));
+    events.push(...state.events);
+    socket.receive({ type: "FRAME", frame }); session.advance(EMPTY_INPUT);
+  }
+  assert.ok(events.length > 0);
+  assert.deepEqual(session.consumeEvents(), events);
+  assert.equal(socket.sent.some(m => m.type === "INPUT" || m.type === "RESULT"), false);
+  socket.receive({ type: "PRESENCE", ready: true, committedTick: 600, players: [], spectators: [] });
+  assert.deepEqual(session.info.spectators, []);
+});

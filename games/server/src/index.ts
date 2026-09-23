@@ -167,7 +167,9 @@ wss.on("connection", socket => {
         if (socket.readyState !== WebSocket.OPEN) return;
         if (rooms.get(message.roomId) !== target) { send({ type: "MATCH_REPLACED" }); socket.close(1000); return; }
         room = target;
-        const candidate: Peer = { id: user.id, name: guildMember.nick || user.name, send };
+        const guildAvatar = typeof guildMember.avatar === "string" && /^[a-zA-Z0-9_]+$/.test(guildMember.avatar) ? guildMember.avatar : null;
+        const candidate: Peer = { id: user.id, name: guildMember.nick || user.name,
+          avatarUrl: guildAvatar ? `https://cdn.discordapp.com/guilds/${room.definition.guildId}/users/${user.id}/avatars/${guildAvatar}.png?size=64` : user.avatarUrl, send };
         room.join(candidate); peer = candidate; clearTimeout(timeout);
         return;
       }

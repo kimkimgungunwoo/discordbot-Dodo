@@ -3,6 +3,7 @@ import type { GameEvent } from "../volleyball/types";
 export class GameAudio {
   private context: AudioContext | null = null;
   muted = false;
+  get active() { return this.context?.state === "running"; }
   async unlock() {
     try {
       this.context ??= new AudioContext();

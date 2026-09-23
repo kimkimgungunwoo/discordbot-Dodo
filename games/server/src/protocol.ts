@@ -3,7 +3,7 @@ export interface Input { x: -1 | 0 | 1; y: -1 | 0 | 1; jump: boolean; hit: boole
 export interface Definition { game?: "volleyball" | "omok"; matchId?: string; roomId: string; guildId: string; hostId: string; p2Id: string | null; mode: "CPU" | "PVP"; difficulty?: Difficulty }
 export interface Frame { tick: number; left: Input; right: Input | null }
 export interface Result { matchId: string; reason?: string; roomId: string; winnerId: string | null; score: { left: number; right: number }; aborted?: boolean; winnerSide?: "left" | "right" | "draw" }
-export interface Peer { id: string; name: string; send: (message: unknown) => void }
+export interface Peer { id: string; name: string; avatarUrl?: string; send: (message: unknown) => void }
 export function validInput(input: any): input is Input {
   return input && [-1, 0, 1].includes(input.x) && [-1, 0, 1].includes(input.y) && typeof input.jump === "boolean" && typeof input.hit === "boolean";
 }

@@ -3,6 +3,8 @@ import { TICK_MS } from "./constants";
 import { bindTouchControls, clearInput, readKeyboardInput } from "./input";
 import { loadSprites } from "../common/sprites";
 import { render } from "./render";
+import { bindSoundControl } from "../common/sound-control";
+import { createSpectatorBar } from "../common/spectators";
 import { GameAudio } from "../common/audio";
 import { PracticeSession, type GameSession } from "./session";
 import { OnlineSession } from "./online-session";
@@ -90,19 +92,12 @@ start.addEventListener("click", requestStart);
 window.addEventListener("keydown", event => {
   if (event.code === "Enter" && !event.repeat && event.target !== start && event.target !== sound) requestStart();
 });
-sound.addEventListener("click", () => {
-  audio.muted = !audio.muted;
-  sound.textContent = audio.muted ? "소리 꺼짐 ♩" : "소리 켜짐 ♪";
-  sound.setAttribute("aria-pressed", String(audio.muted));
-  if (!audio.muted) void audio.unlock();
-});
+bindSoundControl(audio, sound);
+const renderSpectators = createSpectatorBar(document.querySelector<HTMLElement>(".arcade")!);
 bindTouchControls(app);
-if (session.info.mode === "online") {
-  app.addEventListener("pointerdown", () => { void audio.unlock(); }, { once: true });
-  window.addEventListener("keydown", () => { void audio.unlock(); }, { once: true });
-}
 document.addEventListener("visibilitychange", () => { accumulator = 0; last = performance.now(); });
 function updateUi() {
+  renderSpectators(session.info.spectators ?? [], session.info.mode === "online");
   const state = session.state;
   for (const side of ["left", "right"] as const) {
     const participant = session.info.players[side];
