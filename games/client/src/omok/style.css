@@ -1,0 +1,41 @@
+.omok-shell { max-width: 900px; padding: 16px 14px 24px; }
+.omok-shell .heading { margin-bottom: 18px; }
+.omok-stage { position: relative; padding: 18px 24px; background: #f1eedf; overflow: hidden; }
+.turn-timer { position: relative; z-index: 1; text-align: center; font: bold 13px monospace; color: #b23b2e; background: #fbe7e2; border: 1px solid #d98d7f; padding: 6px 10px; margin: 10px auto 0; width: fit-content; }
+.omok-stage::before { content: ''; position: absolute; inset: 0; opacity: .3; pointer-events: none; background-image: radial-gradient(#abb39b 1px, transparent 1px); background-size: 16px 16px; }
+.trainer { position: relative; display: flex; align-items: center; gap: 12px; width: min(290px, 80%); background: #fcfaf2; border: 2px solid #303b36; padding: 8px 14px; box-shadow: 5px 5px 0 #d2d8c5; z-index: 1; }
+.trainer-top { border-left: 6px solid #d18152; margin-bottom: 16px; }
+.trainer-bottom { border-right: 6px solid #668eac; margin: 16px 0 0 auto; flex-direction: row-reverse; text-align: right; }
+.trainer.active { box-shadow: 5px 5px 0 #d18152; }
+.trainer-bottom.active { box-shadow: 5px 5px 0 #668eac; }
+.trainer canvas { width: 64px; height: 51px; flex-shrink: 0; }
+.trainer-text { min-width: 0; flex: 1; }
+.trainer strong { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trainer small { display: block; color: #6c7762; font-size: 10px; margin-top: 7px; }
+.trainer .turn-meter { height: 5px; background: #e1e5d6; margin-top: 10px; overflow: hidden; }
+.turn-meter-fill { height: 100%; width: 100%; background: transparent; }
+.trainer.active .turn-meter-fill { background: #d18152; }.trainer-bottom.active .turn-meter-fill { background: #668eac; }
+.board-wrap { position: relative; width: min(100%, 500px); margin: 10px auto; padding: 16px; background: #daca9f; border: 3px solid #59614c; box-shadow: 7px 7px 0 #303b361a; }
+.omok-board { position: relative; display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); grid-template-rows: repeat(15, minmax(0, 1fr)); aspect-ratio: 1; }
+.omok-board::before { content: ''; position: absolute; inset: calc(100% / 30); background: linear-gradient(to right, #807d60 1px, transparent 1px), linear-gradient(to bottom, #807d60 1px, transparent 1px); background-size: calc(100% / 14) calc(100% / 14); border-right: 1px solid #807d60; border-bottom: 1px solid #807d60; pointer-events: none; }
+.intersection { position: relative; display: grid; place-items: center; border: 0; padding: 0; background: transparent; min-width: 0; color: #303b36; touch-action: manipulation; }
+.intersection.star::after { content: ''; position: absolute; width: 5px; height: 5px; background: #66694e; border-radius: 50%; }
+.stone { position: relative; width: 86%; aspect-ratio: 1; border-radius: 50%; z-index: 1; box-shadow: 1px 3px 2px #303b3640; }
+.stone.black { background: radial-gradient(circle at 35% 28%, #5e6861, #26322c 70%); border: 1px solid #26322c; }
+.stone.white { background: radial-gradient(circle at 35% 28%, #fffef6, #e1ddcb 80%); border: 1px solid #aaa991; }
+.intersection.last .stone::after { content: ''; position: absolute; inset: 38%; border: 2px solid #d18152; }
+.intersection.winning .stone { outline: 3px solid #c9814d; outline-offset: 1px; }
+.intersection:hover .ghost { opacity: .45; }.ghost { opacity: 0; box-shadow: none; }
+.omok-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 13px 18px; border-bottom: 2px solid #303b36; background: #fcfaf2; font-size: 12px; }
+.omok-toolbar strong { margin-right: auto; }.omok-toolbar select { font: inherit; color: inherit; padding: 5px; background: #f8f6ed; border: 1px solid #b5bcaa; }
+.omok-status { position: relative; min-height: 45px; padding: 14px 18px; font-size: 13px; background: #fcfaf2; border-top: 2px solid #303b36; }
+.omok-overlay { z-index: 3; background: #f3efdfbb; }
+.coin { position: relative; width: 65px; height: 65px; margin: 0 auto 16px; border-radius: 50%; background: #e4c47c; border: 5px double #887246; display: grid; place-items: center; animation: toss .4s linear infinite; }
+.coin.landed { animation: none; }
+.coin::after { content: ''; width: 24px; height: 24px; border-radius: 50%; background: #b8935a; }
+.coin.landed.red::after { background: #d18152; }
+.coin.landed.blue::after { background: #668eac; }
+@keyframes toss { to { transform: rotateY(360deg); } }
+.omok-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; color: #7b846f; font-size: 11px; margin-top: 19px; }
+@media (max-width: 650px) { .omok-shell { padding: 12px 10px; }.omok-stage { padding: 16px 12px; }.board-wrap { margin: 18px auto; padding: 10px; }.trainer { padding: 8px 12px; gap: 9px; width: 80%; }.trainer canvas { width: 60px; height: 48px; }.trainer strong { font-size: 14px; }.trainer-top { margin-bottom: 0; }.trainer-bottom { margin-top: 0; }.omok-toolbar { padding: 10px; }.omok-shell h1 { font-size: 23px; } }
+@media (prefers-reduced-motion: reduce) { .coin { animation: none; } }

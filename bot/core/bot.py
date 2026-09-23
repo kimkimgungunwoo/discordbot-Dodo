@@ -11,8 +11,8 @@ DEFAULT_PREFIX = "!"
 COGS = [
     "bot.cogs.basic",
     "bot.cogs.util",
+    "bot.cogs.minigame",
     "bot.cogs.game",
-    "bot.cogs.dodovolley",
     "bot.cogs.party",
     "bot.cogs.control",
     "bot.cogs.user",
@@ -75,7 +75,7 @@ class MyBot(commands.Bot):
                 except ValueError:
                     continue
                 # 최상위 파일(game.py)이든 서브패키지 내부 파일(riot/renderer.py)이든
-                # 항상 실제 로드된 확장자인 최상위 이름(bot.cogs.game / bot.cogs.riot)으로 귀결시킨다.
+                # 항상 실제 로드된 확장자인 최상위 이름(bot.cogs.minigame / bot.cogs.riot)으로 귀결시킨다.
                 top = rel.parts[0]
                 ext = f"bot.cogs.{Path(top).stem}"
                 if ext in self.extensions:

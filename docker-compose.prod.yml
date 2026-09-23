@@ -7,14 +7,18 @@ services:
       - activity-server
 
   activity-server:
-    build: ./activity/server
+    build:
+      context: ./games
+      dockerfile: server/Dockerfile
     restart: unless-stopped
     env_file: .env
 
   # 정적으로 빌드한 activity-client + Caddy(HTTPS 리버스 프록시, 인증서 자동 발급).
   # dodobirdactivity.kro.kr의 80/443만 외부에 열려있고, bot/activity-server 내부 포트는 노출 안 됨.
   caddy:
-    build: ./activity/client
+    build:
+      context: ./games
+      dockerfile: client/Dockerfile
     restart: unless-stopped
     ports:
       - "80:80"

@@ -17,7 +17,7 @@ CATEGORIES: dict[str, tuple[str, str]] = {
     ),
     "game": (
         "🎮 게임",
-        "`!게임` — 도도새배구(Activity) 봇전/대결 선택",
+        "`!게임 배구` / `!게임 오목` — 웹게임 봇전/대결 선택",
     ),
     "minigame": (
         "🎲 미니게임",
