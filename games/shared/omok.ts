@@ -129,8 +129,8 @@ interface Profile { radius: number; openBonus: boolean; temperature: number; sea
 const PROFILES: Record<Exclude<Difficulty, "transcendent">, Profile> = {
   easy: { radius: 1, openBonus: false, temperature: 700, search: null },
   normal: { radius: 1, openBonus: true, temperature: 150, search: { depth: 1, width: 5, budget: 180 } },
-  hard: { radius: FULL_RADIUS, openBonus: true, temperature: 0, search: { depth: 2, width: 7, budget: 1200 } },
-  extreme: { radius: FULL_RADIUS, openBonus: true, temperature: 0, search: { budgetMs: 500, width: 10, maxDepth: 8 } },
+  hard: { radius: FULL_RADIUS, openBonus: true, temperature: 0, search: { depth: 3, width: 10, budget: 6000 } },
+  extreme: { radius: FULL_RADIUS, openBonus: true, temperature: 0, search: { budgetMs: 4000, width: 14, maxDepth: 14 } },
 };
 function greedyMove(board: Stone[], stone: 1 | 2, profile: Profile, random: () => number): number {
   const options = ranked(board, stone, profile.radius, profile.openBonus);

@@ -31,7 +31,7 @@ root.innerHTML = `<main class="shell omok-shell">
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const audio = new GameAudio();
 bindSoundControl(audio, el<HTMLButtonElement>("sound"));
-const renderSpectators = createSpectatorBar(document.querySelector<HTMLElement>(".arcade")!);
+const renderSpectators = createSpectatorBar(document.querySelector<HTMLElement>(".omok-stage")!);
 let spectators: Spectator[] = [];
 const sprites = loadSprites();
 for (const side of ["left", "right"]) {

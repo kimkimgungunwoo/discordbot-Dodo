@@ -75,15 +75,27 @@ export class OmokRoom extends RelayRoom {
         if (generation !== this.cpuGeneration) return;
         this.cpuPending = false;
         if (!this.ready() || this.result || this.matchId !== requestMatch || this.state !== requestState) return;
-        this.commit(move);
+        try { this.commit(move); }
+        catch (error) {
+          console.error("[activity-server] CPU move rejected as illegal, discarding it and using a random legal move instead:", error);
+          this.commitRandomLegalMove();
+        }
       }).catch(() => {
         if (generation !== this.cpuGeneration) return;
         this.cpuPending = false;
         if (!this.ready() || this.result || this.state !== requestState) return;
-        this.commit(chooseMove(this.state, "normal"));
+        try { this.commit(chooseMove(this.state, "normal")); }
+        catch (error) {
+          console.error("[activity-server] CPU fallback move failed, using a random legal move instead:", error);
+          this.commitRandomLegalMove();
+        }
       });
     }, Math.max(500, this.startsAt - Date.now() + 500));
     this.timer.unref();
+  }
+  private commitRandomLegalMove() {
+    try { this.commit(randomLegalMove(this.state)); }
+    catch (error) { console.error("[activity-server] no legal move available for CPU turn:", error); }
   }
   private scheduleTurnTimeout(force = false) {
     if (this.turnTimer) { if (!force) return; clearTimeout(this.turnTimer); this.turnTimer = undefined; }

@@ -155,6 +155,23 @@ test("CPU starts when black, reconnect preserves coin and board", async () => {
   room.leave(host); room.join(host); assert.equal(room.blackSide, color);
   assert.equal(room.turnSide, "left"); room.dispose();
 });
+test("a CPU move rejected as illegal is discarded for a random legal move instead of crashing the room", async () => {
+  const room = new OmokRoom({ ...definition, p2Id: null, mode: "CPU", difficulty: "normal" });
+  const host = peer("1"); room.startsAt = Date.now() - 1; room.join(host);
+  const color = room.blackSide;
+  if (color === "left") room.move(host, { matchId: room.matchId, revision: 0, at: 112 });
+  const originalCommit = (room as any).commit.bind(room);
+  let attempts = 0;
+  (room as any).commit = (at: number) => {
+    attempts++;
+    if (attempts === 1) throw new Error("simulated illegal move");
+    return originalCommit(at);
+  };
+  await new Promise(resolve => setTimeout(resolve, 700));
+  assert.ok(attempts >= 2, "commit() should have been retried after the first rejection");
+  assert.equal(room.state.moves.length, color === "left" ? 2 : 1);
+  room.dispose();
+});
 test("idle turn auto-plays a random legal move on a 45s clock and keeps rescheduling", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const room = new OmokRoom({ ...definition, mode: "PVP" });
