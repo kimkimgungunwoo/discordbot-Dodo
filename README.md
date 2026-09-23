@@ -42,6 +42,9 @@
 | 관전 | 진행 중인 경기도 관전 가능 |
 | 재경기 | 경기 종료 후 같은 링크에서 바로 재대결(대결은 양쪽 모두 동의 필요) |
 
+### ⚫ 도도새오목
+`!게임 오목`으로 봇전 또는 대결을 선택합니다. 15×15 자유룰이며 동전 던지기로 흑백을 정하고 흑돌이 먼저 둡니다. 쉬움·중간·어려움·극한 AI, 관전, 재접속, 재경기를 지원합니다. `/omok`에서는 로그인 없이 연습할 수 있습니다. 실행 설정은 [웹게임 안내](games/README.md)를 참고하세요.
+
 ---
 
 ### 🎰 도박
@@ -145,7 +148,7 @@ AWS_ACCESS_KEY_ID=dummy                 # DynamoDB Local이면 아무 값
 AWS_SECRET_ACCESS_KEY=dummy
 DYNAMODB_ENDPOINT_URL=http://localhost:8000
 
-# 도도새배구 Activity 연동 — 상세 설정은 activity/README.md 참고
+# 도도새배구 연동 — 상세 설정은 games/README.md 참고
 ACTIVITY_SERVER_URL=http://localhost:3001
 ACTIVITY_PUBLIC_URL=http://localhost:5173
 ACTIVITY_INTERNAL_SECRET=<openssl rand -hex 32 로 생성>

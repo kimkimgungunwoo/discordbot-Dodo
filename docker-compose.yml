@@ -9,15 +9,16 @@ services:
     volumes:
       - ./dynamodb-data:/home/dynamodblocal/data
 
-  # 피카츄배구 Activity — 로컬은 이미지 빌드 없이 node 베이스 이미지 + 볼륨 마운트로 바로 실행.
-  # 운영용 activity/Dockerfile(멀티스테이지 빌드)은 배포 단계에서 별도로 작성.
+  # 도도새배구 등 웹 미니게임 — 로컬은 이미지 빌드 없이 node 베이스 이미지 + 볼륨 마운트로 바로 실행.
+  # 운영용 games/client/Dockerfile(멀티스테이지 빌드)은 배포 단계에서 별도로 작성.
   activity-client:
     image: node:22-alpine
     working_dir: /app
     environment:
       ACTIVITY_PROXY_TARGET: http://activity-server:3001
     volumes:
-      - ./activity/client:/app
+      - ./games/client:/app
+      - ./games/shared:/shared
       - /app/node_modules
     ports:
       - "5173:5173"
@@ -33,7 +34,8 @@ services:
       # 봇도 같은 compose 네트워크에서 도커로 뜰 때는 host.docker.internal 대신 서비스명으로 접근.
       BOT_INTERNAL_URL: http://bot:3002
     volumes:
-      - ./activity/server:/app
+      - ./games/server:/app
+      - ./games/shared:/shared
       - /app/node_modules
     ports:
       - "3001:3001"
