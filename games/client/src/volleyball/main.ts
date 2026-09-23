@@ -93,7 +93,7 @@ window.addEventListener("keydown", event => {
   if (event.code === "Enter" && !event.repeat && event.target !== start && event.target !== sound) requestStart();
 });
 bindSoundControl(audio, sound);
-const renderSpectators = createSpectatorBar(document.querySelector<HTMLElement>(".arcade")!);
+const renderSpectators = createSpectatorBar(document.querySelector<HTMLElement>(".court")!);
 bindTouchControls(app);
 document.addEventListener("visibilitychange", () => { accumulator = 0; last = performance.now(); });
 function updateUi() {

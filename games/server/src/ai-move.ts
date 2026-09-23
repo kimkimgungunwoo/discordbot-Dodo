@@ -3,7 +3,7 @@ import { availableParallelism } from "node:os";
 import { AI_RESPONSE_LIMIT_MS, TRANSCENDENT_BUDGET_MS, chooseMove, isLegalMove, type BoardState, type Difficulty } from "../../shared/omok.js";
 import { AiQueue } from "./ai-queue.js";
 
-const OFFLOAD: ReadonlySet<Difficulty> = new Set(["extreme", "transcendent"]);
+const OFFLOAD: ReadonlySet<Difficulty> = new Set(["hard", "extreme", "transcendent"]);
 const WORKER_URL = new URL("./ai-worker.ts", import.meta.url);
 const queue = new AiQueue<number>(Math.max(1, Math.min(2, availableParallelism() - 1)), AI_RESPONSE_LIMIT_MS);
 

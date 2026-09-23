@@ -46,12 +46,11 @@ kbd { min-width: 25px; padding: 5px; border: 1px solid #d2d7c5; box-shadow: 0 2p
 
 .connection-status { display: block; min-height: 1.5em; padding: 6px 10px; font-size: 13px; color: #4d5949; overflow-wrap: anywhere; }
 
-.spectator-bar { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-top: 1px solid #cdd2bf; background: #fcfaf2; font-size: 12px; }
+.spectator-bar { position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; align-items: center; gap: 5px; max-width: 130px; padding: 4px 9px; background: #fcfaf2ee; border: 1px solid #cdd2bf; border-radius: 20px; font-size: 10px; }
 .spectator-bar[hidden] { display: none; }
 .spectator-bar > strong { flex-shrink: 0; color: #6c7762; }
-.spectator-bar ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; max-height: 120px; overflow: auto; }
-.spectator-bar li { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 160px; padding: 3px 8px 3px 3px; background: #eeeede; border: 1px solid #d6dbc9; border-radius: 20px; }
-.spectator-bar li > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.spectator-avatar { position: relative; display: grid; place-items: center; width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; overflow: hidden; background: #758976; color: white; }
+.spectator-bar ul { display: flex; gap: 2px; margin: 0; padding: 0; list-style: none; overflow: hidden; }
+.spectator-bar li { display: flex; align-items: center; min-width: 0; }
+.spectator-bar li > span:last-child { display: none; }
+.spectator-avatar { position: relative; display: grid; place-items: center; width: 16px; height: 16px; flex-shrink: 0; border-radius: 50%; overflow: hidden; background: #758976; color: white; font-size: 8px; }
 .spectator-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-@media (max-width: 650px) { .spectator-bar { align-items: flex-start; padding: 10px; gap: 8px; }.spectator-bar > strong { padding-top: 8px; } }
