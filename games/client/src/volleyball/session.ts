@@ -1,3 +1,4 @@
+import type { Spectator } from "../common/spectators";
 import { computeAiInput } from "./ai";
 import { createInitialState, step } from "./physics";
 import type { GameEvent, GameState, PlayerInput, Side } from "./types";
@@ -13,6 +14,7 @@ export interface SessionInfo {
   localPlayerId: string;
   hostPlayerId: string;
   ready: boolean;
+  spectators?: Spectator[];
   players: Record<Side, Participant>;
 }
 export interface GameSession {

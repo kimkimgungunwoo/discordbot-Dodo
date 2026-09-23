@@ -57,7 +57,7 @@ export class OnlineSession implements GameSession {
         if (message.type === "GAME_START") {
           this.serverMatchId = message.matchId ?? message.room.matchId ?? "";
           this.matchId++;
-          this.info.ready = false;
+          this.info.ready = false; this.info.spectators = [];
           this.rematchError = ""; this.retryUntil = 0; this.terminal = false;
           this.frames.clear(); this.myInputs.clear(); this.lastOpponentInput = EMPTY_INPUT;
           this.events = []; this.reported = false; this.hydrated = false; this.completed = false; this.rematching = false;
@@ -82,6 +82,7 @@ export class OnlineSession implements GameSession {
         else if (message.type === "PRESENCE") {
           if (message.ready && !this.info.ready) this.sentTick = message.committedTick;
           this.info.ready = message.ready;
+          this.info.spectators = message.spectators ?? [];
           if (!this.completed && !this.reported) this.message = message.ready ? (this.role === "spectator" ? "관전 중" : "") : "플레이어 연결을 기다리는 중";
           for (const participant of message.players) for (const side of ["left", "right"] as const) {
             if (this.info.players[side].id === participant.id) this.info.players[side].displayName = participant.displayName;
@@ -128,7 +129,7 @@ export class OnlineSession implements GameSession {
     };
     socket.onclose = () => {
       if (this.socket !== socket) return;
-      this.info.ready = false;
+      this.info.ready = false; this.info.spectators = [];
       if (!this.terminal) {
         if (!this.completed && !this.rematchError) this.message = "연결이 끊겼습니다. 재연결 중";
         this.scheduleReconnect(1500);

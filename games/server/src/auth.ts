@@ -50,7 +50,10 @@ export async function identity(token: string, clientId: string) {
   if (typeof token !== "string" || !token || token.length > 2048 || !clientId) throw new Error("인증 토큰이 필요합니다.");
   const [authorization, user] = await Promise.all([discord("/oauth2/@me", token), discord("/users/@me", token)]);
   if (authorization.application?.id !== clientId) throw new Error("다른 앱의 인증 토큰입니다.");
-  return { id: String(user.id), name: String(user.global_name ?? user.username) };
+  const avatar = typeof user.avatar === "string" && /^[a-zA-Z0-9_]+$/.test(user.avatar) ? user.avatar : null;
+  const defaultAvatar = user.discriminator && user.discriminator !== "0" ? Number(user.discriminator) % 5 : Number((BigInt(user.id) >> 22n) % 6n);
+  return { id: String(user.id), name: String(user.global_name ?? user.username),
+    avatarUrl: avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${avatar}.png?size=64` : `https://cdn.discordapp.com/embed/avatars/${defaultAvatar}.png` };
 }
 export async function member(token: string, guildId: string) {
   if (!/^\d{1,22}$/.test(guildId)) throw new Error("잘못된 서버 ID입니다.");

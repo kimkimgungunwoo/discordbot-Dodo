@@ -20,6 +20,8 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
         self.cog.http.close = AsyncMock()
         response = AsyncMock(status=201)
         self.cog.http.post.return_value.__aenter__ = AsyncMock(return_value=response)
+        deletion = SimpleNamespace(raise_for_status=MagicMock(), read=AsyncMock())
+        self.cog.http.delete.return_value.__aenter__ = AsyncMock(return_value=deletion)
         self.ctx = SimpleNamespace(guild=SimpleNamespace(id=10), author=SimpleNamespace(id=1),
                                    channel=SimpleNamespace(id=20), send=AsyncMock(return_value=SimpleNamespace(id=30)))
         await self.cog.create_room(self.ctx)
@@ -35,11 +37,48 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
                                message=AsyncMock(embeds=[]))
 
     async def test_single_room_per_host_and_independent_hosts(self):
-        await self.cog.create_room(self.ctx)
+        old_task = self.cog.room_tasks[self.room_id]
+        replacement = await self.cog.create_room(self.ctx)
         self.assertEqual(len(self.cog.rooms), 1)
+        self.assertNotEqual(replacement["roomId"], self.room_id)
+        self.assertNotIn(self.room_id, self.cog.rooms)
+        self.assertTrue(old_task.cancelling())
+        self.cog.edit_room.assert_awaited_once_with(self.room, closed="방장이 새 방을 만들어 이전 방이 닫혔습니다.")
+        self.cog.http.delete.assert_called_once()
         self.ctx.author.id = 2
         await self.cog.create_room(self.ctx)
         self.assertEqual(len(self.cog.rooms), 2)
+
+    async def test_new_room_closes_playing_room_across_games_and_guilds(self):
+        self.room.update(mode="CPU")
+        await self.cog.action(self.room_id, "start", self.interaction(1))
+        self.ctx.guild.id = 11
+        replacement = await self.cog.create_room(self.ctx, game="omok", mode="CPU")
+        self.assertEqual(list(self.cog.rooms), [replacement["roomId"]])
+        self.assertEqual(replacement["status"], "PLAYING")
+        self.assertEqual(self.cog.http.delete.call_args.kwargs["json"], {"roomId": self.room_id})
+        self.cog.edit_room.assert_awaited_with(self.room, closed="방장이 새 방을 만들어 이전 방이 닫혔습니다.")
+        stale = self.interaction(1)
+        await self.cog.action(self.room_id, "start", stale)
+        stale.followup.send.assert_awaited_once_with("종료된 방입니다.", ephemeral=True)
+
+    async def test_concurrent_room_creation_keeps_only_latest_room(self):
+        other_ctx = SimpleNamespace(guild=SimpleNamespace(id=11), author=self.ctx.author,
+                                    channel=self.ctx.channel, send=AsyncMock(return_value=SimpleNamespace(id=31)))
+        first, last = await asyncio.gather(self.cog.create_room(self.ctx), self.cog.create_room(other_ctx, game="omok"))
+        self.assertEqual(list(self.cog.rooms), [last["roomId"]])
+        self.assertNotIn(first["roomId"], self.cog.room_tasks)
+        self.assertEqual(self.cog.http.delete.call_count, 2)
+
+    async def test_failed_old_room_cancellation_does_not_create_a_second_room(self):
+        self.room.update(status="PLAYING", handoff=True)
+        self.cog.http.delete.return_value.__aenter__.side_effect = aiohttp.ClientError("offline")
+        replacement = await self.cog.create_room(self.ctx, game="omok")
+        self.assertIsNone(replacement)
+        self.assertEqual(list(self.cog.rooms), [self.room_id])
+        self.cog.http.post.assert_not_called()
+        self.cog.edit_room.assert_not_awaited()
+        self.ctx.send.assert_awaited_with("기존 방을 닫지 못해 새 방을 만들지 않았습니다. 잠시 후 다시 시도해주세요.")
 
     async def test_buttons_and_player_permissions(self):
         self.assertEqual(len(LobbyView(self.cog, self.room_id).children), 5)

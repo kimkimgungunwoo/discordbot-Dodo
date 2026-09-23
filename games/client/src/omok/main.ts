@@ -1,7 +1,9 @@
 import "../style.css";
 import "./style.css";
-import { freshBoard, place, chooseMove, LABELS, TURN_LIMIT_MS, TOSS_MS, type BoardState, type Difficulty } from "../../../shared/omok";
+import { freshBoard, place, chooseMove, forbiddenMove, isLegalMove, legalMoves, AI_RESPONSE_LIMIT_MS, LABELS, TURN_LIMIT_MS, TOSS_MS, type BoardState, type Difficulty } from "../../../shared/omok";
 import { loadSprites } from "../common/sprites";
+import { bindSoundControl } from "../common/sound-control";
+import { createSpectatorBar, type Spectator } from "../common/spectators";
 import { GameAudio } from "../common/audio";
 import { authenticate } from "../discord-session";
 
@@ -16,7 +18,7 @@ catch (error) { root.textContent = (error as Error).message; throw error; }
 root.innerHTML = `<main class="shell omok-shell">
   <section class="heading"><h1>도도새오목<span>DODO GOMOKU</span></h1><button id="sound" class="quiet" aria-pressed="false">소리 켜짐 ♪</button></section>
   <section class="arcade" aria-label="오목 경기">
-    <div class="omok-toolbar"><strong id="mode"></strong><span>15 × 15 · 자유룰</span><label id="difficulty-label">난이도 <select id="difficulty"><option value="easy">쉬움</option><option value="normal" selected>중간</option><option value="hard">어려움</option><option value="extreme">극한</option><option value="transcendent">초월</option></select></label><span id="move-count">0수</span></div>
+    <div class="omok-toolbar"><strong id="mode"></strong><span>15 × 15 · 흑 금수 적용</span><label id="difficulty-label">난이도 <select id="difficulty"><option value="easy">쉬움</option><option value="normal" selected>중간</option><option value="hard">어려움</option><option value="extreme">극한</option><option value="transcendent">초월</option></select></label><span id="move-count">0수</span></div>
     <div class="omok-stage">
       <div class="trainer trainer-top" id="trainer-left"><canvas width="120" height="96" id="portrait-left" aria-hidden="true"></canvas><div class="trainer-text"><strong id="name-left"></strong><small id="role-left"></small><div class="turn-meter"><div class="turn-meter-fill" id="meter-left"></div></div></div></div>
       <div class="turn-timer" id="turn-timer" role="timer" hidden></div>
@@ -24,12 +26,13 @@ root.innerHTML = `<main class="shell omok-shell">
       <div class="trainer trainer-bottom" id="trainer-right"><canvas width="120" height="96" id="portrait-right" aria-hidden="true"></canvas><div class="trainer-text"><strong id="name-right"></strong><small id="role-right"></small><div class="turn-meter"><div class="turn-meter-fill" id="meter-right"></div></div></div></div>
       <div class="overlay omok-overlay" id="overlay"><div class="start-card"><div class="coin" id="coin" hidden></div><h2 id="title">한 수의 시작</h2><p id="copy">동전을 던져 흑백을 정합니다.<br>흑돌이 먼저 둡니다.</p><button class="primary" id="start">동전 던지고 시작</button></div></div>
     </div><div class="omok-status" id="status" role="status" aria-live="polite"></div>
-  </section><div class="omok-footer"><span>가로 · 세로 · 대각선 5개 이상 연결하면 승리</span><span>금수 없음 · 마지막 수는 주황 표시</span></div>
+  </section><div class="omok-footer"><span>흑은 정확히 5목 · 백은 5목 이상이면 승리</span><span>흑 33 · 44 · 장목 금수 · 마지막 수는 주황 표시</span></div>
 </main>`;
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const audio = new GameAudio();
-let muted = false;
-el("sound").onclick = () => { muted = !muted; audio.muted = muted; el("sound").textContent = muted ? "소리 꺼짐" : "소리 켜짐 ♪"; el("sound").setAttribute("aria-pressed", String(muted)); };
+bindSoundControl(audio, el<HTMLButtonElement>("sound"));
+const renderSpectators = createSpectatorBar(document.querySelector<HTMLElement>(".arcade")!);
+let spectators: Spectator[] = [];
 const sprites = loadSprites();
 for (const side of ["left", "right"]) {
   const ctx = el<HTMLCanvasElement>("portrait-" + side).getContext("2d")!;
@@ -62,6 +65,7 @@ for (let at = 0; at < 225; at++) {
 function playSound(win = false) { audio.play([{ kind: win ? "win" : "hit", side: "left", x: 0, y: 0 }]); }
 const COIN_REVEAL_MS = 2000;
 function draw() {
+  renderSpectators(spectators, online);
   const tossing = started && startsAt !== null && Date.now() < startsAt;
   const landed = tossing && startsAt !== null && startsAt - Date.now() <= COIN_REVEAL_MS;
   el("mode").textContent = online ? (role === "spectator" ? "관전" : mode === "CPU" ? "봇전" : "친구와 대결") : "혼자 연습";
@@ -75,10 +79,13 @@ function draw() {
   }
   cells.forEach((cell, at) => {
     const stone = state.board[at];
+    const forbidden = !stone && state.turn === 1 && !state.winner && !state.draw ? forbiddenMove(state.board, at) : null;
     cell.className = "intersection" + ([48, 56, 112, 168, 176].includes(at) ? " star" : "") + (state.moves.at(-1) === at ? " last" : "") + (state.line.includes(at) ? " winning" : "");
-    cell.innerHTML = stone ? `<span class="stone ${stone === 1 ? "black" : "white"}"></span>` : canPlay() ? `<span class="stone ghost ${state.turn === 1 ? "black" : "white"}"></span>` : "";
-    cell.setAttribute("aria-label", `${String.fromCharCode(65 + at % 15)}${Math.floor(at / 15) + 1}, ${stone === 1 ? "흑돌" : stone === 2 ? "백돌" : "빈칸"}`);
-    cell.setAttribute("aria-disabled", String(!canPlay() || !!stone));
+    cell.classList.toggle("forbidden", !!forbidden);
+    cell.title = forbidden ? `흑돌 ${forbidden} 금수` : "";
+    cell.innerHTML = forbidden ? `<span class="forbidden-mark" aria-hidden="true">×</span>` : stone ? `<span class="stone ${stone === 1 ? "black" : "white"}"></span>` : canPlay() ? `<span class="stone ghost ${state.turn === 1 ? "black" : "white"}"></span>` : "";
+    cell.setAttribute("aria-label", `${String.fromCharCode(65 + at % 15)}${Math.floor(at / 15) + 1}, ${stone === 1 ? "흑돌" : stone === 2 ? "백돌" : "빈칸"}${forbidden ? `, 흑돌 ${forbidden} 금수` : ""}`);
+    cell.setAttribute("aria-disabled", String(!canPlay() || !!stone || !!forbidden));
   });
   el("overlay").hidden = started && !tossing && !result && !terminal;
   el("coin").hidden = !tossing;
@@ -105,26 +112,52 @@ function finishLocal() {
     setTimeout(() => { result = outcome; delivered = true; draw(); }, RESULT_REVEAL_DELAY_MS);
   }
 }
+let cpuWorker: Worker | undefined;
 function localCpu() {
   if (localTimer) clearTimeout(localTimer);
-  if (result || turnSide() !== "right") return;
-  localTimer = setTimeout(() => { state = place(state, chooseMove(state, difficulty)); playSound(); finishLocal(); localTurnTimeout(); draw(); }, Math.max(550, (startsAt ?? 0) - Date.now() + 550));
+  if (result || state.winner || state.draw || turnSide() !== "right") return;
+  localTimer = setTimeout(() => {
+    const requestState = state;
+    const finish = (at: number) => {
+      if (state !== requestState || result) return;
+      state = place(state, at); playSound(); finishLocal(); localTurnTimeout(); draw();
+    };
+    cpuWorker?.terminate();
+    try {
+      const worker = new Worker(new URL("./ai-worker.ts", import.meta.url), { type: "module" });
+      cpuWorker = worker;
+      let best: number | undefined;
+      const timeout = setTimeout(() => fallback(), AI_RESPONSE_LIMIT_MS);
+      const cleanup = () => { clearTimeout(timeout); worker.terminate(); if (cpuWorker === worker) cpuWorker = undefined; };
+      const fallback = () => { cleanup(); if (state === requestState && !result) finish(best ?? chooseMove(requestState, "normal")); };
+      worker.onmessage = event => {
+        const { type, move } = event.data;
+        if (!isLegalMove(requestState.board, move, requestState.turn)) { fallback(); return; }
+        best = move;
+        if (type === "result") { cleanup(); finish(move); }
+      };
+      worker.onerror = fallback;
+      worker.postMessage({ state: requestState, difficulty });
+    } catch { finish(chooseMove(requestState, "normal")); }
+  }, Math.max(550, (startsAt ?? 0) - Date.now() + 550));
 }
 function localTurnTimeout() {
   if (localTurnTimer) { clearTimeout(localTurnTimer); localTurnTimer = undefined; }
-  if (result || turnSide() !== "left") { turnDeadline = null; return; }
+  if (result || state.winner || state.draw || turnSide() !== "left") { turnDeadline = null; return; }
   const delay = Math.max(0, (startsAt ?? 0) - Date.now()) + TURN_LIMIT_MS;
   turnDeadline = Date.now() + delay;
   localTurnTimer = setTimeout(() => {
     localTurnTimer = undefined;
     if (result) return;
-    const empty: number[] = []; state.board.forEach((stone, at) => { if (!stone) empty.push(at); });
+    const empty = legalMoves(state.board, state.turn);
     move(empty[Math.floor(Math.random() * empty.length)]);
   }, delay);
 }
 function move(at: number) {
   if (!canPlay() || state.board[at]) return;
   void audio.unlock(); notice = "";
+  const forbidden = state.turn === 1 ? forbiddenMove(state.board, at) : null;
+  if (forbidden) { notice = `착수:흑돌 ${forbidden} 금수입니다. 다른 곳에 착수해주세요.`; draw(); return; }
   if (online) { pending = true; socket?.send(JSON.stringify({ type: "MOVE", matchId, revision: state.moves.length, at })); }
   else { state = place(state, at); playSound(); finishLocal(); localCpu(); localTurnTimeout(); }
   draw();
@@ -153,7 +186,9 @@ function revealResult(next: any, nextDelivered: boolean) {
   if (result || resultRevealTimer) return;
   resultRevealTimer = setTimeout(() => { resultRevealTimer = undefined; result = next; draw(); }, RESULT_REVEAL_DELAY_MS);
 }
+let hasSnapshot = false;
 function connect() {
+  hasSnapshot = false;
   if (!credentials || terminal) return;
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`); socket = ws;
   ws.onopen = () => ws.send(JSON.stringify({ type: "AUTH", ...credentials }));
@@ -166,7 +201,8 @@ function connect() {
         voting = false; voteSent = false; actionError = "";
         if (resultRevealTimer) { clearTimeout(resultRevealTimer); resultRevealTimer = undefined; }
       }
-      if (matchId === message.matchId && message.state.moves.length > state.moves.length) playSound(!!message.state.winner);
+      if (hasSnapshot && matchId === message.matchId && message.state.moves.length > state.moves.length) playSound(!!message.state.winner);
+      hasSnapshot = true; spectators = message.spectators ?? [];
       state = message.state; blackSide = message.blackSide; names = message.players; startsAt = message.startsAt; turnDeadline = message.turnDeadline ?? null;
       started = startsAt !== null; ready = message.ready; matchId = message.matchId; mode = message.room.mode; difficulty = message.room.difficulty ?? "normal";
       revealResult(message.result, message.delivered); pending = false;
@@ -184,7 +220,7 @@ function connect() {
   };
   ws.onclose = () => {
     if (socket !== ws || terminal) return;
-    connected = false; pending = false; notice = "연결이 끊겼습니다. 다시 연결 중..."; draw();
+    connected = false; pending = false; spectators = []; notice = "연결이 끊겼습니다. 다시 연결 중..."; draw();
     setTimeout(connect, 1800);
   };
 }

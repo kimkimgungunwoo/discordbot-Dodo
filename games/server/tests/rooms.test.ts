@@ -147,3 +147,14 @@ test("stalled player is identified and stale match inputs cannot change the game
   room.connectionStatus();
   assert.deepEqual(host.messages.at(-1).waitingFor, ["2"]);
 });
+
+test("volleyball broadcasts only connected spectator profiles and removes departed viewers", () => {
+  const room = new RelayRoom(definition), host = participant("1"), guest = participant("2"), viewer = participant("3");
+  viewer.peer.avatarUrl = "https://cdn.discordapp.com/embed/avatars/0.png";
+  room.join(host.peer); room.join(guest.peer); room.join(viewer.peer);
+  assert.deepEqual(host.messages.at(-1).spectators, [{ id: "3", displayName: "user3", avatarUrl: viewer.peer.avatarUrl }]);
+  assert.equal(host.messages.at(-1).players.length, 2);
+  room.leave(viewer.peer);
+  assert.deepEqual(host.messages.at(-1).spectators, []);
+  assert.equal(room.ready(), true);
+});

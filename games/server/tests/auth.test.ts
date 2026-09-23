@@ -30,3 +30,17 @@ test("auth cache merges requests, isolates tokens, expires and honors rate limit
     await assert.rejects(identity("other-token", "expected-app"), /다른 앱/);
   } finally { globalThis.fetch = originalFetch; Date.now = originalNow; }
 });
+
+test("authenticated identities include Discord avatars and default avatars", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const avatar of ["avatar_hash", null]) {
+      globalThis.fetch = async url => Response.json(String(url).endsWith("/oauth2/@me")
+        ? { application: { id: "app" } }
+        : { id: "4194304", global_name: "도도새", avatar, discriminator: "0" });
+      const user = await identity("avatar-test-" + avatar, "app");
+      assert.equal(user.name, "도도새");
+      assert.equal(user.avatarUrl, avatar ? "https://cdn.discordapp.com/avatars/4194304/avatar_hash.png?size=64" : "https://cdn.discordapp.com/embed/avatars/1.png");
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
