@@ -1,5 +1,3 @@
-// 배구/오목이 공유하는 WS 방 계약(연결/입장/정의 타입). 게임별 판정 로직은
-// volleyball-room.ts(RelayRoom)/omok-room.ts(OmokRoom)에 각각 있다.
 import { DIFFICULTIES, type Difficulty } from "../../shared/omok.js";
 export interface Input { x: -1 | 0 | 1; y: -1 | 0 | 1; jump: boolean; hit: boolean }
 export interface Definition { game?: "volleyball" | "omok"; matchId?: string; roomId: string; guildId: string; hostId: string; p2Id: string | null; mode: "CPU" | "PVP"; difficulty?: Difficulty }

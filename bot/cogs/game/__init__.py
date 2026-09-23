@@ -101,10 +101,6 @@ class LobbyView(discord.ui.View):
                 if item.custom_id in ("dodo:join", "dodo:cancel"):
                     self.remove_item(item)
         if playing:
-            # PLAYING 중엔 참가/참가취소/게임시작만 숨김 — 방장이 꼬인 경기를 강제로 닫을 수 있게
-            # 관전(dodo:spectate)/방닫기(dodo:close)는 그대로 남겨두고, 이 메시지를 보는 모두가
-            # (2P 포함) 직접 들어올 수 있게 일반 링크 버튼을 추가한다.
-            # Discord Activity(launch_activity)가 아니라 그냥 웹사이트 링크라 팀/테스터 제한이 없다.
             for item in list(self.children):
                 if item.custom_id not in ("dodo:spectate", "dodo:close"):
                     self.remove_item(item)
@@ -141,13 +137,11 @@ class Game(commands.Cog):
         self.room_tasks: dict[str, asyncio.Task] = {}
         self.views: dict[str, LobbyView] = {}
         self.selection_views: set[ModeView] = set()
-        # 길드별로 잠금을 나눠서 한 길드의 느린 네트워크 호출이 다른 길드의 방 조작까지 막지 않게 한다.
         self.locks: dict[str, asyncio.Lock] = {}
         self.runner: web.AppRunner | None = None
         self.http: aiohttp.ClientSession | None = None
         self.secret = os.getenv("ACTIVITY_INTERNAL_SECRET", "")
         self.server_url = os.getenv("ACTIVITY_SERVER_URL", "").rstrip("/")
-        # 링크 버튼에 쓰는 공개 주소 — activity-server 내부 주소(server_url)와 다름(컨테이너 네트워크 vs 실제 도메인).
         self.public_url = os.getenv("ACTIVITY_PUBLIC_URL", "").rstrip("/")
 
     async def cog_load(self):
@@ -155,9 +149,6 @@ class Game(commands.Cog):
         app = web.Application(client_max_size=8192)
         app.router.add_post("/internal/game-results", self.game_result)
         app.router.add_post("/internal/game-rematches", self.game_rematch)
-        # 재시작하면 self.rooms가 비어 재시작 전 메시지의 방은 전부 만료 처리되지만,
-        # 그 메시지의 버튼이 "interaction failed"로 조용히 죽는 대신 이 fallback view가
-        # 받아서 action()의 기존 "종료된 방입니다" 응답을 내보내게 한다.
         self.bot.add_view(LobbyView(self, "", playing=False))
         self.bot.add_view(LobbyView(self, "", playing=True))
         self.runner = web.AppRunner(app)
@@ -198,7 +189,6 @@ class Game(commands.Cog):
 
     @staticmethod
     def _guild_of(room_id: str) -> str:
-        # room_id는 항상 f"{guildId}:{hostId}:{uuid}" 형태라 파싱만으로 락을 고를 수 있다.
         return room_id.split(":", 1)[0]
 
     def embed(self, room):
@@ -244,8 +234,6 @@ class Game(commands.Cog):
                         hostId=ctx.author.id, p2Id=None, spectators=set(), status="WAITING", handoff=False, mode=mode, difficulty=difficulty, matchId=None, previousMatchId=None)
             self.rooms[room_id] = room
             if mode == "CPU":
-                # 대기 화면(게임 시작 버튼 등) 없이 바로 PLAYING 메시지 하나만 보낸다 —
-                # WAITING으로 먼저 보냈다가 바로 edit하면 버튼이 잠깐 깜빡여 보인다.
                 try:
                     await self._do_handoff(room)
                 except (aiohttp.ClientError, asyncio.TimeoutError):
@@ -329,8 +317,6 @@ class Game(commands.Cog):
         async with self._lock_for(self._guild_of(room_id)):
             room = self.rooms.get(room_id)
             if not room or interaction.guild_id != room["guildId"]:
-                # 방 정보가 메모리(재시작 등)에서 이미 사라진 채로 옛 메시지의 버튼이 눌린 경우 —
-                # 응답만 보내고 끝내면 메시지엔 죽은 버튼이 영원히 남는다. 지금 누른 김에 메시지도 정리한다.
                 await self._mark_message_closed(interaction.message)
                 await interaction.followup.send("종료된 방입니다.", ephemeral=True)
                 return
@@ -448,8 +434,6 @@ class Game(commands.Cog):
         async with self._lock_for(self._guild_of(room_id)):
             room = self.rooms.get(room_id)
             if not room or payload.get("matchId") != room.get("matchId") or not room["handoff"]:
-                # 방이 이미 없거나(닫힘) 방금 처리해서 WAITING으로 되돌린 뒤 온 재시도 배송 —
-                # 서버가 계속 재전송하지 않도록 정상 처리된 것처럼 200을 준다.
                 return web.json_response({"ok": True})
             if type(payload.get("aborted", False)) is not bool:
                 return web.json_response({"error": "Invalid result"}, status=400)
@@ -459,7 +443,6 @@ class Game(commands.Cog):
                 result_line = GAMES[room.get("game", "volleyball")].verify_result(payload, room)
                 if result_line is None:
                     return web.json_response({"error": "Invalid result"}, status=400)
-            # 방을 지우지 않고 WAITING으로 되돌린다 — 같은 방에서 [게임 시작]을 다시 누르면 재대결이 된다.
             room["status"] = "WAITING"
             room["handoff"] = False
             room["last_result"] = result_line

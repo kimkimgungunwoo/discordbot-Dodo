@@ -6,7 +6,7 @@ const GAME_KEYS = new Set([
 ]);
 
 window.addEventListener("keydown", (e) => {
-  if (GAME_KEYS.has(e.code)) e.preventDefault(); // 페이지 스크롤이 방향키/스페이스를 가져가는 것 방지
+  if (GAME_KEYS.has(e.code)) e.preventDefault();
   pressed.add(e.code);
 });
 window.addEventListener("keyup", (e) => pressed.delete(e.code));

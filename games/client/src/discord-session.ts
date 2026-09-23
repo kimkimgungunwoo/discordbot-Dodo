@@ -1,4 +1,3 @@
-// 도메인 루트는 나중에 다른 게임이 쓸 수 있게 비워두고, 게임별로 각자의 경로 밑에서 산다.
 const GAME_PATHS = { volleyball: "/volleyball", omok: "/omok" } as const;
 const ROOM_KEY = "dodo:room";
 const TOKEN_KEY = "dodo:token";

@@ -116,14 +116,11 @@ function updateUi() {
   const finished = screen === "gameover";
   const isHost = session.info.localPlayerId === session.info.hostPlayerId;
   if (session.info.mode === "online") {
-    // 온라인 모드는 대기실이 채팅에서 관리되니 이 버튼은 경기가 끝났을 때 "재경기" 용도로만 보인다.
-    // CPU전은 방장 혼자 누르면 바로 재시작, PVP는 두 참가자 모두 눌러야 재시작된다(서버가 투표를 취합).
     const isPlayer = isHost || (!session.info.players.right.isCpu && session.info.localPlayerId === session.info.players.right.id);
     start.hidden = !finished || Boolean(session.rematching);
     start.disabled = !isPlayer || !session.canRematch;
     document.querySelector("#host-note")!.textContent = session.rematching ? "재시작중..." : session.message ?? "";
     if (!session.started) document.querySelector("#card-title")!.textContent = "플레이어 연결 대기";
-    // 경기 도중에도 연결 중단 및 결과 전송 상태를 표시한다.
     status.textContent = session.message ?? "";
   } else {
     start.hidden = false;

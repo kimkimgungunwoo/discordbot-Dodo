@@ -65,7 +65,6 @@ function overlaps(ball: Ball, player: Player) {
   const closestY = Math.max(player.y - height, Math.min(player.y, ball.y));
   return (ball.x - closestX) ** 2 + (ball.y - closestY) ** 2 <= BALL_RADIUS ** 2;
 }
-// Shared by gameplay and AI prediction; mutates only the supplied ball.
 export function advanceBallFlight(ball: Ball) {
   const previousX = ball.x, previousY = ball.y;
   ball.yVelocity += BALL_GRAVITY;

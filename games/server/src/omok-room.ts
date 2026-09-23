@@ -10,7 +10,6 @@ function randomLegalMove(board: Stone[]): number {
   return empty[randomInt(empty.length)];
 }
 
-/** Authentication, rematch votes and result delivery share the volleyball lifecycle. */
 export class OmokRoom extends RelayRoom {
   state = freshBoard();
   readonly blackSide: "left" | "right" = randomInt(2) ? "left" : "right";
@@ -45,9 +44,6 @@ export class OmokRoom extends RelayRoom {
     try { this.commit(message.at); }
     catch (error) { peer.send({ type: "MOVE_REJECTED", message: (error as Error).message }); return; }
   }
-  // 다음 차례를 위한 CPU/타이머 예약은 반드시 presence() 브로드캐스트 전에 끝내야 한다 —
-  // 그래야 그 브로드캐스트에 이번에 새로 잡은 turnDeadline이 실려 나간다(순서가 바뀌면 클라이언트가
-  // 계속 옛 값을 받아 게이지가 안 줄어든다).
   private commit(at: number) {
     this.state = place(this.state, at); this.lastActivity = Date.now();
     if (this.state.winner || this.state.draw) {
@@ -68,15 +64,12 @@ export class OmokRoom extends RelayRoom {
       if (!this.ready() || this.result) return;
       const requestState = this.state, requestMatch = this.matchId;
       void computeCpuMove(requestState, this.definition.difficulty!).then(move => {
-        // 계산하는 동안 경기가 끝나거나 재대결로 바뀌었을 수 있다 — 그럼 이 수는 버린다.
         if (this.result || this.matchId !== requestMatch || this.state !== requestState) return;
         this.commit(move);
       }, () => {});
     }, Math.max(500, this.startsAt - Date.now() + 500));
     this.timer.unref();
   }
-  // force=true는 방금 수가 놓여 차례가 바뀌었을 때 — 기존 타이머를 반드시 버리고 새로 잡는다.
-  // force 없이 호출되면(재접속 등) 이미 도는 타이머는 그대로 두고, 없을 때만 새로 시작한다.
   private scheduleTurnTimeout(force = false) {
     if (this.turnTimer) { if (!force) return; clearTimeout(this.turnTimer); this.turnTimer = undefined; }
     if (this.result || !this.ready() || this.startsAt === null || (this.definition.mode === "CPU" && this.turnSide === "right")) { this.turnDeadline = null; return; }
@@ -89,7 +82,6 @@ export class OmokRoom extends RelayRoom {
     }, delay);
     this.turnTimer.unref();
   }
-  // Volleyball INPUT/RESULT must never mutate an authoritative gomoku room.
   input(_peer: Peer, _message: any) {}
   report(_peer: Peer, _message: any) {}
   abort(reason: string) { this.dispose(); super.abort(reason); this.presence(); }

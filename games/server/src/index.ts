@@ -47,7 +47,6 @@ export const server = createServer(async (req, res) => {
       const definition = await body(req);
       if (!validDefinition(definition)) return json(res, 400, { error: "Invalid room" });
       if (definition.mode === "CPU") definition.difficulty ??= "normal";
-      // 결과가 나온(끝난) 방이 아직 안 지워졌으면 재대결 요청으로 보고 새 방처럼 취급한다 — roomId는 재사용.
       const stale = rooms.get(definition.roomId);
       if (stale?.result && definition.matchId !== stale.matchId) {
         if (!stale.delivered) return json(res, 409, { error: "결과 전송이 완료되지 않았습니다." });
@@ -86,8 +85,6 @@ export const server = createServer(async (req, res) => {
       return json(res, 200, [...rooms.values()].filter(room => room.definition.guildId === guildId).map(room => room.definition));
     }
     if (req.method === "POST" && url.pathname === "/api/rematch") {
-      // Activity 안에서 직접 재대결 — 같은 방(roomId)을 새 seed로 다시 만든다.
-      // CPU전은 방장 한 명뿐이니 바로 재시작하고, PVP는 둘 다 동의해야 재시작된다.
       const token = (req.headers.authorization ?? "").replace(/^Bearer /, "");
       const user = await identity(token, clientId);
       const value = await body(req);
@@ -105,8 +102,6 @@ export const server = createServer(async (req, res) => {
         if (!room.rematchVotes.has(hostId) || !p2Id || !room.rematchVotes.has(p2Id))
           return json(res, 202, { waiting: true, votes: room.rematchVotes.size });
       }
-      // The bot serializes rematches with lobby edits, closure and expiry, and
-      // creates the next game through the same internal handoff as a chat start.
       let pending = rematches.get(room.matchId);
       if (!pending) {
         pending = (async () => {
@@ -126,8 +121,6 @@ export const server = createServer(async (req, res) => {
     }
     json(res, 404, { error: "Not found" });
   } catch (error) {
-    // identity()/member()가 던지는 진짜 이유(토큰 만료, Discord API 실패 등)를 그대로 보여준다 —
-    // 뭉뚱그린 문구로 덮어쓰면 뭐가 문제인지 클라이언트/로그 양쪽에서 알 수가 없다.
     console.error("[activity-server]", error);
     if (error instanceof DiscordRateLimitError && !res.headersSent) {
       res.setHeader("Retry-After", String(error.retryAfter));
@@ -167,7 +160,6 @@ wss.on("connection", socket => {
           send({ type: "ROOM_CLOSED", message: "방이 닫혔거나 만료되었습니다. 채팅에서 새 방을 만들어주세요." });
           socket.close(1000); return;
         }
-        // 둘 다 target.definition.guildId 등 서로 다른 결과를 안 쓰는 독립 호출이라 병렬로 돌린다.
         const [user, guildMember] = await Promise.all([
           identity(message.token, clientId),
           member(message.token, target.definition.guildId),
@@ -192,15 +184,10 @@ wss.on("connection", socket => {
     if (peer) room?.leave(peer);
   });
 });
-// 봇 쪽 대기 알람도 결과 처리 시점부터 300초를 다시 잰다(최대 5초 지연 뒤 도착) — 이 값을 그보다
-// 넉넉히 길게 잡아야 "채팅엔 [게임 시작]이 아직 떠 있는데 Activity 재경기는 이미 방이 없다"는
-// 어긋남이 안 생긴다.
 const REMATCH_GRACE_MS = 6 * 60_000;
 const callbacks = setInterval(() => {
   for (const [roomId, room] of rooms) {
-    // 실제로 활동(입력 커밋)이 없어야만 정리한다 — 계속 활발히 플레이 중이면 아무리 오래돼도 끊지 않는다.
     if (!room.result && Date.now() - room.lastActivity > 5 * 60_000) room.abort("대기 또는 경기 제한 시간이 지났습니다.");
-    // 끝난 지 한참 지났는데 재대결도 안 됐으면(=아직 이 roomId의 새 RelayRoom으로 교체되지 않았으면) 그제서야 지운다.
     if (room.result && room.finishedAt && Date.now() - room.finishedAt > REMATCH_GRACE_MS) { room.broadcast({ type: "ROOM_CLOSED", message: "재경기 대기 시간이 만료되었습니다." }); rooms.delete(roomId); continue; }
     room.connectionStatus();
     if (!room.result || room.delivered || room.delivering || !process.env.BOT_INTERNAL_URL) continue;

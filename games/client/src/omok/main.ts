@@ -101,7 +101,6 @@ const RESULT_REVEAL_DELAY_MS = 2000;
 function finishLocal() {
   if (state.winner || state.draw) {
     playSound(true);
-    // 승부가 갈린 순간 바로 안내창을 덮지 않고, 완성된 5줄이 보이는 보드를 잠깐 먼저 보여준다.
     const outcome = { winnerSide: state.draw ? "draw" : state.winner === 1 ? blackSide : blackSide === "left" ? "right" : "left" };
     setTimeout(() => { result = outcome; delivered = true; draw(); }, RESULT_REVEAL_DELAY_MS);
   }
@@ -111,8 +110,6 @@ function localCpu() {
   if (result || turnSide() !== "right") return;
   localTimer = setTimeout(() => { state = place(state, chooseMove(state, difficulty)); playSound(); finishLocal(); localTurnTimeout(); draw(); }, Math.max(550, (startsAt ?? 0) - Date.now() + 550));
 }
-// 온라인 대국은 서버가 45초 턴 제한을 돌리지만(omok-room.ts), 혼자 연습 모드엔 서버가 없어서
-// 여기서 같은 규칙을 흉내낸다 — 내 차례에만 걸고, CPU 차례는 이미 localCpu()가 더 빠르게 처리한다.
 function localTurnTimeout() {
   if (localTurnTimer) { clearTimeout(localTurnTimer); localTurnTimer = undefined; }
   if (result || turnSide() !== "left") { turnDeadline = null; return; }
@@ -150,7 +147,6 @@ el("start").onclick = async () => {
   finally { voting = false; draw(); }
 };
 let resultRevealTimer: ReturnType<typeof setTimeout> | undefined;
-// 승부가 갈린 순간 바로 안내창을 덮지 않고, 완성된 5줄이 보이는 보드를 잠깐 먼저 보여준다.
 function revealResult(next: any, nextDelivered: boolean) {
   delivered = nextDelivered;
   if (!next) { result = null; if (resultRevealTimer) { clearTimeout(resultRevealTimer); resultRevealTimer = undefined; } return; }

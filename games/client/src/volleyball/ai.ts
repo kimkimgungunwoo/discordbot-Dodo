@@ -37,7 +37,6 @@ const onSide = (x: number, self: Player) => self.isRight ? x > NET_X : x < NET_X
 
 function easyInput(state: GameState, self: Player): PlayerInput {
   const base = normalInput(state, self);
-  // Deliberate hesitation and coarse positioning, entirely tick-based for replay.
   const error = Math.sin(Math.floor(state.tick / 36) * 2.7) * 65;
   const active = state.tick % 24 < 14;
   return {
@@ -60,7 +59,6 @@ function intercept(state: GameState, self: Player) {
 function hardInput(state: GameState, self: Player): PlayerInput {
   const ball = state.ball;
   const landing = intercept(state, self);
-  // Receive off-centre so the ball travels towards the opponent.
   const offset = self.isRight ? 28 : -28;
   const min = self.isRight ? NET_X + NET_HALF_WIDTH + PLAYER_HALF_WIDTH : PLAYER_HALF_WIDTH;
   const max = self.isRight ? COURT_WIDTH - PLAYER_HALF_WIDTH : NET_X - NET_HALF_WIDTH - PLAYER_HALF_WIDTH;
@@ -70,7 +68,6 @@ function hardInput(state: GameState, self: Player): PlayerInput {
   const near = Math.abs(ball.x - self.x) < 70;
   const jump = own && near && ball.y > -255 && ball.y < -125 && ball.yVelocity > -2 && self.y === 0;
   const hit = own && self.y < -30 && near && Math.abs(ball.y - (self.y - 55)) < 60 && !self.hitHeld;
-  // Horizontal spikes clear the net more reliably than steep downward hits.
   if (hit) x = self.isRight ? -1 : 1;
   return { x, y: 0, jump, hit };
 }
@@ -79,7 +76,6 @@ function tacticalInput(state: GameState, self: Player, extreme: boolean): Player
   const base = hardInput(state, self);
   if (state.phase !== "playing" || !onSide(state.ball.x, self)) return base;
   const landing = intercept(state, self);
-  // Search only when contact or an emergency save is close enough to matter.
   if (Math.abs(state.ball.x - self.x) > 180 && landing.ticks > 16) return base;
   const side = self.isRight ? "right" : "left";
   const other = self.isRight ? "left" : "right";
@@ -89,7 +85,6 @@ function tacticalInput(state: GameState, self: Player, extreme: boolean): Player
     candidates.push({ x, y: 0, jump: true, hit: false });
     for (const y of (extreme ? [-1, 0, 1] : [0]) as (-1 | 0 | 1)[]) candidates.push({ x, y, jump: self.y === 0, hit: true });
   }
-  // Ground hit + movement invokes the same dive available to human players.
   const rescue = direction(landing.x - self.x);
   if (extreme && self.y === 0 && landing.ticks < 18 && Math.abs(landing.x - self.x) > landing.ticks * MOVE_SPEED)
     candidates.push({ x: rescue, y: 0, jump: false, hit: true });
@@ -98,7 +93,6 @@ function tacticalInput(state: GameState, self: Player, extreme: boolean): Player
     let future = state;
     let value = 0;
     for (let tick = 0; tick < (extreme ? 24 : 16); tick++) {
-      // No access to future opponent input: assume they stay in place.
       const input = tick < 6 ? candidate : hardInput(future, future[side]);
       future = self.isRight ? step(future, EMPTY_INPUT, input) : step(future, input, EMPTY_INPUT);
       for (const event of future.events) {
@@ -123,7 +117,6 @@ function tacticalInput(state: GameState, self: Player, extreme: boolean): Player
   return best;
 }
 
-/** Pure decision function: no wall clock, random state, or hidden input history. */
 export function computeAiInput(state: GameState, self: Player, difficulty: AiDifficulty = "normal"): PlayerInput {
   if (difficulty === "easy") return easyInput(state, self);
   if (difficulty === "hard") return tacticalInput(state, self, false);
