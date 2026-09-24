@@ -1,7 +1,7 @@
 .omok-shell { max-width: 900px; padding: 16px 14px 24px; }
 .omok-shell .heading { margin-bottom: 18px; }
 .omok-stage { position: relative; padding: 18px 24px; background: #f1eedf; overflow: hidden; }
-.turn-timer { position: relative; z-index: 1; text-align: center; font: bold 13px monospace; color: #b23b2e; background: #fbe7e2; border: 1px solid #d98d7f; padding: 6px 10px; margin: 10px auto 0; width: fit-content; }
+.turn-timer { position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); z-index: 3; pointer-events: none; white-space: nowrap; text-align: center; font: bold 13px monospace; color: #b23b2e; background: #fbe7e2; border: 1px solid #d98d7f; padding: 6px 10px; }
 .omok-stage::before { content: ''; position: absolute; inset: 0; opacity: .3; pointer-events: none; background-image: radial-gradient(#abb39b 1px, transparent 1px); background-size: 16px 16px; }
 .trainer { position: relative; display: flex; align-items: center; gap: 12px; width: min(290px, 80%); background: #fcfaf2; border: 2px solid #303b36; padding: 8px 14px; box-shadow: 5px 5px 0 #d2d8c5; z-index: 1; }
 .trainer-top { border-left: 6px solid #d18152; margin-bottom: 16px; }
@@ -39,7 +39,7 @@
 @keyframes toss { to { transform: rotateY(360deg); } }
 @keyframes flip-color { 0%, 49.9% { background: #d18152; } 50%, 100% { background: #668eac; } }
 .omok-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; color: #7b846f; font-size: 11px; margin-top: 19px; }
-@media (max-width: 650px) { .omok-shell { padding: 12px 10px; }.omok-stage { padding: 16px 12px; }.board-wrap { margin: 18px auto; padding: 10px; }.trainer { padding: 8px 12px; gap: 9px; width: 80%; }.trainer canvas { width: 60px; height: 48px; }.trainer strong { font-size: 14px; }.trainer-top { margin-bottom: 0; }.trainer-bottom { margin-top: 0; }.omok-toolbar { padding: 10px; }.omok-shell h1 { font-size: 23px; } }
+@media (max-width: 650px) { .omok-shell { padding: 12px 10px; }.omok-stage { padding: 16px 12px; }.board-wrap { margin: 18px auto; padding: 10px; }.trainer { padding: 8px 12px; gap: 9px; width: 80%; }.trainer canvas { width: 60px; height: 48px; }.trainer strong { font-size: 14px; }.trainer-top { margin-bottom: 0; }.trainer-bottom { margin-top: 0; }.omok-toolbar { padding: 10px; }.omok-shell h1 { font-size: 23px; }.turn-timer { font-size: 11px; padding: 4px 8px; transform: translate(-50%, -75%); } }
 @media (prefers-reduced-motion: reduce) { .coin, .coin::after { animation: none; } }
 
 .forbidden-mark { z-index: 2; color: #a63c32; font: bold clamp(12px, 2vw, 22px) monospace; pointer-events: none; }

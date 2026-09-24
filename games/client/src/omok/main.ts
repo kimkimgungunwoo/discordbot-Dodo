@@ -21,8 +21,7 @@ root.innerHTML = `<main class="shell omok-shell">
     <div class="omok-toolbar"><strong id="mode"></strong><span>15 × 15 · 흑 금수 적용</span><label id="difficulty-label">난이도 <select id="difficulty"><option value="easy">쉬움</option><option value="normal" selected>중간</option><option value="hard">어려움</option><option value="extreme">극한</option><option value="transcendent">초월</option></select></label><span id="move-count">0수</span></div>
     <div class="omok-stage">
       <div class="trainer trainer-top" id="trainer-left"><canvas width="120" height="96" id="portrait-left" aria-hidden="true"></canvas><div class="trainer-text"><strong id="name-left"></strong><small id="role-left"></small><div class="turn-meter"><div class="turn-meter-fill" id="meter-left"></div></div></div></div>
-      <div class="turn-timer" id="turn-timer" role="timer" hidden></div>
-      <div class="board-wrap"><div class="omok-board" id="board" role="group" aria-label="오목판, 방향키로 이동하고 Enter로 착수"></div></div>
+      <div class="board-wrap"><div class="turn-timer" id="turn-timer" role="timer" hidden></div><div class="omok-board" id="board" role="group" aria-label="오목판, 방향키로 이동하고 Enter로 착수"></div></div>
       <div class="trainer trainer-bottom" id="trainer-right"><canvas width="120" height="96" id="portrait-right" aria-hidden="true"></canvas><div class="trainer-text"><strong id="name-right"></strong><small id="role-right"></small><div class="turn-meter"><div class="turn-meter-fill" id="meter-right"></div></div></div></div>
       <div class="overlay omok-overlay" id="overlay"><div class="start-card"><div class="coin" id="coin" hidden></div><h2 id="title">한 수의 시작</h2><p id="copy">동전을 던져 흑백을 정합니다.<br>흑돌이 먼저 둡니다.</p><button class="primary" id="start">동전 던지고 시작</button></div></div>
     </div><div class="omok-status" id="status" role="status" aria-live="polite"></div>
