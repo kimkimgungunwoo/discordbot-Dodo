@@ -23,11 +23,13 @@ export class OnlineSession implements GameSession {
   role: Side | "spectator" = "spectator";
   private socket: WebSocket | null = null;
   private frames = new Map<number, Frame>();
+  private opponentInputs = new Map<number, PlayerInput>();
   private myInputs = new Map<number, PlayerInput>();
   private lastOpponentInput: PlayerInput = EMPTY_INPUT;
   private seq = 0;
   private sentTick = 0;
   private replayTarget = 0;
+  private receivedTick = 0;
   private cpu = false;
   private difficulty: AiDifficulty = "normal";
   private hydrated = false;
@@ -59,12 +61,13 @@ export class OnlineSession implements GameSession {
           this.matchId++;
           this.info.ready = false; this.info.spectators = [];
           this.rematchError = ""; this.retryUntil = 0; this.terminal = false;
-          this.frames.clear(); this.myInputs.clear(); this.lastOpponentInput = EMPTY_INPUT;
+          this.frames.clear(); this.myInputs.clear(); this.opponentInputs.clear(); this.lastOpponentInput = EMPTY_INPUT;
           this.events = []; this.reported = false; this.hydrated = false; this.completed = false; this.rematching = false;
           this.confirmed = createInitialState(message.seed);
           this.state = this.confirmed;
           this.started = false; this.role = message.role;
           this.seq = message.seq; this.sentTick = message.committedTick;
+          this.receivedTick = message.committedTick;
           this.replayTarget = message.committedTick; this.cpu = message.room.mode === "CPU";
           this.difficulty = parseDifficulty(message.room.difficulty);
           this.info.localPlayerId = message.userId; this.info.hostPlayerId = message.room.hostId;
@@ -72,11 +75,19 @@ export class OnlineSession implements GameSession {
           this.info.players.right = { id: message.room.p2Id ?? "cpu", displayName: this.cpu ? `도도봇 · ${DIFFICULTY_LABELS[this.difficulty]}` : "2P", isCpu: this.cpu };
         } else if (message.type === "HISTORY") {
           for (const frame of message.frames) this.frames.set(frame.tick, frame);
+        } else if (message.type === "INPUT") {
+          const opponent = this.role === "left" ? "right" : "left";
+          if (!this.cpu && this.role !== "spectator" && message.side === opponent &&
+              (message.matchId === undefined || message.matchId === this.serverMatchId) &&
+              Number.isSafeInteger(message.tick) && message.tick > this.confirmed.tick &&
+              message.tick <= Math.max(this.confirmed.tick, this.receivedTick) + 12) {
+            this.opponentInputs.set(message.tick, message.input);
+          }
         } else if (message.type === "FRAME") {
           this.frames.set(message.frame.tick, message.frame);
-          // 상대가 실제로 보낸 입력을 다음 예측의 "일단 이걸로 가정" 값으로 기억해둔다.
+          this.receivedTick = Math.max(this.receivedTick, message.frame.tick);
           const theirs = this.role === "left" ? message.frame.right : message.frame.left;
-          if (theirs) this.lastOpponentInput = theirs;
+          if (theirs && this.role !== "spectator") this.opponentInputs.set(message.frame.tick, theirs);
         }
         else if (message.type === "CAUGHT_UP") this.hydrated = true;
         else if (message.type === "PRESENCE") {
@@ -203,6 +214,9 @@ export class OnlineSession implements GameSession {
       if (!frame || this.confirmed.phase === "gameover") break;
       this.frames.delete(frame.tick);
       this.myInputs.delete(frame.tick);
+      this.opponentInputs.delete(frame.tick);
+      const opponent = this.role === "left" ? frame.right : frame.left;
+      if (opponent) this.lastOpponentInput = opponent;
       const right = this.cpu ? computeAiInput(this.confirmed, this.confirmed.right, this.difficulty) : frame.right!;
       this.confirmed = step(this.confirmed, frame.left, right);
       if (!catchingUp) this.events.push(...this.confirmed.events);
@@ -226,11 +240,13 @@ export class OnlineSession implements GameSession {
       this.socket.send(JSON.stringify({ type: "INPUT", matchId: this.serverMatchId, tick, seq: ++this.seq, input }));
     }
     // 예측: 확정 상태 위에 "이미 서버로 보낸 내 입력"과 "상대의 마지막 입력(또는 CPU)"을 얹어 앞서 그려본다.
-    // 내 쪽은 실제로 보낼 값 그대로라 절대 틀릴 일이 없고, 상대 쪽만 나중에 살짝 보정될 수 있다.
+    // tick별 상대 입력을 우선 사용한다. 결과 판정은 위의 확정 상태에서만 수행한다.
     let predicted: GameState = this.confirmed;
+    let opponentInput = this.lastOpponentInput;
     for (let tick = this.confirmed.tick + 1; tick <= this.sentTick; tick++) {
       const mine = this.myInputs.get(tick) ?? input;
-      const theirs = this.cpu ? computeAiInput(predicted, predicted.right, this.difficulty) : this.lastOpponentInput;
+      opponentInput = this.opponentInputs.get(tick) ?? opponentInput;
+      const theirs = this.cpu ? computeAiInput(predicted, predicted.right, this.difficulty) : opponentInput;
       const left = this.role === "left" ? mine : theirs;
       const right = this.role === "right" ? mine : theirs;
       predicted = step(predicted, left, right);

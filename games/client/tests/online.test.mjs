@@ -8,7 +8,7 @@ import ts from "typescript";
 
 const directory = mkdtempSync(join(tmpdir(), "dodo-online-"));
 mkdirSync(join(directory, "volleyball"));
-for (const name of ["volleyball/constants", "volleyball/types", "volleyball/physics", "volleyball/ai", "volleyball/online-session"]) {
+for (const name of ["volleyball/constants", "volleyball/types", "volleyball/physics", "volleyball/ai", "volleyball/online-session", "volleyball/presentation"]) {
   const source = readFileSync(new URL("../src/" + name + ".ts", import.meta.url), "utf8");
   const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
   writeFileSync(join(directory, name + ".js"), output.outputText);
@@ -242,4 +242,102 @@ test("spectators receive live sounds and profile updates without sending player 
   assert.equal(socket.sent.some(m => m.type === "INPUT" || m.type === "RESULT"), false);
   socket.receive({ type: "PRESENCE", ready: true, committedTick: 600, players: [], spectators: [] });
   assert.deepEqual(session.info.spectators, []);
+});
+
+
+test("early opponent inputs apply at their tick without rewriting earlier predictions", () => {
+  const { session, socket } = connect("left"); ready(socket);
+  session.confirmed = createInitialState(42); session.confirmed.phase = "playing";
+  const initial = session.confirmed;
+  socket.receive({ type: "INPUT", side: "right", tick: 4, input: { ...EMPTY_INPUT, x: -1 } });
+  session.advance(EMPTY_INPUT);
+  let expected = initial;
+  for (let tick = 1; tick <= 6; tick++) expected = step(expected, EMPTY_INPUT, { ...EMPTY_INPUT, x: tick >= 4 ? -1 : 0 });
+  assert.deepEqual(session.state, expected);
+  assert.deepEqual(session.confirmed, initial);
+  socket.receive({ type: "INPUT", side: "right", tick: 7, matchId: "stale", input: { ...EMPTY_INPUT, x: 1 } });
+  socket.receive({ type: "INPUT", side: "right", tick: 100, input: { ...EMPTY_INPUT, x: 1 } });
+  assert.equal(session.opponentInputs.size, 1);
+  for (let tick = 1; tick <= 6; tick++) {
+    socket.receive({ type: "FRAME", frame: { tick, left: EMPTY_INPUT, right: { ...EMPTY_INPUT, x: tick >= 4 ? -1 : 0 } } });
+    session.advance(EMPTY_INPUT);
+  }
+  assert.deepEqual(session.confirmed, expected);
+  assert.equal(session.opponentInputs.size, 0);
+});
+
+const { Presentation } = require(join(directory, "volleyball/presentation.js"));
+test("display correction settles smoothly without changing collision coordinates", () => {
+  const display = new Presentation();
+  const initial = createInitialState(0); initial.phase = "playing";
+  display.update(initial, 1); display.sample(1, 16, "right");
+  const corrected = structuredClone(initial); corrected.tick++; corrected.right.x -= 40; corrected.left.x += 6.4;
+  display.update(corrected, 1);
+  const first = display.sample(1, 16, "right");
+  assert.equal(first.left.x, corrected.left.x);
+  assert.ok(first.right.x > corrected.right.x && first.right.x < initial.right.x);
+  for (let frame = 0; frame < 6; frame++) display.sample(1, 16, "right");
+  const settled = display.sample(1, 16, "right");
+  assert.ok(Math.abs(settled.right.x - corrected.right.x) < 1);
+  assert.equal(corrected.right.x, 680);
+  const point = { ...corrected, phase: "point" };
+  display.update(point, 1);
+  assert.equal(display.sample(0, 16, "right").right.x, 680);
+  display.update(initial, 2);
+  assert.equal(display.sample(0, 16, "right").right.x, 720);
+});
+
+test("ball rendering snaps on reflection and interpolates free flight", () => {
+  const display = new Presentation();
+  const initial = createInitialState(0); initial.phase = "playing"; initial.ball.xVelocity = 10;
+  display.update(initial, 1);
+  const next = structuredClone(initial); next.tick++; next.ball.x += 9;
+  display.update(next, 1);
+  assert.equal(display.sample(0.5, 16, null).ball.x, initial.ball.x + 4.5);
+  const bounce = structuredClone(next); bounce.tick++; bounce.ball.xVelocity = -10; bounce.ball.x -= 9;
+  display.update(bounce, 1);
+  assert.equal(display.sample(0.5, 16, null).ball.x, bounce.ball.x);
+});
+
+test("50/100/200ms delayed and batched relay preserves convergence and improves prediction", () => {
+  for (const rtt of [50, 100, 200]) {
+    const improved = connect("left"), baseline = connect("left");
+    ready(improved.socket); ready(baseline.socket);
+    let truth = createInitialState(42); truth.phase = "playing";
+    // Keep the ball away while exercising reversals and jumps.
+    truth.ball = { ...truth.ball, x: 480, y: -350 };
+    improved.session.confirmed = structuredClone(truth);
+    baseline.session.confirmed = structuredClone(truth);
+    const states = [truth], messages = [];
+    const latency = Math.round(rtt / (1000 / 60));
+    for (let tick = 1; tick <= 180; tick++) {
+      const input = { ...EMPTY_INPUT, x: Math.floor(tick / 10) % 2 ? -1 : 1, jump: tick % 23 === 0 };
+      truth = step(truth, EMPTY_INPUT, input); states.push(truth);
+      messages.push({ at: tick + Math.ceil(latency / 2), body: { type: "INPUT", side: "right", tick, input } });
+      messages.push({ at: tick + latency, body: { type: "FRAME", frame: { tick, left: EMPTY_INPUT, right: input } } });
+    }
+    messages.sort((a, b) => a.at - b.at);
+    // Batch delivery every third tick to reproduce transport/browser jitter.
+    let error = 0, oldError = 0;
+    for (let clock = 1; clock <= 220; clock++) {
+      if (clock % 3 === 0) while (messages.length && messages[0].at <= clock) {
+        const { body } = messages.shift();
+        improved.socket.receive(body);
+        if (body.type === "FRAME") baseline.socket.receive(body);
+      }
+      improved.session.advance(EMPTY_INPUT); baseline.session.advance(EMPTY_INPUT);
+      for (const player of [improved, baseline]) {
+        assert.deepEqual(player.session.confirmed, states[player.session.confirmed.tick]);
+      }
+      const expected = states[improved.session.state.tick];
+      if (expected?.phase === "playing") {
+        error += Math.abs(improved.session.state.right.x - expected.right.x);
+        oldError += Math.abs(baseline.session.state.right.x - expected.right.x);
+      }
+    }
+    assert.equal(improved.session.confirmed.tick, 180);
+    assert.deepEqual(improved.session.confirmed, baseline.session.confirmed);
+    assert.ok(error < oldError, `${rtt}ms: early=${error}, frame-only=${oldError}`);
+    assert.ok(improved.session.opponentInputs.size <= 12);
+  }
 });

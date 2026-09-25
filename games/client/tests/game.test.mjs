@@ -14,9 +14,9 @@ for (const name of ["volleyball/constants", "volleyball/types", "volleyball/phys
   writeFileSync(join(directory, name + ".js"), output.outputText);
 }
 const require = createRequire(import.meta.url);
-const { createInitialState, step, EMPTY_INPUT } = require(join(directory, "volleyball/physics.js"));
+const { createInitialState, step, advanceBallFlight, EMPTY_INPUT } = require(join(directory, "volleyball/physics.js"));
 const { PracticeSession } = require(join(directory, "volleyball/session.js"));
-const { BALL_RADIUS, GROUND_Y, NET_TOP_Y, RECEIVE_MAX_LIFT, WIN_SCORE } = require(join(directory, "volleyball/constants.js"));
+const { BALL_TIME_SCALE, BALL_GRAVITY, BALL_RADIUS, GROUND_Y, NET_TOP_Y, RECEIVE_MIN_LIFT, RECEIVE_MAX_LIFT, WIN_SCORE } = require(join(directory, "volleyball/constants.js"));
 after(() => rmSync(directory, { recursive: true, force: true }));
 function playing() { const state = createInitialState(0); state.phase = "playing"; return state; }
 function freeze(value) {
@@ -136,8 +136,8 @@ test("ground contact uses ball radius and awards exactly one winning point", () 
   assert.equal(next.right.score, WIN_SCORE); assert.equal(next.events.length, 0);
   assert.ok(next.right.ticksInState > state.right.ticksInState);
 });
-test("ordinary returns have a compact arc without ceiling contact", () => {
-  for (const lift of [12, RECEIVE_MAX_LIFT]) {
+test("ordinary ground returns have a stronger arc without ceiling contact", () => {
+  for (const lift of [RECEIVE_MIN_LIFT, RECEIVE_MAX_LIFT]) {
     let state = playing();
     state.ball = { ...state.ball, x: 70, y: -120, yVelocity: -lift };
     let top = state.ball.y;
@@ -147,8 +147,8 @@ test("ordinary returns have a compact arc without ceiling contact", () => {
       top = Math.min(top, state.ball.y);
       ticks++;
     } while (state.ball.y < -120 && ticks < 100);
-    assert.ok(-120 - top >= 95 && -120 - top <= 145);
-    assert.ok(ticks >= 34 && ticks <= 43);
+    assert.ok(-120 - top >= 175 && -120 - top <= 240);
+    assert.ok(ticks >= 50 && ticks <= 60);
     assert.equal(state.phase, "playing");
   }
 });
@@ -215,7 +215,7 @@ test("all difficulties are pure, deterministic and use legal player inputs", () 
   assert.deepEqual(computeAiInput(frozen, frozen.right), computeAiInput(frozen, frozen.right, "normal"));
 });
 
-test("new difficulty levels separate in mirrored matches against the original AI", () => {
+test("difficulty levels remain ordered against normal AI in mirrored matches", () => {
   const totals = {};
   for (const difficulty of ["easy", "hard", "extreme"]) {
     let points = 0, conceded = 0;
@@ -234,5 +234,118 @@ test("new difficulty levels separate in mirrored matches against the original AI
   }
   assert.ok(totals.easy < 0);
   assert.ok(totals.hard > 0);
-  assert.ok(totals.extreme > totals.hard);
+  // Both can saturate at four 7:0 wins; require strict separation unless hard is perfect.
+  assert.ok(totals.extreme > totals.hard || (totals.hard === 28 && totals.extreme === 28));
+});
+
+
+test("slower flight follows the original discrete trajectory at equal flight time", () => {
+  const ball = { ...playing().ball, x: 100, y: -200, xVelocity: 3, yVelocity: -4 };
+  for (let tick = 0; tick < 20; tick++) advanceBallFlight(ball);
+  const time = 20 * BALL_TIME_SCALE;
+  assert.ok(Math.abs(ball.x - (100 + 3 * time)) < 1e-9);
+  assert.ok(Math.abs(ball.y - (-200 - 4 * time + BALL_GRAVITY * time * (time + 1) / 2)) < 1e-9);
+  // 20 real ticks cover the old 18-tick trajectory.
+  assert.equal(time, 18);
+});
+
+test("ordinary ground reception crosses the net from either midcourt without attacking", () => {
+  for (const side of ["left", "right"]) {
+    let state = playing();
+    const direction = side === "left" ? 1 : -1;
+    state.ball = { ...state.ball, x: state[side].x + direction * 30, y: -112, yVelocity: 2 };
+    state = step(state, EMPTY_INPUT, EMPTY_INPUT);
+    assert.ok(state.events.some(event => event.kind === "hit"));
+    let crossed = false;
+    for (let tick = 0; tick < 60 && state.phase === "playing"; tick++) {
+      state = step(state, EMPTY_INPUT, EMPTY_INPUT);
+      if ((state.ball.x - 480) * direction > BALL_RADIUS + 6) {
+        assert.ok(state.ball.y + BALL_RADIUS < NET_TOP_Y - GROUND_Y);
+        crossed = true; break;
+      }
+    }
+    assert.ok(crossed, side);
+  }
+});
+
+test("receive buff leaves vertical spike impulse unchanged", () => {
+  const state = playing(); state.left.y = -130;
+  state.ball = { ...state.ball, x: 240, y: -190 };
+  assert.equal(step(state, { ...EMPTY_INPUT, y: 1, hit: true }, EMPTY_INPUT).ball.yVelocity, 24);
+});
+
+
+test("even stationary spikes outrun the strongest ordinary reception on either side", () => {
+  for (const side of ["left", "right"]) {
+    const direction = side === "left" ? 1 : -1;
+    const initial = playing();
+    initial.ball = { ...initial.ball, x: initial[side].x + direction * 48, y: -70 };
+    const received = step(initial, EMPTY_INPUT, EMPTY_INPUT);
+    assert.ok(received.events.some(event => event.kind === "hit"));
+    assert.equal(Math.abs(received.ball.xVelocity), 11);
+    for (const moving of [false, true]) {
+      const attack = playing(); attack[side].y = -130;
+      attack.ball = { ...attack.ball, x: attack[side].x + direction * 24, y: -190 };
+      const input = { ...EMPTY_INPUT, x: moving ? direction : 0, hit: true };
+      const spiked = step(attack, side === "left" ? input : EMPTY_INPUT, side === "right" ? input : EMPTY_INPUT);
+      assert.ok(spiked.events.some(event => event.kind === "spike"));
+      assert.equal(spiked.ball.xVelocity, direction * (moving ? 26 : 18));
+      assert.ok(Math.abs(spiked.ball.xVelocity) >= Math.abs(received.ball.xVelocity) * 1.6);
+    }
+  }
+});
+
+test("downward spikes reward high contact near the net and low contact is blocked", () => {
+  for (const side of ["left", "right"]) for (const high of [false, true]) {
+    const direction = side === "left" ? 1 : -1;
+    let state = playing();
+    state[side].x = side === "left" ? 420 : 540;
+    state[side].y = high ? -220 : -30;
+    state.ball = { ...state.ball, x: state[side].x + direction * 18, y: state[side].y - 60 };
+    const input = { ...EMPTY_INPUT, x: direction, y: 1, hit: true };
+    state = step(state, side === "left" ? input : EMPTY_INPUT, side === "right" ? input : EMPTY_INPUT);
+    assert.ok(state.events.some(event => event.kind === "spike"));
+    let crossed = false, blocked = false;
+    for (let tick = 0; tick < 12 && state.phase === "playing"; tick++) {
+      state = step(state, EMPTY_INPUT, EMPTY_INPUT);
+      if ((state.ball.x - 480) * direction > BALL_RADIUS + 6) { crossed = true; break; }
+      if (state.ball.xVelocity * direction < 0) { blocked = true; break; }
+    }
+    assert.equal(crossed, high, side + " high=" + high);
+    assert.equal(blocked, !high);
+  }
+});
+
+
+test("AI chooses downward attacks high near the net and avoids them from low contact", () => {
+  for (const side of ["left", "right"]) for (const difficulty of ["normal", "hard"]) {
+    for (const high of [false, true]) {
+      const state = playing();
+      state[side].x = side === "left" ? 420 : 540;
+      state[side].y = high ? -220 : -40;
+      state.ball = { ...state.ball, x: state[side].x + (side === "left" ? 18 : -18), y: state[side].y - 60 };
+      const input = computeAiInput(state, state[side], difficulty);
+      assert.equal(input.hit, true, difficulty + side);
+      assert.equal(input.y, high ? 1 : -1, difficulty + side);
+    }
+  }
+});
+
+test("strong AI dives for a fast unreachable return and can make contact", () => {
+  for (const side of ["left", "right"]) for (const difficulty of ["hard", "extreme"]) {
+    let state = playing();
+    state.ball = { ...state.ball, x: side === "right" ? 860 : 100, y: -180, yVelocity: 15 };
+    const input = computeAiInput(state, state[side], difficulty);
+    assert.equal(input.hit, true, difficulty + side);
+    assert.equal(input.jump, false);
+    assert.equal(input.x, side === "right" ? 1 : -1);
+    state = step(state, side === "left" ? input : EMPTY_INPUT, side === "right" ? input : EMPTY_INPUT);
+    assert.equal(state[side].state, "dive");
+    let received = false;
+    for (let tick = 0; tick < 18 && state.phase === "playing"; tick++) {
+      state = step(state, EMPTY_INPUT, EMPTY_INPUT);
+      received ||= state.events.some(event => event.kind === "hit" && event.side === side);
+    }
+    assert.ok(received, difficulty + side);
+  }
 });

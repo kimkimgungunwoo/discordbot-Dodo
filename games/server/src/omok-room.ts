@@ -23,7 +23,7 @@ export class OmokRoom extends RelayRoom {
   constructor(definition: Definition) { super(definition); }
   get turnSide() { return this.state.turn === 1 ? this.blackSide : this.blackSide === "left" ? "right" : "left"; }
   snapshot() {
-    return { type: "OMOK_STATE", matchId: this.matchId, room: this.definition, state: this.state,
+    return { type: "OMOK_STATE", now: Date.now(), matchId: this.matchId, room: this.definition, state: this.state,
       blackSide: this.blackSide, startsAt: this.startsAt, turnDeadline: this.turnDeadline, ready: this.ready(), result: this.result, delivered: this.delivered,
       spectators: this.spectators(), players: { left: this.names.get(this.definition.hostId) ?? "1P", right: this.definition.p2Id ? this.names.get(this.definition.p2Id) ?? "2P" : "도도봇" } };
   }

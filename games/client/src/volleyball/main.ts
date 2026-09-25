@@ -7,6 +7,7 @@ import { bindSoundControl } from "../common/sound-control";
 import { createSpectatorBar } from "../common/spectators";
 import { GameAudio } from "../common/audio";
 import { PracticeSession, type GameSession } from "./session";
+import { Presentation } from "./presentation";
 import { OnlineSession } from "./online-session";
 import { authenticate } from "../discord-session";
 
@@ -76,6 +77,7 @@ const playerRoles = {
   left: document.querySelector<HTMLElement>("#left-role")!,
   right: document.querySelector<HTMLElement>("#right-role")!,
 };
+const presentation = new Presentation();
 let lastScreen = "";
 let accumulator = 0;
 let last = performance.now();
@@ -95,7 +97,10 @@ window.addEventListener("keydown", event => {
 bindSoundControl(audio, sound);
 const renderSpectators = createSpectatorBar(document.querySelector<HTMLElement>(".court")!);
 bindTouchControls(app);
-document.addEventListener("visibilitychange", () => { accumulator = 0; last = performance.now(); });
+document.addEventListener("visibilitychange", () => {
+  presentation.reset(); presentation.update(session.state, session.matchId);
+  accumulator = 0; last = performance.now();
+});
 function updateUi() {
   renderSpectators(session.info.spectators ?? [], session.info.mode === "online");
   const state = session.state;
@@ -140,6 +145,8 @@ function updateUi() {
     start.textContent = "재경기";
   }
 }
+let renderedState = session.state;
+presentation.update(session.state, session.matchId);
 function frame(now: number) {
   const elapsed = Math.min(100, now - last);
   last = now;
@@ -148,10 +155,23 @@ function frame(now: number) {
     while (accumulator >= TICK_MS) {
       accumulator -= TICK_MS;
       session.advance(readKeyboardInput());
+      presentation.update(session.state, session.matchId);
+      renderedState = session.state;
       audio.play(session.consumeEvents());
     }
     updateUi();
-    render(ctx, sprites, session.state, !session.started, session.info.players.right.isCpu);
+    if (!session.info.ready || session.stopped) {
+      presentation.reset(); presentation.update(session.state, session.matchId);
+    }
+    // Also capture asynchronous game-end/reconnect changes before drawing.
+    if (session.state !== renderedState) {
+      presentation.update(session.state, session.matchId);
+      renderedState = session.state;
+    }
+    const remote = session instanceof OnlineSession
+      ? session.role === "spectator" ? "both" : session.role === "left" ? "right" : "left"
+      : null;
+    render(ctx, sprites, presentation.sample(accumulator / TICK_MS, elapsed, remote), !session.started, session.info.players.right.isCpu);
   }
   requestAnimationFrame(frame);
 }
