@@ -202,7 +202,9 @@ function connect() {
       }
       if (hasSnapshot && matchId === message.matchId && message.state.moves.length > state.moves.length) playSound(!!message.state.winner);
       hasSnapshot = true; spectators = message.spectators ?? [];
-      state = message.state; blackSide = message.blackSide; names = message.players; startsAt = message.startsAt; turnDeadline = message.turnDeadline ?? null;
+      state = message.state; blackSide = message.blackSide; names = message.players; // 서버 시각 기준 타임스탬프를 로컬 시계로 환산 (기기 시계가 틀어져 있어도 동전/타이머가 맞도록)
+      const skew = Date.now() - (message.now ?? Date.now());
+      startsAt = message.startsAt === null ? null : message.startsAt + skew; turnDeadline = message.turnDeadline == null ? null : message.turnDeadline + skew;
       started = startsAt !== null; ready = message.ready; matchId = message.matchId; mode = message.room.mode; difficulty = message.room.difficulty ?? "normal";
       revealResult(message.result, message.delivered); pending = false;
     } else if (message.type === "MOVE_REJECTED") { pending = false; notice = "착수:" + message.message; }
