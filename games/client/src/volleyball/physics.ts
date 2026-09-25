@@ -1,4 +1,4 @@
-import { BALL_GRAVITY, BALL_RADIUS, CEILING_DROP_SPEED, COURT_WIDTH, DIVE_SPEED, GRAVITY, GROUND_Y, JUMP_VELOCITY, LYING_TICKS, MOVE_SPEED, NET_HALF_WIDTH, NET_TOP_Y, NET_X, PLAYER_HALF_WIDTH, PLAYER_HEIGHT, SPIKE_TICKS, SPIKE_SPEED, MOVING_SPIKE_SPEED, RECEIVE_MIN_LIFT, RECEIVE_MAX_LIFT, WIN_SCORE } from "./constants";
+import { BALL_TIME_SCALE, SPIKE_MIN_LIFT, SPIKE_MAX_LIFT, RECEIVE_HORIZONTAL_DIVISOR, RECEIVE_MAX_SPEED, BALL_GRAVITY, BALL_RADIUS, CEILING_DROP_SPEED, COURT_WIDTH, DIVE_SPEED, GRAVITY, GROUND_Y, JUMP_VELOCITY, LYING_TICKS, MOVE_SPEED, NET_HALF_WIDTH, NET_TOP_Y, NET_X, PLAYER_HALF_WIDTH, PLAYER_HEIGHT, SPIKE_TICKS, SPIKE_SPEED, MOVING_SPIKE_SPEED, RECEIVE_MIN_LIFT, RECEIVE_MAX_LIFT, WIN_SCORE } from "./constants";
 import type { Ball, GameState, Player, PlayerInput, PlayerState, Side } from "./types";
 
 export const EMPTY_INPUT: PlayerInput = { x: 0, y: 0, jump: false, hit: false };
@@ -67,8 +67,12 @@ function overlaps(ball: Ball, player: Player) {
 }
 export function advanceBallFlight(ball: Ball) {
   const previousX = ball.x, previousY = ball.y;
-  ball.yVelocity += BALL_GRAVITY;
-  ball.x += ball.xVelocity; ball.y += ball.yVelocity;
+  // Fractional form of y(n) = y0 + n*v0 + g*n*(n+1)/2.
+  // At scale 1 this is the original integrator; free-flight arcs stay identical.
+  const dt = BALL_TIME_SCALE;
+  ball.x += ball.xVelocity * dt;
+  ball.y += ball.yVelocity * dt + BALL_GRAVITY * dt * (dt + 1) / 2;
+  ball.yVelocity += BALL_GRAVITY * dt;
   ball.powerTicks = Math.max(0, ball.powerTicks - 1);
   if (ball.x < BALL_RADIUS || ball.x > COURT_WIDTH - BALL_RADIUS) {
     ball.x = Math.max(BALL_RADIUS, Math.min(COURT_WIDTH - BALL_RADIUS, ball.x)); ball.xVelocity *= -1;
@@ -97,16 +101,17 @@ function stepBall(state: GameState, inputs: Record<Side, PlayerInput>): Side | n
     if (ball.contact === side || !overlaps(ball, player)) continue;
     const spike = player.state === "spike" && player.spikeAvailable;
     const offset = ball.x - player.x;
-    const lift = Math.max(RECEIVE_MIN_LIFT, Math.min(RECEIVE_MAX_LIFT, Math.abs(ball.yVelocity)));
+
     if (spike) {
+      const lift = Math.max(SPIKE_MIN_LIFT, Math.min(SPIKE_MAX_LIFT, Math.abs(ball.yVelocity)));
       const input = inputs[side];
       const speed = input.x === 0 ? SPIKE_SPEED : MOVING_SPIKE_SPEED;
       ball.xVelocity = (player.isRight ? -speed : speed);
       ball.yVelocity = (input.y ?? 0) * lift * 2;
       player.spikeAvailable = false;
     } else {
-      ball.xVelocity = Math.max(-12, Math.min(12, offset / 4));
-      ball.yVelocity = -lift;
+      ball.xVelocity = Math.max(-RECEIVE_MAX_SPEED, Math.min(RECEIVE_MAX_SPEED, offset / RECEIVE_HORIZONTAL_DIVISOR));
+      ball.yVelocity = -Math.max(RECEIVE_MIN_LIFT, Math.min(RECEIVE_MAX_LIFT, Math.abs(ball.yVelocity)));
     }
     ball.contact = side; ball.powerTicks = spike ? 32 : 0;
     const kind = spike ? "spike" : "hit";

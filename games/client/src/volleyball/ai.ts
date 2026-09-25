@@ -1,4 +1,4 @@
-import { BALL_GRAVITY, BALL_RADIUS, COURT_WIDTH, NET_X, MOVE_SPEED, PLAYER_HALF_WIDTH, NET_HALF_WIDTH } from "./constants";
+import { BALL_RADIUS, DIVE_SPEED, SPIKE_SPEED, MOVING_SPIKE_SPEED, SPIKE_MIN_LIFT, SPIKE_MAX_LIFT, COURT_WIDTH, NET_X, MOVE_SPEED, PLAYER_HALF_WIDTH, NET_HALF_WIDTH } from "./constants";
 import { advanceBallFlight, EMPTY_INPUT, step } from "./physics";
 import type { GameState, Player, PlayerInput } from "./types";
 function normalInput(state: GameState, self: Player): PlayerInput {
@@ -6,22 +6,17 @@ function normalInput(state: GameState, self: Player): PlayerInput {
   const ownSide = self.isRight ? ball.x > NET_X : ball.x < NET_X;
   let target = self.isRight ? 720 : 240;
   if (ownSide) {
-    let predictedX = ball.x, predictedY = ball.y;
-    let velocityX = ball.xVelocity, velocityY = ball.yVelocity;
-    for (let tick = 0; tick < 100 && predictedY < -75; tick++) {
-      velocityY += BALL_GRAVITY; predictedY += velocityY; predictedX += velocityX;
-      if (predictedX < BALL_RADIUS || predictedX > COURT_WIDTH - BALL_RADIUS) {
-        predictedX = Math.max(BALL_RADIUS, Math.min(COURT_WIDTH - BALL_RADIUS, predictedX)); velocityX *= -1;
-      }
-    }
-    target = predictedX + (self.isRight ? 30 : -30) + Math.sin(Math.floor(state.tick / 24) * 2.7) * 12;
+    const prediction = { ...ball };
+    for (let tick = 0; tick < 112 && prediction.y < -75; tick++) advanceBallFlight(prediction);
+    target = prediction.x + (self.isRight ? 30 : -30) + Math.sin(Math.floor(state.tick / 24) * 2.7) * 12;
   }
   const dx = target - self.x;
   const near = Math.abs(ball.x - self.x) < 65;
   const jump = ownSide && near && ball.y < -100 && ball.y > -230 && ball.yVelocity > 0 && self.y === 0;
   const hit = ownSide && near && self.y < -35 && Math.abs(ball.y - (self.y - 55)) < 45;
-  const aboveNet = ball.y < -185;
-  return { x: Math.abs(dx) > 12 ? (dx > 0 ? 1 : -1) : 0, y: hit && aboveNet ? 1 : 0, jump, hit };
+
+  const x = direction(dx, 12);
+  return { x, y: hit ? attackDirection(state, self, x === 0 ? SPIKE_SPEED : MOVING_SPIKE_SPEED) : 0, jump, hit };
 }
 
 
@@ -47,16 +42,45 @@ function easyInput(state: GameState, self: Player): PlayerInput {
   };
 }
 
-function intercept(state: GameState, self: Player) {
+function intercept(state: GameState, self: Player, height = -110) {
   const ball = { ...state.ball };
   for (let ticks = 1; ticks <= 100; ticks++) {
     advanceBallFlight(ball);
-    if (onSide(ball.x, self) && ball.yVelocity > 0 && ball.y >= -110) return { x: ball.x, ticks };
+    if (onSide(ball.x, self) && ball.yVelocity > 0 && ball.y >= height) return { x: ball.x, ticks, found: true };
     if (ball.y + BALL_RADIUS >= 0) break;
   }
-  return { x: self.isRight ? 720 : 240, ticks: 100 };
+  return { x: self.isRight ? 720 : 240, ticks: 100, found: false };
 }
+// Try the steep shot first, but only if its actual flight clears the whole net.
+function attackDirection(state: GameState, self: Player, speed = MOVING_SPIKE_SPEED): -1 | 0 | 1 {
+  const direction = self.isRight ? -1 : 1;
+  const lift = Math.max(SPIKE_MIN_LIFT, Math.min(SPIKE_MAX_LIFT, Math.abs(state.ball.yVelocity)));
+  for (const y of [1, 0, -1] as const) {
+    const ball = { ...state.ball, xVelocity: direction * speed, yVelocity: y * lift * 2 };
+    for (let tick = 0; tick < 50; tick++) {
+      advanceBallFlight(ball);
+      if (ball.xVelocity * direction <= 0 || ball.y + BALL_RADIUS >= 0) break;
+      if ((ball.x - NET_X) * direction > NET_HALF_WIDTH + BALL_RADIUS) return y;
+    }
+  }
+  return -1;
+}
+
+function rescueInput(state: GameState, self: Player): PlayerInput | null {
+  if (self.y !== 0 || self.hitHeld || self.state === "dive" || self.state === "lying") return null;
+  const landing = intercept(state, self, -65);
+  if (!landing.found || landing.ticks > 18) return null;
+  const distance = Math.abs(landing.x - self.x);
+  const walkingReach = landing.ticks * MOVE_SPEED + PLAYER_HALF_WIDTH + BALL_RADIUS;
+  // A dive starts moving on the next tick, then has a wider collision box.
+  const divingReach = Math.max(0, landing.ticks - 1) * DIVE_SPEED + 42 + BALL_RADIUS;
+  if (distance <= walkingReach || distance > divingReach) return null;
+  return { x: direction(landing.x - self.x, 0), y: 0, jump: false, hit: true };
+}
+
 function hardInput(state: GameState, self: Player): PlayerInput {
+  const rescue = rescueInput(state, self);
+  if (rescue) return rescue;
   const ball = state.ball;
   const landing = intercept(state, self);
   const offset = self.isRight ? 28 : -28;
@@ -69,7 +93,7 @@ function hardInput(state: GameState, self: Player): PlayerInput {
   const jump = own && near && ball.y > -255 && ball.y < -125 && ball.yVelocity > -2 && self.y === 0;
   const hit = own && self.y < -30 && near && Math.abs(ball.y - (self.y - 55)) < 60 && !self.hitHeld;
   if (hit) x = self.isRight ? -1 : 1;
-  return { x, y: 0, jump, hit };
+  return { x, y: hit ? attackDirection(state, self) : 0, jump, hit };
 }
 
 function tacticalInput(state: GameState, self: Player, extreme: boolean): PlayerInput {
@@ -83,29 +107,38 @@ function tacticalInput(state: GameState, self: Player, extreme: boolean): Player
   for (const x of [-1, 0, 1] as const) {
     candidates.push({ x, y: 0, jump: false, hit: false });
     candidates.push({ x, y: 0, jump: true, hit: false });
-    for (const y of (extreme ? [-1, 0, 1] : [0]) as (-1 | 0 | 1)[]) candidates.push({ x, y, jump: self.y === 0, hit: true });
+    for (const y of [-1, 0, 1] as const) candidates.push({ x, y, jump: self.y === 0, hit: true });
   }
-  const rescue = direction(landing.x - self.x);
-  if (extreme && self.y === 0 && landing.ticks < 18 && Math.abs(landing.x - self.x) > landing.ticks * MOVE_SPEED)
-    candidates.push({ x: rescue, y: 0, jump: false, hit: true });
+  const rescue = rescueInput(state, self);
+  if (rescue) candidates.push(rescue);
   let best = base, bestValue = -Infinity;
   for (const candidate of candidates) {
     let future = state;
     let value = 0;
+    let touched = false;
     for (let tick = 0; tick < (extreme ? 24 : 16); tick++) {
       const input = tick < 6 ? candidate : hardInput(future, future[side]);
-      future = self.isRight ? step(future, EMPTY_INPUT, input) : step(future, input, EMPTY_INPUT);
+      const opponent = extreme ? hardInput(future, future[other]) : EMPTY_INPUT;
+      future = self.isRight ? step(future, opponent, input) : step(future, input, opponent);
       for (const event of future.events) {
-        if (event.side === side && (event.kind === "hit" || event.kind === "spike")) value += 180;
+        if (event.side === side && (event.kind === "hit" || event.kind === "spike")) touched = true;
       }
       if (future.phase !== "playing") break;
     }
+    if (touched) value += 40;
     value += (future[side].score - self.score) * 10000;
     value -= (future[other].score - state[other].score) * 10000;
     const outgoing = !onSide(future.ball.x, self);
     if (outgoing) {
-      value += 450 + Math.abs(future.ball.x - future[other].x) * 0.6;
-      if (future.ball.yVelocity > 0) value += 80;
+      value += 300;
+      // Reward a shot the defender cannot reach in time, not merely a hit.
+      const receive = intercept(future, future[other]);
+      if (receive.found) {
+        const gap = Math.abs(receive.x - future[other].x);
+        const reach = receive.ticks * MOVE_SPEED + PLAYER_HALF_WIDTH + BALL_RADIUS;
+        value += Math.max(-120, Math.min(300, gap - reach)) * 2;
+        value += Math.max(0, 30 - receive.ticks) * 3;
+      }
     } else {
       const next = intercept(future, future[side]);
       value -= Math.abs(next.x + (self.isRight ? 28 : -28) - future[side].x) * 0.8;
