@@ -238,6 +238,20 @@ test("difficulty levels remain ordered against normal AI in mirrored matches", (
   assert.ok(totals.extreme > totals.hard || (totals.hard === 28 && totals.extreme === 28));
 });
 
+test("extreme AI clearly beats hard AI head-to-head", () => {
+  let points = 0, conceded = 0;
+  for (let seed = 0; seed < 4; seed++) {
+    let state = createInitialState(seed);
+    const side = seed < 2 ? "right" : "left", other = side === "right" ? "left" : "right";
+    while (state.phase !== "gameover" && state.tick < 12000) {
+      state = step(state, computeAiInput(state, state.left, side === "left" ? "extreme" : "hard"),
+        computeAiInput(state, state.right, side === "right" ? "extreme" : "hard"));
+    }
+    points += state[side].score; conceded += state[other].score;
+  }
+  assert.ok(points >= 14 && conceded <= 3, `extreme ${points}:${conceded} vs hard`);
+});
+
 
 test("slower flight follows the original discrete trajectory at equal flight time", () => {
   const ball = { ...playing().ball, x: 100, y: -200, xVelocity: 3, yVelocity: -4 };
