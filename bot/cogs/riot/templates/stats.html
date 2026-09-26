@@ -48,6 +48,24 @@
   .g.mid   { background:#989ca71e; color:var(--ink-dim); }
   .g.bad   { background:#ff6b741e; color:var(--rose); }
 
+  .s-pool { padding:20px 24px 22px; border-top:2px solid var(--line); display:flex; align-items:center; gap:30px; }
+  .s-pool .donut { position:relative; width:168px; height:168px; flex-shrink:0; }
+  .s-pool .donut svg { width:100%; height:100%; transform:rotate(-90deg); display:block; }
+  .s-pool .donut .mid { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .s-pool .donut .mid .v { font-family:var(--disp); font-weight:800; font-size:34px; line-height:1; }
+  .s-pool .donut .mid .u { font-family:var(--disp); font-weight:600; font-size:12px; color:var(--muted); margin-top:4px; }
+  .s-pool .side { flex:1; min-width:0; }
+  .s-pool .side .lbl { display:block; margin-bottom:12px; }
+  .pool-list { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+  .pool-item { display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:14px; background:var(--card-2); }
+  .pool-item .sw { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .pool-item .cface { width:34px; height:34px; }
+  .pool-item .etc { width:34px; height:34px; border-radius:50%; flex-shrink:0; background:var(--line-soft); display:flex; align-items:center; justify-content:center; font-family:var(--disp); font-weight:800; font-size:15px; color:var(--muted); }
+  .pool-item .nm { flex:1; min-width:0; }
+  .pool-item .nm b { display:block; font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pool-item .nm span { font-family:var(--disp); font-weight:600; font-size:12px; color:var(--muted); }
+  .pool-item .pct { font-family:var(--disp); font-weight:800; font-size:18px; }
+
   .s-foot {
     padding:14px 24px; border-top:2px solid var(--line);
     display:flex; gap:18px; flex-wrap:wrap;
@@ -136,6 +154,54 @@
       <span class="g bad"><span class="c">💀</span>부진 <b>{{ s.bad_count }}</b></span>
     </div>
   </div>
+
+  {% if s.champ_pool %}
+  {% set pool_colors = ['var(--gold)', 'var(--sky)', 'var(--lime)', 'var(--grape)', 'var(--carry)'] %}
+  {% set r = 62 %}
+  {% set circ = 2 * 3.14159265 * r %}
+  {% set gap = 3 if (s.champ_pool|length + (1 if s.champ_other else 0)) > 1 else 0 %}
+  {% set dn = namespace(offset=0) %}
+  <div class="s-pool">
+    <div class="donut">
+      <svg viewBox="0 0 168 168">
+        <circle cx="84" cy="84" r="{{ r }}" fill="none" stroke="var(--card-2)" stroke-width="22"/>
+        {% for name, games, wins, icon in s.champ_pool %}
+          {% set len = games / s.total * circ %}
+          <circle cx="84" cy="84" r="{{ r }}" fill="none" stroke="{{ pool_colors[loop.index0] }}" stroke-width="22"
+                  stroke-dasharray="{{ [len - gap, 0.1]|max|round(2) }} {{ circ }}" stroke-dashoffset="{{ (-dn.offset)|round(2) }}"/>
+          {% set dn.offset = dn.offset + len %}
+        {% endfor %}
+        {% if s.champ_other %}
+          {% set len = s.champ_other / s.total * circ %}
+          <circle cx="84" cy="84" r="{{ r }}" fill="none" stroke="var(--muted)" stroke-opacity=".55" stroke-width="22"
+                  stroke-dasharray="{{ [len - gap, 0.1]|max|round(2) }} {{ circ }}" stroke-dashoffset="{{ (-dn.offset)|round(2) }}"/>
+        {% endif %}
+      </svg>
+      <div class="mid"><span class="v n">{{ s.champ_unique }}</span><span class="u">챔피언</span></div>
+    </div>
+    <div class="side">
+      <span class="lbl">챔프 폭 · 최근 {{ s.total }}게임</span>
+      <div class="pool-list">
+        {% for name, games, wins, icon in s.champ_pool %}
+        <div class="pool-item">
+          <span class="sw" style="background:{{ pool_colors[loop.index0] }}"></span>
+          <img class="cface" src="{{ icon }}" alt="">
+          <div class="nm"><b>{{ name }}</b><span>{{ games }}판 · 승률 {{ (wins / games * 100)|round|int }}%</span></div>
+          <span class="pct n" style="color:{{ pool_colors[loop.index0] }}">{{ (games / s.total * 100)|round|int }}%</span>
+        </div>
+        {% endfor %}
+        {% if s.champ_other %}
+        <div class="pool-item">
+          <span class="sw" style="background:var(--muted)"></span>
+          <span class="etc">+{{ s.champ_unique - s.champ_pool|length }}</span>
+          <div class="nm"><b>기타</b><span>{{ s.champ_other }}판</span></div>
+          <span class="pct n" style="color:var(--muted)">{{ (s.champ_other / s.total * 100)|round|int }}%</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="s-foot">
     <span>🍀 팀운 <b>{{ s.luck_score }}</b></span>

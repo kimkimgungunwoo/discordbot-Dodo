@@ -71,6 +71,11 @@ class MatchStats:
     # 챔프 Top 3: (이름, 판수, 승리수)
     top_champs: list[tuple[str, int, int]]
 
+    # 챔프 폭 (도넛): 판수 상위 5개 (이름, 판수, 승리수, 아이콘 URL) + 나머지 판수 합
+    champ_pool: list[tuple[str, int, int, str]]
+    champ_other: int
+    champ_unique: int
+
     @property
     def win_rate(self) -> int:
         return round(self.wins / max(self.total, 1) * 100)
@@ -191,10 +196,14 @@ def analyze_matches(matches: list) -> MatchStats | None:
     for m in matches:
         champ_results.setdefault(m.champion_name, []).append(m.win)
 
-    top_champs = sorted(
+    ranked = sorted(
         [(name, len(r), sum(r)) for name, r in champ_results.items()],
         key=lambda x: x[1], reverse=True
-    )[:3]
+    )
+    top_champs = ranked[:3]
+    icons = {m.champion_name: m.champ_icon_url for m in matches}
+    champ_pool = [(name, n, w, icons[name]) for name, n, w in ranked[:5]]
+    champ_other = total - sum(n for _, n, _, _ in champ_pool)
 
     return MatchStats(
         total=total, wins=wins,
@@ -215,4 +224,5 @@ def analyze_matches(matches: list) -> MatchStats | None:
         main_position=main_pos, main_pos_total=main_pos_total,
         main_pos_wins=main_pos_wins,
         top_champs=top_champs,
+        champ_pool=champ_pool, champ_other=champ_other, champ_unique=len(ranked),
     )
