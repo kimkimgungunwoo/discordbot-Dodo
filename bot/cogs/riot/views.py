@@ -275,7 +275,7 @@ class QueueSelectView(discord.ui.View):
             return
 
         msg = await interaction.followup.send(GENERATING_MSG, wait=True)
-        comment = await generate_comment(build_history_prompt(matches, self.game_name))
+        comment = await generate_comment(build_history_prompt(matches))
         img = await render_match_card(matches, self.game_name, self.tag_line, queue_label, ai_comment=comment)
         await msg.edit(content=None, attachments=[discord.File(img, "matches.png")])
 
@@ -318,7 +318,7 @@ class StatsQueueSelectView(discord.ui.View):
             return
 
         msg = await interaction.followup.send(GENERATING_MSG, wait=True)
-        comment = await generate_comment(build_stats_prompt(stats, self.game_name))
+        comment = await generate_comment(build_stats_prompt(stats))
         img = await render_stats_card(stats, self.game_name, self.tag_line, queue_label, matches=matches, ai_comment=comment)
         await msg.edit(content=None, attachments=[discord.File(img, "stats.png")])
 
@@ -421,7 +421,7 @@ class MatchPickSelect(discord.ui.Select):
             return
 
         msg = await interaction.followup.send(GENERATING_MSG, wait=True)
-        comment = await generate_comment(build_game_analysis_prompt(detail, self.game_name))
+        comment = await generate_comment(build_game_analysis_prompt(detail))
         img = await render_game_analysis_card(detail, self.game_name, self.tag_line, self.queue_label, ai_comment=comment)
         await msg.edit(content=None, attachments=[discord.File(img, "analysis.png")])
 

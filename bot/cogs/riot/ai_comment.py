@@ -25,7 +25,14 @@ _DEFAULT_SYSTEM = (
     "따라 쓰지 말고, 어색한 합성어나 API 필드명 느낌이 나는 표현 없이 자연스러운 한국어 "
     "게임 용어로 풀어서 말해."
 )
-_SYSTEM = os.getenv("riot_ai_prompt") or _DEFAULT_SYSTEM
+# 닉네임은 프롬프트에 아예 넣지 않는다. 분석 대상은 항상 "유저님", 다른 참가자는 포지션+챔피언으로 부른다.
+# .env로 시스템 프롬프트를 덮어써도 이 규칙은 항상 붙는다.
+USER = "유저님"
+_NAME_RULE = (
+    f"\n분석 대상은 반드시 '{USER}'이라고 불러. 다른 플레이어는 닉네임 대신 "
+    "'상대 미드 아리'처럼 팀·포지션·챔피언으로만 지칭해."
+)
+_SYSTEM = (os.getenv("riot_ai_prompt") or _DEFAULT_SYSTEM) + _NAME_RULE
 
 _DEFAULT_HISTORY_INSTRUCTION = (
     "개별 게임을 하나씩 평가하지 말고, 이 게임들 전체에서 보이는 흐름/경향성"
@@ -41,7 +48,7 @@ _DEFAULT_STATS_INSTRUCTION = (
 _STATS_INSTRUCTION = os.getenv("riot_stats_prompt") or _DEFAULT_STATS_INSTRUCTION
 
 _DEFAULT_GAME_ANALYSIS_INSTRUCTION = (
-    "{game_name}이(가) 이 판에서 실제로 어떤 역할을 했는지, 팀 전체 상황과 "
+    "유저님이 이 판에서 실제로 어떤 역할을 했는지, 팀 전체 상황과 "
     "비교했을 때 잘한 점/아쉬운 점을 구체적으로 짚어줘. 같은 포지션 상대 라이너와의 "
     "점수 차이가 어디서 왔는지도 반드시 짚어서 코멘트해줘."
 )
@@ -91,22 +98,22 @@ def _match_line(i: int, m) -> str:
     )
 
 
-def build_history_prompt(matches: list, game_name: str) -> str:
+def build_history_prompt(matches: list) -> str:
     lines = [_match_line(i, m) for i, m in enumerate(matches, 1)]
     return (
-        f"{game_name}의 최근 {len(matches)}게임 전적 (1번이 가장 최근 게임, 괄호 안은 포지션):\n"
+        f"{USER}의 최근 {len(matches)}게임 전적 (1번이 가장 최근 게임, 괄호 안은 포지션):\n"
         + "\n".join(lines)
         + "\n\n" + _HISTORY_INSTRUCTION
     )
 
 
-def build_stats_prompt(stats, game_name: str) -> str:
+def build_stats_prompt(stats) -> str:
     # 최근 N게임이 여러 포지션에 걸쳐있을 수 있어서(예: 미드 12판 + 정글 8판), 특정 포지션
     # 핵심 지표 하나로 뭉뚱그리면 거짓 정밀함이 된다. avg_score는 게임마다 그 게임의
     # 포지션 가중치로 계산된 뒤 평균낸 값이라 이미 포지션 보정이 끝난 상태 — 그걸 중심으로 쓴다.
     pos_kr = POSITION_KR.get(stats.main_position, stats.main_position)
     return (
-        f"{game_name}의 최근 {stats.total}게임 종합 분석 (주 포지션: {pos_kr}, "
+        f"{USER}의 최근 {stats.total}게임 종합 분석 (주 포지션: {pos_kr}, "
         f"{stats.main_pos_total}판 {stats.main_pos_win_rate}%):\n"
         f"승률 {stats.win_rate}% ({stats.wins}승 {stats.total - stats.wins}패), "
         f"포지션 보정 평균 점수 {stats.avg_score}점\n"
@@ -120,7 +127,7 @@ def build_stats_prompt(stats, game_name: str) -> str:
     )
 
 
-def build_game_analysis_prompt(detail, game_name: str) -> str:
+def build_game_analysis_prompt(detail) -> str:
     me = detail.me
     my = detail.my_team_totals
     en = detail.enemy_team_totals
@@ -130,33 +137,30 @@ def build_game_analysis_prompt(detail, game_name: str) -> str:
         plates=me.turret_plates, kda=me.kda, kp=kp, damage=f"{me.damage:,}",
         vision=me.vision_score, objectives=me.objectives, camps=me.camps,
     )
-    my_line = " / ".join(
-        f"{p.summoner_name}({p.position_kr} {p.champion_name}) {p.score}점 "
-        f"{p.kills}/{p.deaths}/{p.assists}"
-        for p in detail.my_team
-    )
-    en_line = " / ".join(
-        f"{p.summoner_name}({p.position_kr} {p.champion_name}) {p.score}점 "
-        f"{p.kills}/{p.deaths}/{p.assists}"
-        for p in detail.enemy_team
-    )
+    def who(p) -> str:
+        if p.puuid == me.puuid:
+            return f"{USER}({p.position_kr} {p.champion_name})"
+        return f"{'우리팀' if p.team_id == me.team_id else '상대'} {p.position_kr} {p.champion_name}"
+
+    my_line = " / ".join(f"{who(p)} {p.score}점 {p.kills}/{p.deaths}/{p.assists}" for p in detail.my_team)
+    en_line = " / ".join(f"{who(p)} {p.score}점 {p.kills}/{p.deaths}/{p.assists}" for p in detail.enemy_team)
     lane_opp = next((p for p in detail.enemy_team if p.position == me.position), None)
     opp_line = (
-        f"\n같은 포지션 상대 라이너와 비교 — {game_name} {me.score}점 vs "
-        f"{lane_opp.summoner_name}({lane_opp.champion_name}) {lane_opp.score}점 "
+        f"\n같은 포지션 상대 라이너와 비교 — {USER} {me.score}점 vs "
+        f"{who(lane_opp)} {lane_opp.score}점 "
         f"({lane_opp.kills}/{lane_opp.deaths}/{lane_opp.assists})"
         if lane_opp else ""
     )
     return (
-        f"이 게임에서 분석 대상은 {game_name}({me.position_kr} {me.champion_name})이고, "
+        f"이 게임에서 분석 대상은 {USER}({me.position_kr} {me.champion_name})이고, "
         f"결과는 {'승리' if me.win else '패배'}, 점수 {me.score}점({me.grade})입니다.\n"
-        f"{game_name}의 이 포지션 핵심 지표 — {focus}"
+        f"{USER}의 이 포지션 핵심 지표 — {focus}"
         f"{opp_line}\n"
         f"팀 합계 비교 — 우리팀 킬{my.kills}/골드{my.gold:,}/드래곤{my.dragons}/바론{my.barons}/타워{my.towers} "
         f"vs 상대팀 킬{en.kills}/골드{en.gold:,}/드래곤{en.dragons}/바론{en.barons}/타워{en.towers}\n"
         f"우리팀: {my_line}\n"
         f"상대팀: {en_line}\n"
-        f"이 게임의 에이스: {detail.ace.summoner_name}({detail.ace.score}점), "
-        f"트롤: {detail.troll.summoner_name}({detail.troll.score}점)\n\n"
-        + _GAME_ANALYSIS_INSTRUCTION.format(game_name=game_name)
+        f"이 게임의 에이스: {who(detail.ace)}({detail.ace.score}점), "
+        f"트롤: {who(detail.troll)}({detail.troll.score}점)\n\n"
+        + _GAME_ANALYSIS_INSTRUCTION
     )
