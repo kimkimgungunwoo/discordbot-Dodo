@@ -1,0 +1,9 @@
+export const WIDTH = 960;
+export const HEIGHT = 768;
+export const FIELD_X = 500;
+export const FIELD_Y = 384;
+export const FIELD_RADIUS = 350;
+export const PLAYER_RADIUS = 9;
+export const PLAYER_SPEED = 4.2;
+export const TICK_MS = 1000 / 60;
+export const COUNTDOWN_TICKS = 120;
