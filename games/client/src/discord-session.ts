@@ -1,9 +1,9 @@
-const GAME_PATHS = { volleyball: "/volleyball", omok: "/omok" } as const;
+const GAME_PATHS = { volleyball: "/volleyball", omok: "/omok", arrow_dodge: "/arrow-dodge" } as const;
 const ROOM_KEY = "dodo:room";
 const TOKEN_KEY = "dodo:token";
 
-export async function authenticate(root: HTMLElement, game: "volleyball" | "omok") {
-  const roomKey = game === "volleyball" ? ROOM_KEY : "dodo:omok:room";
+export async function authenticate(root: HTMLElement, game: "volleyball" | "omok" | "arrow_dodge") {
+  const roomKey = game === "volleyball" ? ROOM_KEY : `dodo:${game}:room`;
   const path = GAME_PATHS[game];
   const redirectUri = location.origin + path;
   const params = new URLSearchParams(location.search);
@@ -34,7 +34,8 @@ export async function authenticate(root: HTMLElement, game: "volleyball" | "omok
     root.style.cssText = "min-height:100vh;display:flex;align-items:center;justify-content:center;";
     const panel = document.createElement("section");
     panel.className = "start-card";
-    const title = document.createElement("h2"); title.textContent = game === "omok" ? "도도새오목" : "도도새배구";
+    const title = document.createElement("h2");
+    title.textContent = game === "omok" ? "도도새오목" : game === "arrow_dodge" ? "도도새 화살피하기" : "도도새배구";
     const button = document.createElement("button");
     button.className = "primary"; button.textContent = "Discord로 로그인";
     panel.append(title, button); root.replaceChildren(panel);

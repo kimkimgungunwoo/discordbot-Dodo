@@ -20,6 +20,10 @@ def game_name(room):
     return GAMES[room.get("game", "volleyball")].label
 
 
+def game_path(room):
+    return GAMES[room.get("game", "volleyball")].path
+
+
 class ModeView(discord.ui.View):
     def __init__(self, cog, ctx, game="volleyball"):
         super().__init__(timeout=180)
@@ -96,7 +100,7 @@ class LobbyView(discord.ui.View):
         super().__init__(timeout=None)
         self.cog = cog
         self.room_id = room_id
-        if cog.rooms.get(room_id, {}).get("mode") == "CPU":
+        if cog.rooms.get(room_id, {}).get("mode") in ("CPU", "SOLO"):
             for item in list(self.children):
                 if item.custom_id in ("dodo:join", "dodo:cancel"):
                     self.remove_item(item)
@@ -106,7 +110,7 @@ class LobbyView(discord.ui.View):
                     self.remove_item(item)
             self.add_item(discord.ui.Button(
                 label=f"{game_name(cog.rooms.get(room_id, {}))} 하러 가기", style=discord.ButtonStyle.link,
-                url=f"{cog.public_url}/{cog.rooms.get(room_id, {}).get('game', 'volleyball')}?room={room_id}",
+                url=f"{cog.public_url}{game_path(cog.rooms.get(room_id, {}))}?room={room_id}",
             ))
 
     @discord.ui.button(label="참가", style=discord.ButtonStyle.success, custom_id="dodo:join")
@@ -193,13 +197,15 @@ class Game(commands.Cog):
 
     def embed(self, room):
         playing = room["status"] == "PLAYING"
-        description = "경기 진행 중" if playing else "참가 대기 · 5분 후 자동 종료"
+        solo = room.get("mode") == "SOLO"
+        description = "게임 진행 중" if playing else ("시작 대기 · 5분 후 자동 종료" if solo else "참가 대기 · 5분 후 자동 종료")
         if room.get("last_result"):
             description = room["last_result"] + "\n\n" + description
         embed = discord.Embed(title=f"도도새{game_name(room)}", description=description, color=discord.Color.green())
-        embed.add_field(name="1P · 방장", value=f'<@{room["hostId"]}>')
-        difficulty_label = GAMES[room.get("game", "volleyball")].difficulty_labels[room.get("difficulty", "normal")]
-        embed.add_field(name="2P", value=f'<@{room["p2Id"]}>' if room["p2Id"] else (f'도도봇 · {difficulty_label}' if room.get("mode") == "CPU" else "참가 대기"))
+        embed.add_field(name="플레이어" if solo else "1P · 방장", value=f'<@{room["hostId"]}>')
+        if not solo:
+            difficulty_label = GAMES[room.get("game", "volleyball")].difficulty_labels[room.get("difficulty", "normal")]
+            embed.add_field(name="2P", value=f'<@{room["p2Id"]}>' if room["p2Id"] else (f'도도봇 · {difficulty_label}' if room.get("mode") == "CPU" else "참가 대기"))
         embed.set_footer(text=f'방 ID: {room["roomId"]}')
         return embed
 
@@ -217,7 +223,8 @@ class Game(commands.Cog):
             raise
 
     async def create_room(self, ctx: commands.Context, *, mode="PVP", difficulty="normal", game="volleyball"):
-        if mode not in ("CPU", "PVP") or game not in GAMES or difficulty not in GAMES[game].difficulty_labels:
+        definition = GAMES.get(game)
+        if definition is None or mode not in definition.modes or (mode == "CPU" and difficulty not in definition.difficulty_labels):
             raise ValueError("Invalid game mode or difficulty")
         if not ctx.guild:
             await ctx.send("서버 채널에서 사용해주세요.")
@@ -350,8 +357,8 @@ class Game(commands.Cog):
                 await interaction.followup.send("이미 시작한 경기에는 관전만 가능합니다.", ephemeral=True)
                 return
             if action in ("join", "cancel"):
-                if room["mode"] == "CPU":
-                    await interaction.followup.send("봇전에는 플레이어로 참가할 수 없습니다.", ephemeral=True)
+                if room["mode"] in ("CPU", "SOLO"):
+                    await interaction.followup.send("이 게임에는 플레이어로 참가할 수 없습니다.", ephemeral=True)
                     return
                 if room["handoff"]:
                     await interaction.followup.send("서버에 경기를 전달 중이라 참가자를 변경할 수 없습니다.", ephemeral=True)

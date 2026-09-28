@@ -32,4 +32,26 @@ export class GameAudio {
       });
     }
   }
+
+  playArrowVolley(count: number) {
+    if (this.muted || !this.context || this.context.state !== "running" || count < 1) return;
+    const context = this.context;
+    const barrage = count >= 8;
+    const voices = Math.min(count, 12);
+    for (let index = 0; index < voices; index++) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = context.currentTime + (barrage ? (index % 4) * 0.006 : index * 0.012);
+      const frequency = (barrage ? 620 : 760) + (index % 5) * 47;
+      oscillator.type = barrage ? "sawtooth" : "triangle";
+      oscillator.frequency.setValueAtTime(frequency, start);
+      oscillator.frequency.exponentialRampToValueAtTime(barrage ? 115 : 190, start + (barrage ? 0.13 : 0.085));
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(barrage ? 0.019 : 0.011, start + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + (barrage ? 0.15 : 0.1));
+      oscillator.connect(gain); gain.connect(context.destination);
+      oscillator.start(start); oscillator.stop(start + (barrage ? 0.16 : 0.11));
+      oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+    }
+  }
 }

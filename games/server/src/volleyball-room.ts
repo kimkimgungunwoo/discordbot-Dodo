@@ -24,7 +24,7 @@ export class RelayRoom {
   broadcast(message: unknown) { for (const peer of this.peers) peer.send(message); }
   ready() {
     return [...this.peers].some(peer => peer.id === this.definition.hostId) &&
-      (this.definition.mode === "CPU" || [...this.peers].some(peer => peer.id === this.definition.p2Id));
+      (this.definition.mode !== "PVP" || [...this.peers].some(peer => peer.id === this.definition.p2Id));
   }
   join(peer: Peer) {
     if ([...this.peers].some(existing => existing.id === peer.id)) throw new Error("이미 다른 창에서 접속 중입니다.");
@@ -65,7 +65,8 @@ export class RelayRoom {
     if (message.tick > committed + 12 || message.tick > 72000) throw new Error("입력 tick 범위를 벗어났습니다.");
     const inputs = this.pending.get(message.tick) ?? {};
     if (inputs[side]) return;
-    inputs[side] = { x: message.input.x, y: message.input.y, jump: message.input.jump, hit: message.input.hit };
+    inputs[side] = { x: message.input.x, y: message.input.y, jump: message.input.jump, hit: message.input.hit,
+      ...(message.input.start === undefined ? {} : { start: message.input.start }) };
     this.pending.set(message.tick, inputs);
     this.sequences.set(peer.id, message.seq);
     this.broadcast({ type: "INPUT", side, tick: message.tick, seq: message.seq, input: inputs[side] });

@@ -1,6 +1,8 @@
 # Dodo web games
 
-External browser games launched from Discord chat links with standard Discord OAuth. `/volleyball` opens volleyball and `/omok` opens gomoku; without a room query, both support local CPU practice. See `../README.md` for setup and mode selection.
+External browser games launched from Discord chat links with standard Discord OAuth. `/volleyball` opens volleyball, `/omok` opens gomoku, and `/arrow-dodge` opens the single-player arrow survival game. Without a room query, each route supports local practice. See `../README.md` for setup and mode selection.
+
+Arrow Dodge uses the current programmatically drawn Dodo sprite in a circular vanilla-colored field. Move in eight directions with WASD or the arrow keys. The run begins after a two-second countdown, ends on the first arrow collision, and records survival time. Arrow speed, density, and patterns increase over time. Discord spectators replay the same fixed-tick input history as the player.
 
 Gomoku uses a 15×15 freestyle board, server-assigned black/white colors, and four CPU levels. Black moves first; five or more stones win. Click an intersection, or use arrow keys and Enter. Online turns and results are server-authoritative; spectators and reconnecting players receive board snapshots. The shared rules and AI live in `../shared/omok.ts`.
 
@@ -23,7 +25,7 @@ First to seven wins in volleyball. The host can request a rematch from the resul
 
 ## Artwork and simulation
 
-- All active character and ball sprites are original, transparent, programmatically drawn pixel art in `src/game/sprites.ts`. The court and bursts are drawn in `render.ts`; old PNGs under `public/sprites` are not loaded.
+- All active character and ball sprites are original, transparent, programmatically drawn pixel art in `src/common/sprites.ts`. The court and bursts are drawn in `src/volleyball/render.ts`.
 - `step(state, leftInput, rightInput)` returns a new state at 60 fixed ticks per second. It does not use wall time, random values, browser APIs, or audio.
 - Input edges, contact suppression, visual effect ages, and round timers are state data. One-tick events drive audio outside physics.
 - Local practice pauses while hidden and limits catch-up after long stalls. Online sessions replay committed input history after reconnecting.

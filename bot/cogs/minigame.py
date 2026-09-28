@@ -135,15 +135,18 @@ class Minigame(commands.Cog):
 
     @commands.command(name="game", aliases=["게임"])
     async def game(self, ctx: commands.Context, *, game_name: str = "배구"):
-        game = {"배구": "volleyball", "오목": "omok"}.get(game_name.strip())
+        game = {"배구": "volleyball", "오목": "omok", "화살피하기": "arrow_dodge"}.get(game_name.strip())
         if game is None:
-            await ctx.send("`!게임 배구` 또는 `!게임 오목`으로 실행해주세요.")
+            await ctx.send("`!게임 배구`, `!게임 오목`, `!게임 화살피하기`로 실행해주세요.")
             return
         game_cog = self.bot.get_cog("Game")
         if game_cog is None:
-            await ctx.send("배구 기능을 지금 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
+            await ctx.send("게임 기능을 지금 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
             return
-        await game_cog.select_mode(ctx, game=game)
+        if game == "arrow_dodge":
+            await game_cog.create_room(ctx, game=game, mode="SOLO")
+        else:
+            await game_cog.select_mode(ctx, game=game)
 
     @commands.command(name="minigame", aliases=["미니게임"])
     async def minigame(self, ctx: commands.Context):
