@@ -28,7 +28,7 @@ dodobirdactivity.kro.kr {
 	}
 	# 게임은 도메인 루트가 아니라 각 경로에 산다 — 루트는 나중에 다른 화면이 쓸 수 있게 비워둔다.
 	# handle은 경로를 하나만 받아서, 여러 경로를 한 블록에 묶으려면 named matcher가 필요하다.
-	@web-games path /volleyball /omok /arrow-dodge
+	@web-games path /volleyball /omok /arrow-dodge /rock-run
 	handle @web-games {
 		rewrite * /index.html
 		root * /srv

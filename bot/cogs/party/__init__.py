@@ -110,7 +110,19 @@ class Party(commands.Cog):
 
     @commands.group(name="파티", invoke_without_command=True)
     async def party(self, ctx: commands.Context):
-        await ctx.reply(embed=category_embed("party", ctx.clean_prefix), mention_author=False)
+        from bot.cogs.command_menu import CommandMenuView, MenuItem
+
+        async def run(interaction, command):
+            await interaction.response.edit_message(view=None)
+            await command.callback(self, ctx)
+        items = [
+            MenuItem("파티 생성", "create", lambda i: run(i, self.create_party), emoji="➕"),
+            MenuItem("파티 목록", "list", lambda i: run(i, self.party_list), emoji="📋"),
+            MenuItem("파티 삭제", "delete", lambda i: run(i, self.delete_party), emoji="🗑️"),
+            MenuItem("파티 멤버", "members", lambda i: run(i, self.party_members), emoji="👥"),
+        ]
+        view = CommandMenuView(ctx.author.id, items, placeholder="파티 메뉴를 선택하세요")
+        view.message = await ctx.reply(embed=category_embed("party", ctx.clean_prefix), view=view, mention_author=False)
 
     @party.command(name="생성")
     async def create_party(self, ctx: commands.Context):

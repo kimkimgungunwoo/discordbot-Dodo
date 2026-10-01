@@ -1,10 +1,30 @@
 services:
+  dodo-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DODO_DB_NAME:-discordbot}
+      POSTGRES_USER: ${DODO_DB_USER:-discordbot}
+      POSTGRES_PASSWORD: ${DODO_DB_PASSWORD:?DODO_DB_PASSWORD is required}
+    volumes:
+      - dodo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DODO_DB_USER:-discordbot} -d ${DODO_DB_NAME:-discordbot}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   bot:
     build: .
     restart: unless-stopped
     env_file: .env
+    environment:
+      DODO_DATABASE_URL: postgresql://${DODO_DB_USER:-discordbot}:${DODO_DB_PASSWORD}@dodo-postgres:5432/${DODO_DB_NAME:-discordbot}
     depends_on:
-      - activity-server
+      activity-server:
+        condition: service_started
+      dodo-postgres:
+        condition: service_healthy
 
   activity-server:
     build:
@@ -32,3 +52,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  dodo_postgres_data:

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ArrowDodgeRoom } from "../src/arrow-dodge-room.js";
 import { validDefinition, type Peer } from "../src/protocol.js";
 
-const definition = { game: "arrow_dodge", roomId: "10:1:arrow", guildId: "10", hostId: "1", p2Id: null, mode: "SOLO" } as const;
+const definition = { game: "arrow_dodge", roomId: "10:1:arrow", guildId: "10", hostId: "1", p2Id: null, mode: "SOLO", bestScore: 4321 } as const;
 const idle = { x: 0, y: 0, jump: false, hit: false } as const;
 function participant(id: string) {
   const messages: any[] = [];
@@ -15,9 +15,11 @@ test("arrow dodge accepts only a solo definition and relays host input with star
   assert.equal(validDefinition(definition), true);
   assert.equal(validDefinition({ ...definition, mode: "CPU" }), false);
   assert.equal(validDefinition({ ...definition, p2Id: "2" }), false);
+  assert.equal(validDefinition({ ...definition, bestScore: -1 }), false);
   const room = new ArrowDodgeRoom(definition), host = participant("1"), viewer = participant("2");
   room.join(host.peer); room.join(viewer.peer);
   assert.equal(host.messages[0].role, "left"); assert.equal(viewer.messages[0].role, "spectator");
+  assert.equal(host.messages[0].room.bestScore, 4321);
   room.input(viewer.peer, { tick: 1, seq: 1, input: idle });
   room.input(host.peer, { tick: 1, seq: 1, input: { ...idle, start: true } });
   assert.equal(room.history.length, 1);

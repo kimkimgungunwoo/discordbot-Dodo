@@ -62,7 +62,7 @@ export class RelayRoom {
     if (message.seq <= (this.sequences.get(peer.id) ?? 0)) return;
     const committed = this.history.length;
     if (message.tick <= committed) return;
-    if (message.tick > committed + 12 || message.tick > 72000) throw new Error("입력 tick 범위를 벗어났습니다.");
+    if (message.tick > committed + 12) throw new Error("입력 tick 범위를 벗어났습니다.");
     const inputs = this.pending.get(message.tick) ?? {};
     if (inputs[side]) return;
     inputs[side] = { x: message.input.x, y: message.input.y, jump: message.input.jump, hit: message.input.hit,

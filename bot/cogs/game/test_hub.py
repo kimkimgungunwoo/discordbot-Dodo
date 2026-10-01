@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 
-from bot.cogs.game import Game, LobbyView, ModeView
+from bot.cogs.game import Game, LobbyView, ModeView, RockRunModeView
 
 
 class LobbyTests(unittest.IsolatedAsyncioTestCase):
@@ -185,6 +185,20 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
         view = self.ctx.send.call_args.kwargs["view"]
         self.assertEqual([item.label for item in view.children], ["봇전", "대결"])
         view.stop()
+
+    async def test_rock_run_mode_menu_creates_endless_room_and_hands_off_variant(self):
+        await self.cog.select_rock_run_mode(self.ctx)
+        view = self.ctx.send.call_args.kwargs["view"]
+        self.assertIsInstance(view, RockRunModeView)
+        self.assertEqual([item.label for item in view.children], ["일반 모드", "엔드리스"])
+        self.cog.remove_room(self.room_id)
+        host = self.interaction(1)
+        host.message = SimpleNamespace(edit=AsyncMock())
+        await view.choose(host, "endless")
+        room = next(iter(self.cog.rooms.values()))
+        self.assertEqual(room["runMode"], "endless")
+        await self.cog.action(room["roomId"], "start", self.interaction(1))
+        self.assertEqual(self.cog.http.post.call_args.kwargs["json"]["runMode"], "endless")
 
     async def test_selection_permissions_and_difficulties(self):
         view = ModeView(self.cog, self.ctx)

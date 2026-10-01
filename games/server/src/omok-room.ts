@@ -56,7 +56,8 @@ export class OmokRoom extends RelayRoom {
       const winnerSide = this.state.draw ? "draw" : this.state.winner === 1 ? this.blackSide : this.blackSide === "left" ? "right" : "left";
       this.result = { roomId: this.definition.roomId, matchId: this.matchId, winnerSide,
         winnerId: winnerSide === "left" ? this.definition.hostId : winnerSide === "right" ? this.definition.p2Id : null,
-        score: { left: winnerSide === "left" ? 1 : 0, right: winnerSide === "right" ? 1 : 0 } };
+        score: { left: winnerSide === "left" ? 1 : 0, right: winnerSide === "right" ? 1 : 0 },
+        moveCount: this.state.moves.length };
       this.finishedAt = Date.now(); this.dispose();
     } else {
       this.scheduleCpu(); this.scheduleTurnTimeout(true);

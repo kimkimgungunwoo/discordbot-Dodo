@@ -3,10 +3,13 @@
 .arrow-arcade { border: 2px solid #303b36; background: #f3efdf; box-shadow: 5px 5px 0 #dce0d0; }
 .arrow-stage { position: relative; }
 .arrow-stage canvas { aspect-ratio: 5 / 4; }
-.survival-time { position: absolute; top: 13px; right: 16px; display: flex; align-items: baseline; gap: 5px; min-width: 146px; padding: 8px 12px; color: #303b36; background: #faf7ebeb; border: 2px solid #303b36; box-shadow: 3px 3px 0 #d18152; }
+.score-panel { position: absolute; top: 13px; right: 16px; min-width: 146px; color: #303b36; background: #faf7ebeb; border: 2px solid #303b36; box-shadow: 3px 3px 0 #d18152; }
+.survival-time { display: flex; align-items: baseline; gap: 5px; padding: 8px 12px 5px; }
 .survival-time small { font: bold 10px monospace; letter-spacing: 1px; }
 .survival-time strong { margin-left: auto; font: bold 25px monospace; }
 .survival-time span { font-size: 11px; }
+.personal-best { display: flex; justify-content: space-between; gap: 12px; padding: 5px 12px 7px; border-top: 1px solid #b7b5aa; color: #69765f; }
+.personal-best small { font-size: 9px; }.personal-best strong { font: bold 11px monospace; color: #ad663d; }
 .arrow-stage .overlay { background: transparent; }
 .arrow-stage .start-card { border-color: #303b36; background: #faf7ebf2; }
 .arrow-stage .start-card strong { color: #ad663d; font: bold 25px monospace; }
@@ -17,6 +20,8 @@
 .arrow-touch button:nth-child(3) { grid-column: 2; grid-row: 2; }.arrow-touch button:nth-child(4) { grid-column: 3; grid-row: 2; }
 @media (pointer: coarse) { .arrow-touch { display: grid; } }
 @media (max-width: 650px) {
-  .survival-time { top: 7px; right: 8px; min-width: 110px; padding: 5px 8px; }
+  .score-panel { top: 7px; right: 8px; min-width: 118px; }
+  .survival-time { padding: 5px 8px 3px; }
+  .personal-best { padding: 4px 8px 5px; }
   .survival-time strong { font-size: 18px; }.arrow-guide { gap: 12px; flex-wrap: wrap; padding: 13px; }
 }

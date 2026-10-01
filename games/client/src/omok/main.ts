@@ -24,7 +24,7 @@ root.innerHTML = `<main class="shell omok-shell">
       <div class="board-wrap"><div class="turn-timer" id="turn-timer" role="timer" hidden></div><div class="omok-board" id="board" role="group" aria-label="오목판, 방향키로 이동하고 Enter로 착수"></div></div>
       <div class="trainer trainer-bottom" id="trainer-right"><canvas width="120" height="96" id="portrait-right" aria-hidden="true"></canvas><div class="trainer-text"><strong id="name-right"></strong><small id="role-right"></small><div class="turn-meter"><div class="turn-meter-fill" id="meter-right"></div></div></div></div>
       <div class="overlay omok-overlay" id="overlay"><div class="start-card"><div class="coin" id="coin" hidden></div><h2 id="title">한 수의 시작</h2><p id="copy">동전을 던져 흑백을 정합니다.<br>흑돌이 먼저 둡니다.</p><button class="primary" id="start">동전 던지고 시작</button></div></div>
-    </div><div class="omok-status" id="status" role="status" aria-live="polite"></div>
+    </div>
   </section><div class="omok-footer"><span>흑은 정확히 5목 · 백은 5목 이상이면 승리</span><span>흑 33 · 44 · 장목 금수 · 마지막 수는 주황 표시</span></div>
 </main>`;
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -101,7 +101,6 @@ function draw() {
     el("title").textContent = result.aborted ? "경기 중단" : result.winnerSide === "draw" ? "무승부" : names[result.winnerSide as Side] + " 승리";
     el("copy").textContent = actionError || (result.aborted ? result.reason ?? "연결이 종료되었습니다." : `${state.moves.length}수 만에 대국이 끝났습니다.`);
   } else { el("title").textContent = online ? "플레이어 연결 대기" : "한 수의 시작"; el("copy").textContent = "동전으로 흑백을 정하고, 흑돌부터 시작합니다."; }
-  el("status").textContent = terminal || !connected ? notice : result ? (online && !delivered ? "결과를 Discord에 전송 중..." : voteSent ? "상대의 재경기 동의를 기다립니다." : "대국이 끝났습니다.") : !started ? notice : tossing ? "동전 던지기로 흑백을 정하고 있습니다." : !ready ? "상대의 재접속을 기다립니다." : state.winner || state.draw ? "대국이 끝났습니다." : (role === "spectator" ? "관전 중 · " : "") + `${names[turnSide()]}의 차례 · ${state.turn === 1 ? "흑돌" : "백돌"}` + (notice.startsWith("착수:") ? " · " + notice.slice(3) : "");
 }
 const RESULT_REVEAL_DELAY_MS = 2000;
 function finishLocal() {

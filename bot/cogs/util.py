@@ -159,7 +159,17 @@ class Util(commands.Cog):
 
     @commands.group(name="AI", aliases=["ai"], invoke_without_command=True)
     async def ai_group(self, ctx: commands.Context):
-        await ctx.reply(embed=category_embed("ai", ctx.clean_prefix), mention_author=False)
+        from bot.cogs.command_menu import CommandMenuView, MenuItem
+
+        async def run(interaction, command):
+            await interaction.response.edit_message(view=None)
+            await command.callback(self, ctx)
+        items = [
+            MenuItem("AI 질문", "question", lambda i: run(i, self.ai_question), "한 번 질문하기", "❓"),
+            MenuItem("AI 대화", "chat", lambda i: run(i, self.ai_chat), "대화 세션 시작", "💬"),
+        ]
+        view = CommandMenuView(ctx.author.id, items, placeholder="AI 메뉴를 선택하세요")
+        view.message = await ctx.reply(embed=category_embed("ai", ctx.clean_prefix), view=view, mention_author=False)
 
     @ai_group.command(name="질문")
     async def ai_question(self, ctx: commands.Context):
