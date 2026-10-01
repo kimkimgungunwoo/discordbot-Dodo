@@ -1,0 +1,57 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><style>body{margin:0;background:#f8f6ed;display:grid;place-items:center;min-height:100vh}canvas{width:min(100vw,1200px);image-rendering:pixelated;border:2px solid #303b36}</style><canvas width="960" height="540"></canvas><script type="module">
+import {loadSprites} from '/src/common/sprites.ts';
+const ctx=document.querySelector('canvas').getContext('2d');const COURT_WIDTH=960,COURT_HEIGHT=540,GROUND_Y=480,INK='#303b36';
+function rect(ctx,color,x,y,w,h){ctx.fillStyle=color;ctx.fillRect(Math.round(x),Math.round(y),w,h)}
+function background(ctx) {
+  rect(ctx, "#f3efdf", 0, 0, COURT_WIDTH, COURT_HEIGHT);
+  rect(ctx, "#e7dec0", 755, 86, 54, 54); rect(ctx, "#f3efdf", 749, 80, 12, 12);
+  for (const [left, top, width] of [[88, 122, 90], [371, 80, 66], [610, 155, 102]]) {
+    rect(ctx, "#d4d7c9", left, top, width, 3);
+    rect(ctx, "#d4d7c9", left + 18, top - 12, width - 39, 12);
+    rect(ctx, "#f3efdf", left + 21, top - 9, width - 45, 9);
+  }
+  for (let index = 0; index < 18; index++) {
+    const height = 12 + (index * 17) % 45;
+    rect(ctx, "#e2e4d6", index * 60, GROUND_Y - height, 63, height);
+  }
+  for (const left of [60, 854]) {
+    rect(ctx, "#aeb8a0", left, 330, 9, 66);
+    rect(ctx, "#aeb8a0", left - 15, 351, 15, 9);
+    rect(ctx, "#aeb8a0", left - 15, 339, 6, 18);
+    rect(ctx, "#aeb8a0", left + 9, 366, 18, 9);
+    rect(ctx, "#aeb8a0", left + 21, 345, 6, 27);
+  }
+  rect(ctx, INK, 0, GROUND_Y, COURT_WIDTH, 3);
+  rect(ctx, "#e9e3cd", 0, GROUND_Y + 3, COURT_WIDTH, COURT_HEIGHT - GROUND_Y - 3);
+  for (let index = 0; index < 55; index++) {
+    rect(ctx, "#b9bca7", (index * 173 + 21) % 950, GROUND_Y + 12 + (index * 37) % 63, index % 3 ? 6 : 12, 3);
+  }
+}
+
+background(ctx);
+// Original volleyball sky, sun, clouds and distant desert; new canyon floor.
+rect(ctx,'#e2e4d6',0,395,960,145);
+for(let i=0;i<20;i++)rect(ctx,'#d4d7c9',i*57,430+(i*19)%60,36,110);
+function rock(x,y,w,h,pillar=false){
+ rect(ctx,INK,x,y,w,h);rect(ctx,'#c8b48b',x+3,y+3,w-6,h-3);
+ rect(ctx,'#e7dec0',x+3,y+3,w-6,10);rect(ctx,'#ab9676',x+w-15,y+13,12,h-13);
+ for(let n=0;n<h/30;n++){let yy=y+24+n*30;rect(ctx,'#b5a27f',x+3,yy,w-18,3);rect(ctx,'#a18e70',x+12+(n%3)*9,yy+3,3,12)}
+ if(pillar){rect(ctx,INK,x+w/2-5,y-8,10,10);rect(ctx,'#d18152',x+w/2-2,y-6,4,5)}
+}
+rock(-5,369,238,180);rock(747,345,230,210);rock(420,177,48,370,true);rock(634,228,42,320,true);
+// Rope attaches to the rock itself.
+ctx.strokeStyle=INK;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(444,172);ctx.lineTo(296,306);ctx.stroke();
+ctx.strokeStyle='#d8af65';ctx.lineWidth=1;ctx.stroke();
+const sprites=loadSprites();ctx.imageSmoothingEnabled=false;
+ctx.save();ctx.translate(276,312);ctx.rotate(-.18);ctx.drawImage(sprites['left/jump/0'],-30,-24,60,48);ctx.restore();
+function coin(x,y,gold){rect(ctx,INK,x-6,y-7,12,14);rect(ctx,gold?'#d8af65':'#b5bcaa',x-4,y-5,8,10);rect(ctx,gold?'#f2eddb':'#f8f6ed',x-2,y-3,2,5)}
+for(let i=0;i<6;i++)coin(30+i*32,348,false);
+[[333,277],[371,243],[407,220],[492,203],[533,210],[571,230],[701,288],[745,303],[788,319],[822,319],[856,319],[890,319]].forEach(([x,y])=>coin(x,y,true));
+rect(ctx,'#fcfaf2',0,0,960,68);rect(ctx,INK,0,67,960,2);
+ctx.fillStyle=INK;ctx.font='bold 25px monospace';ctx.fillText('2,450',22,31);ctx.font='12px sans-serif';ctx.fillStyle='#69765f';ctx.fillText('내 최고점수 18,750',22,52);
+ctx.textAlign='center';ctx.fillStyle=INK;ctx.font='bold 16px sans-serif';ctx.fillText('도도새 바위 달리기',480,29);ctx.font='11px monospace';ctx.fillStyle='#ad663d';ctx.fillText('STAGE 3 / 6',480,49);
+ctx.textAlign='right';ctx.fillStyle='#69765f';ctx.font='12px sans-serif';ctx.fillText('소리 ♪',932,38);
+rect(ctx,'#fcfaf2',0,497,960,43);rect(ctx,INK,0,497,960,2);
+for(let i=0;i<6;i++){rect(ctx,'#d4d7c9',22+i*153,516,149,7);if(i<2)rect(ctx,'#829084',22+i*153,516,149,7)}rect(ctx,'#d18152',328,516,58,7);
+rect(ctx,INK,383,511,3,17);ctx.fillStyle=INK;ctx.font='10px monospace';ctx.fillText('GOAL',936,511);
+</script>

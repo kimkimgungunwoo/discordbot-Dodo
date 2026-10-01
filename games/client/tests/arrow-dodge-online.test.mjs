@@ -35,7 +35,7 @@ function connect(role) {
   const session = new OnlineSession("room", "token"), socket = Socket.instances.at(-1);
   socket.onopen();
   socket.receive({ type: "GAME_START", seed: 4, role, userId: role === "left" ? "1" : "2", seq: 0, committedTick: 0,
-    room: { game: "arrow_dodge", hostId: "1", p2Id: null, mode: "SOLO" } });
+    room: { game: "arrow_dodge", hostId: "1", p2Id: null, mode: "SOLO", bestScore: 4321 } });
   socket.receive({ type: "CAUGHT_UP" });
   socket.receive({ type: "PRESENCE", ready: true, committedTick: 0, spectators: [], players: [] });
   return { session, socket };
@@ -43,6 +43,7 @@ function connect(role) {
 
 test("solo host sends no frames before start and marks only the first input as start", () => {
   const { session, socket } = connect("left");
+  assert.equal(session.bestScore, 4321);
   session.advance(EMPTY_INPUT);
   assert.equal(socket.sent.filter(message => message.type === "INPUT").length, 0);
   assert.equal(session.requestStart(), true);

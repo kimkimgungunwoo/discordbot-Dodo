@@ -29,6 +29,7 @@ class ArrowDodgeLobbyTests(unittest.IsolatedAsyncioTestCase):
         await self.cog.action(room["roomId"], "start", self.interaction(1))
         payload = self.cog.http.post.call_args.kwargs["json"]
         self.assertEqual((payload["game"], payload["mode"], payload["p2Id"]), ("arrow_dodge", "SOLO", None))
+        self.assertEqual(payload["bestScore"], 0)
         link = next(item for item in LobbyView(self.cog, room["roomId"], True).children if item.custom_id is None)
         self.assertIn("/arrow-dodge?room=", link.url)
         self.assertEqual(link.label, "화살피하기 하러 가기")

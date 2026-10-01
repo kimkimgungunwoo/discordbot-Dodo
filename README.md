@@ -33,7 +33,7 @@
 ---
 
 ### 🏐 도도새배구
-`!게임` 명령어로 봇전(난이도 선택) 또는 대결(PVP) 중 선택. 7점 선취 실시간 대전 미니게임으로, 채팅에 뜨는 링크를 눌러 Discord 계정으로 로그인하면 브라우저에서 바로 플레이합니다.
+`!게임` 명령어의 드롭다운에서 배구·오목·화살피하기·게임 통계를 선택합니다. 배구는 7점 선취 실시간 대전 미니게임으로, 채팅에 뜨는 링크를 눌러 Discord 계정으로 로그인하면 브라우저에서 바로 플레이합니다.
 
 | 항목 | 내용 |
 |------|------|
@@ -41,6 +41,7 @@
 | 대결 | 방장이 방을 만들면 다른 유저가 참가 후 방장이 시작 |
 | 관전 | 진행 중인 경기도 관전 가능 |
 | 재경기 | 경기 종료 후 같은 링크에서 바로 재대결(대결은 양쪽 모두 동의 필요) |
+| 전적 | `!게임 통계`에서 내 전적, 현재 서버 랭킹, 봇 전체 랭킹 조회 |
 
 ### ⚫ 도도새오목
 `!게임 오목`으로 봇전 또는 대결을 선택합니다. 15×15 자유룰이며 동전 던지기로 흑백을 정하고 흑돌이 먼저 둡니다. 쉬움·중간·어려움·극한 AI, 관전, 재접속, 재경기를 지원합니다. `/omok`에서는 로그인 없이 연습할 수 있습니다. 실행 설정은 [웹게임 안내](games/README.md)를 참고하세요.
@@ -156,6 +157,10 @@ BOT_INTERNAL_HOST=0.0.0.0
 BOT_INTERNAL_PORT=3002
 DISCORD_CLIENT_ID=<Discord Developer Portal Application ID>
 DISCORD_CLIENT_SECRET=<Discord Developer Portal OAuth2 Client Secret>
+DODO_DB_NAME=discordbot
+DODO_DB_USER=discordbot
+DODO_DB_PASSWORD=<운영에서 사용할 강한 비밀번호>
+DODO_DATABASE_URL=postgresql://discordbot:<위 비밀번호>@localhost:5432/discordbot  # 봇을 로컬에서 직접 실행할 때
 
 # DynamoDB 테이블 생성 (최초 1회)
 python -m scripts.init_dynamodb

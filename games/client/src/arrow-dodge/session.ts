@@ -14,6 +14,7 @@ export interface Session {
   readonly rematching: boolean;
   readonly message: string;
   readonly spectators: Spectator[];
+  readonly bestScore: number;
   requestStart(): boolean;
   advance(input: PlayerInput): void;
 }
@@ -28,12 +29,17 @@ export class PracticeSession implements Session {
   readonly rematching = false;
   readonly message = "";
   readonly spectators: Spectator[] = [];
+  bestScore = Number(localStorage.getItem("dodo:arrow_dodge:bestScore")) || 0;
   requestStart() {
     if (this.state.phase === "ready") { this.state = step(this.state, { ...EMPTY_INPUT, start: true }); return true; }
     if (this.state.phase === "gameover") { this.state = step(createInitialState(Date.now()), { ...EMPTY_INPUT, start: true }); return true; }
     return false;
   }
-  advance(input: PlayerInput) { this.state = step(this.state, input); }
+  advance(input: PlayerInput) {
+    this.state = step(this.state, input);
+    const score = Math.round(this.state.survivalTicks * 1000 / 60);
+    if (score > this.bestScore) { this.bestScore = score; localStorage.setItem("dodo:arrow_dodge:bestScore", String(score)); }
+  }
 }
 
 export class OnlineSession implements Session {
@@ -47,6 +53,7 @@ export class OnlineSession implements Session {
   rematching = false;
   message = "서버 연결 중";
   spectators: Spectator[] = [];
+  bestScore = 0;
   private socket: WebSocket | null = null;
   private frames = new Map<number, Frame>();
   private inputs = new Map<number, PlayerInput>();
@@ -76,6 +83,7 @@ export class OnlineSession implements Session {
           this.serverMatchId = message.matchId ?? message.room.matchId;
           this.confirmed = createInitialState(message.seed); this.state = this.confirmed;
           this.role = message.role; this.seq = message.seq; this.sentTick = message.committedTick;
+          this.bestScore = Number.isSafeInteger(message.room.bestScore) ? message.room.bestScore : 0;
           this.replayTarget = message.committedTick; this.frames.clear(); this.inputs.clear();
           this.hydrated = false; this.startRequested = false; this.startSent = false; this.reported = false;
           this.completed = false; this.rematching = false; this.stopped = false;
@@ -137,6 +145,7 @@ export class OnlineSession implements Session {
     }
     if (this.confirmed.phase === "gameover") {
       this.state = this.confirmed;
+      this.bestScore = Math.max(this.bestScore, Math.round(this.confirmed.survivalTicks * 1000 / 60));
       if (this.role === "left" && !this.reported && this.socket?.readyState === WebSocket.OPEN) {
         const survivalMs = Math.round(this.confirmed.survivalTicks * 1000 / 60);
         this.socket.send(JSON.stringify({ type: "RESULT", matchId: this.serverMatchId, tick: this.confirmed.tick,

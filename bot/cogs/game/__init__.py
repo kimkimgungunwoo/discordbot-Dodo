@@ -5,6 +5,7 @@ import hmac
 import logging
 import os
 import uuid
+import datetime
 
 import aiohttp
 from aiohttp import web
@@ -12,6 +13,8 @@ import discord
 from discord.ext import commands
 
 from .registry import GAMES
+from .stats_view import GameStatsView
+from api.dodo import DodoGameStore, DodoStorageError
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +98,53 @@ class ModeView(discord.ui.View):
             await interaction.followup.send("대결 방을 만들었습니다. 상대 참가 후 시작해주세요.", ephemeral=True)
 
 
+class RockRunModeView(discord.ui.View):
+    def __init__(self, cog, ctx):
+        super().__init__(timeout=180)
+        self.cog, self.ctx, self.selected = cog, ctx, False
+        self.selection_lock = asyncio.Lock()
+        self.message = None
+
+    def stop(self):
+        self.cog.selection_views.discard(self)
+        super().stop()
+
+    async def interaction_check(self, interaction):
+        if interaction.user.id == self.ctx.author.id:
+            return True
+        await interaction.response.send_message("명령어를 입력한 사람만 선택할 수 있습니다.", ephemeral=True)
+        return False
+
+    async def on_timeout(self):
+        self.cog.selection_views.discard(self)
+        for item in self.children: item.disabled = True
+        if self.message:
+            try: await self.message.edit(view=self)
+            except discord.HTTPException: pass
+
+    async def choose(self, interaction, run_mode):
+        await interaction.response.defer(ephemeral=True)
+        async with self.selection_lock:
+            if self.selected:
+                await interaction.followup.send("이미 선택한 모드입니다.", ephemeral=True)
+                return
+            room = await self.cog.create_room(self.ctx, game="rock_run", mode="SOLO", run_mode=run_mode)
+            if room is None:
+                await interaction.followup.send("방을 만들지 못했습니다. 채널의 안내를 확인해주세요.", ephemeral=True)
+                return
+            self.selected = True
+            self.stop()
+            try: await interaction.message.edit(view=None)
+            except discord.HTTPException: pass
+        await interaction.followup.send("바위달리기 방을 만들었습니다. 게임 시작 버튼을 눌러주세요.", ephemeral=True)
+
+    @discord.ui.button(label="일반 모드", style=discord.ButtonStyle.primary)
+    async def normal(self, interaction, _button): await self.choose(interaction, "normal")
+
+    @discord.ui.button(label="엔드리스", style=discord.ButtonStyle.success)
+    async def endless(self, interaction, _button): await self.choose(interaction, "endless")
+
+
 class LobbyView(discord.ui.View):
     def __init__(self, cog: "Game", room_id: str, playing: bool = False):
         super().__init__(timeout=None)
@@ -147,8 +197,13 @@ class Game(commands.Cog):
         self.secret = os.getenv("ACTIVITY_INTERNAL_SECRET", "")
         self.server_url = os.getenv("ACTIVITY_SERVER_URL", "").rstrip("/")
         self.public_url = os.getenv("ACTIVITY_PUBLIC_URL", "").rstrip("/")
+        self.stats = DodoGameStore()
 
     async def cog_load(self):
+        try:
+            await self.stats.open()
+        except DodoStorageError:
+            log.exception("Dodo game statistics database startup failed")
         self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8))
         app = web.Application(client_max_size=8192)
         app.router.add_post("/internal/game-results", self.game_result)
@@ -183,6 +238,7 @@ class Game(commands.Cog):
             await self.runner.cleanup()
         if self.http:
             await self.http.close()
+        await self.stats.close()
 
     def _lock_for(self, guild_id) -> asyncio.Lock:
         key = str(guild_id)
@@ -203,6 +259,8 @@ class Game(commands.Cog):
             description = room["last_result"] + "\n\n" + description
         embed = discord.Embed(title=f"도도새{game_name(room)}", description=description, color=discord.Color.green())
         embed.add_field(name="플레이어" if solo else "1P · 방장", value=f'<@{room["hostId"]}>')
+        if room.get("game") == "rock_run":
+            embed.add_field(name="모드", value="엔드리스 · 4단계 속도" if room.get("runMode") == "endless" else "일반 · 6단계")
         if not solo:
             difficulty_label = GAMES[room.get("game", "volleyball")].difficulty_labels[room.get("difficulty", "normal")]
             embed.add_field(name="2P", value=f'<@{room["p2Id"]}>' if room["p2Id"] else (f'도도봇 · {difficulty_label}' if room.get("mode") == "CPU" else "참가 대기"))
@@ -222,9 +280,32 @@ class Game(commands.Cog):
             view.stop()
             raise
 
-    async def create_room(self, ctx: commands.Context, *, mode="PVP", difficulty="normal", game="volleyball"):
+    async def select_rock_run_mode(self, ctx: commands.Context):
+        if not ctx.guild:
+            await ctx.send("서버 채널에서 사용해주세요.")
+            return
+        view = RockRunModeView(self, ctx)
+        self.selection_views.add(view)
+        try:
+            view.message = await ctx.send(embed=discord.Embed(
+                title="도도새 바위달리기", description="일반 모드 또는 4단계 속도의 엔드리스 모드를 선택해주세요."), view=view)
+        except Exception:
+            view.stop()
+            raise
+
+    async def show_stats(self, ctx: commands.Context):
+        if not ctx.guild:
+            await ctx.send("서버 채널에서 사용해주세요.")
+            return
+        if self.stats.configured and not self.stats.ready:
+            await ctx.send("게임 통계 저장소에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.")
+            return
+        view = GameStatsView(self.stats, ctx.author.id, ctx.guild.id)
+        view.message = await ctx.send(embed=view.filter_embed(), view=view)
+
+    async def create_room(self, ctx: commands.Context, *, mode="PVP", difficulty="normal", game="volleyball", run_mode="normal"):
         definition = GAMES.get(game)
-        if definition is None or mode not in definition.modes or (mode == "CPU" and difficulty not in definition.difficulty_labels):
+        if definition is None or mode not in definition.modes or (mode == "CPU" and difficulty not in definition.difficulty_labels) or (game == "rock_run" and run_mode not in ("normal", "endless")):
             raise ValueError("Invalid game mode or difficulty")
         if not ctx.guild:
             await ctx.send("서버 채널에서 사용해주세요.")
@@ -246,7 +327,8 @@ class Game(commands.Cog):
             async with self._lock_for(ctx.guild.id):
                 room_id = f"{ctx.guild.id}:{ctx.author.id}:{uuid.uuid4().hex}"
                 room = dict(game=game, roomId=room_id, guildId=ctx.guild.id, channelId=ctx.channel.id, messageId=None,
-                            hostId=ctx.author.id, p2Id=None, spectators=set(), status="WAITING", handoff=False, mode=mode, difficulty=difficulty, matchId=None, previousMatchId=None)
+                            hostId=ctx.author.id, p2Id=None, spectators=set(), status="WAITING", handoff=False, mode=mode, difficulty=difficulty,
+                            runMode=run_mode, matchId=None, previousMatchId=None)
                 self.rooms[room_id] = room
                 if mode == "CPU":
                     try:
@@ -391,10 +473,19 @@ class Game(commands.Cog):
         if not room["handoff"]:
             room["previousMatchId"] = room["matchId"]
             room["matchId"] = uuid.uuid4().hex
+            room["startedAt"] = datetime.datetime.now(datetime.UTC)
         room["handoff"] = True
         payload = {key: str(room[key]) for key in ("roomId", "guildId", "hostId", "matchId")}
         payload.update(p2Id=str(room["p2Id"]) if room["p2Id"] else None, mode=room["mode"])
         payload["game"] = room.get("game", "volleyball")
+        if payload["game"] == "rock_run":
+            payload["runMode"] = room.get("runMode", "normal")
+        definition = GAMES[payload["game"]]
+        if definition.tracks_best_score:
+            stats = await self.stats.player_stats(
+                room["hostId"], payload["game"], room["mode"], room.get("runMode", "") if payload["game"] == "rock_run" else room.get("difficulty", ""),
+            )
+            payload["bestScore"] = int(stats["best_score"] or 0) if stats else 0
         if room["mode"] == "CPU":
             payload["difficulty"] = room["difficulty"]
         async with self.http.post(self.server_url + "/internal/game-sessions", json=payload,
@@ -461,6 +552,11 @@ class Game(commands.Cog):
                 result_line = GAMES[room.get("game", "volleyball")].verify_result(payload, room)
                 if result_line is None:
                     return web.json_response({"error": "Invalid result"}, status=400)
+            try:
+                await self.stats.record_match(room, payload)
+            except DodoStorageError:
+                log.exception("Could not persist Dodo game result %s", room.get("matchId"))
+                return web.json_response({"error": "Result storage unavailable"}, status=503)
             room["status"] = "WAITING"
             room["handoff"] = False
             room["last_result"] = result_line

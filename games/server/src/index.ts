@@ -5,6 +5,7 @@ import { RelayRoom } from "./volleyball-room.js";
 import { validDefinition, type Peer } from "./protocol.js";
 import { identity, member, DiscordRateLimitError } from "./auth.js";
 import { OmokRoom } from "./omok-room.js";
+import { RockRunRoom } from "./rock-run-room.js";
 import { ArrowDodgeRoom } from "./arrow-dodge-room.js";
 
 const secret = process.env.ACTIVITY_INTERNAL_SECRET ?? "";
@@ -57,7 +58,7 @@ export const server = createServer(async (req, res) => {
       if (existing && ((Object.keys(existing.definition) as Array<keyof typeof definition>).some(key => key !== "matchId" && existing.definition[key] !== definition[key]))) return json(res, 409, { error: "Room conflict" });
       if (!existing && rooms.size >= 200) return json(res, 503, { error: "Room capacity reached" });
       if (existing && definition.matchId && existing.matchId !== definition.matchId) return json(res, 409, { error: "다른 경기가 진행 중입니다." });
-      const room = existing ?? (definition.game === "omok" ? new OmokRoom(definition)
+      const room = existing ?? (definition.game === "rock_run" ? new RockRunRoom(definition) : definition.game === "omok" ? new OmokRoom(definition)
         : definition.game === "arrow_dodge" ? new ArrowDodgeRoom(definition) : new RelayRoom(definition));
       rooms.set(definition.roomId, room);
       if (stale && stale !== room) stale.broadcast({ type: "MATCH_REPLACED" });

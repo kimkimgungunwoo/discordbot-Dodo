@@ -6,6 +6,7 @@ from api.database import SessionLocal
 from api.crud.user_crud import get_user
 from api.crud.game_log_crud import create_game_log
 from api.models.enums import GameType
+from bot.cogs.command_menu import CommandMenuView, MenuItem
 
 MOVES = ("가위", "바위", "보")
 IDX = {m: i for i, m in enumerate(MOVES)}
@@ -133,9 +134,8 @@ class Minigame(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @commands.command(name="game", aliases=["게임"])
-    async def game(self, ctx: commands.Context, *, game_name: str = "배구"):
-        game = {"배구": "volleyball", "오목": "omok", "화살피하기": "arrow_dodge"}.get(game_name.strip())
+    async def _route_dodo_game(self, ctx: commands.Context, game_name: str):
+        game = {"배구": "volleyball", "오목": "omok", "화살피하기": "arrow_dodge", "바위달리기": "rock_run", "고군분투": "rock_run"}.get(game_name.strip())
         if game is None:
             await ctx.send("`!게임 배구`, `!게임 오목`, `!게임 화살피하기`로 실행해주세요.")
             return
@@ -143,10 +143,47 @@ class Minigame(commands.Cog):
         if game_cog is None:
             await ctx.send("게임 기능을 지금 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
             return
-        if game == "arrow_dodge":
+        if game == "rock_run":
+            await game_cog.select_rock_run_mode(ctx)
+        elif game == "arrow_dodge":
             await game_cog.create_room(ctx, game=game, mode="SOLO")
         else:
             await game_cog.select_mode(ctx, game=game)
+
+    @commands.group(name="game", aliases=["게임"], invoke_without_command=True)
+    async def game(self, ctx: commands.Context, *, game_name: str | None = None):
+        if game_name:
+            await self._route_dodo_game(ctx, game_name)
+            return
+
+        async def choose(name: str, interaction: discord.Interaction):
+            await interaction.response.edit_message(view=None)
+            if name == "통계":
+                game_cog = self.bot.get_cog("Game")
+                if game_cog is None:
+                    await ctx.send("게임 기능을 지금 사용할 수 없습니다.")
+                    return
+                await game_cog.show_stats(ctx)
+            else:
+                await self._route_dodo_game(ctx, name)
+
+        items = [
+            MenuItem("바위달리기", "rock_run", lambda event: choose("바위달리기", event), None, "🏜️"),
+            MenuItem("배구", "volleyball", lambda event: choose("배구", event), None, "🏐"),
+            MenuItem("오목", "omok", lambda event: choose("오목", event), None, "⚫"),
+            MenuItem("화살피하기", "arrow", lambda event: choose("화살피하기", event), None, "🏹"),
+            MenuItem("게임 통계", "stats", lambda event: choose("통계", event), None, "📊"),
+        ]
+        view = CommandMenuView(ctx.author.id, items, placeholder="도도새게임 메뉴를 선택하세요")
+        view.message = await ctx.send("게임 메뉴", view=view)
+
+    @game.command(name="통계")
+    async def game_stats(self, ctx: commands.Context):
+        game_cog = self.bot.get_cog("Game")
+        if game_cog is None:
+            await ctx.send("게임 기능을 지금 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
+            return
+        await game_cog.show_stats(ctx)
 
     @commands.command(name="minigame", aliases=["미니게임"])
     async def minigame(self, ctx: commands.Context):
