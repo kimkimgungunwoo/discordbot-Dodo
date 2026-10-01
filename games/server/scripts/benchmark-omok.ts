@@ -11,7 +11,7 @@ const from = Number(process.env.OMOK_FROM ?? 0), to = Number(process.env.OMOK_TO
 const output = process.env.OMOK_OUTPUT;
 if (suite !== 'train' && suite !== 'heldout') throw new Error('OMOK_SUITE must be train or heldout');
 if (![budgetMs, pairs, from, to].every(Number.isInteger) || budgetMs < 1 || pairs < 1 || from < 0 || to > pairs || from >= to) throw new Error('Invalid benchmark bounds');
-const sources = ['../../shared/omok.ts', '../../shared/renju.ts', '../../shared/omok-incremental.ts', '../../shared/omok-proof.ts', '../../shared/omok-patterns.ts', '../../shared/omok-opening.ts', '../tests/fixtures/omok-legacy.ts', './omok-positions.ts', './omok-benchmark-worker.ts', './benchmark-omok.ts'];
+const sources = ['../../shared/omok.ts', '../../shared/renju.ts', '../../shared/omok-incremental.ts', '../../shared/omok-defense.ts', '../../shared/omok-proof.ts', '../../shared/omok-patterns.ts', '../../shared/omok-opening.ts', '../tests/fixtures/omok-legacy.ts', './omok-positions.ts', './omok-benchmark-worker.ts', './benchmark-omok.ts'];
 const sourceHash = () => {
   const hash = createHash('sha256');
   for (const path of sources) hash.update(path).update(readFileSync(new URL(path, import.meta.url)));

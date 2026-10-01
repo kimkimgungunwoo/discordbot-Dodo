@@ -1,4 +1,5 @@
 import { IncrementalThreats } from "./omok-incremental.js";
+import { defenseTargets } from "./omok-defense.js";
 import { proveThreat } from "./omok-proof.js";
 import { openingMove } from "./omok-opening.js";
 import { forbiddenMove, isLegalMove, legalMoves } from "./renju.js";
@@ -211,9 +212,10 @@ function timeBoundedMove(board: Stone[], stone: 1 | 2, profile: Profile, random:
   overallScored.sort((a, b) => b.score - a.score);
   return pickWithTemperature(overallScored, temperature, random);
 }
-export function selectSearchMoves<T extends { attack: number; defense: number }>(moves: T[], quietWidth: number): T[] {
-  const forcing = moves.filter(m => m.attack >= 30000 || m.defense >= 10000000);
-  return [...forcing, ...moves.filter(m => m.attack < 30000 && m.defense < 10000000).slice(0, Math.max(0, quietWidth - forcing.length))];
+export function selectSearchMoves<T extends { attack: number; defense: number; at?: number }>(moves: T[], quietWidth: number, defenses: ReadonlySet<number> = new Set()): T[] {
+  const preserve = (m: T) => m.attack >= 30000 || m.defense >= 30000 || (m.at !== undefined && defenses.has(m.at));
+  const forcing = moves.filter(preserve);
+  return [...forcing, ...moves.filter(m => !preserve(m)).slice(0, Math.max(0, quietWidth - forcing.length))];
 }
 export interface SearchStats { nodes: number; depth: number; forcedWin: boolean; elapsedMs: number; rejectedAttacks?: number; evaluations?: number }
 export interface SearchOptions { budgetMs?: number; onProgress?: (move: number) => void }
@@ -224,6 +226,7 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
   type Choice = { at: number; attack: number; defense: number };
   type Entry = { depth: number; score: number; bound: "exact" | "lower" | "upper"; move: number };
   const table = new Map<string, Entry>(), moveCache = new Map<string, [Choice[], Choice[]]>();
+  const defenseCache = new Map<string, Set<number>>();
   const proofs = new Map<string, number>(), killers = new Map<number, number[]>();
   const history = [new Float64Array(225), new Float64Array(225)];
   let nodes = 0, completedDepth = 0, forcedWin = false, rejectedAttacks = 0;
@@ -299,9 +302,18 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
   function evaluateChoices(moves: Choice[], defense: Choice[]) {
     const top = (choices: Choice[]) => {
       const values = choices.map(m => m.attack).sort((a, b) => b - a);
-      return (values[0] ?? 0) + (values[1] ?? 0) * .4 + (values[2] ?? 0) * .15;
+      return (values[0] ?? 0) + (values[1] ?? 0) * .4 + (values[2] ?? 0) * .15 +
+        (values[3] ?? 0) * .08 + (values[4] ?? 0) * .04;
     };
     return top(moves) - top(defense) * 1.08;
+  }
+  function defensivePoints(turn: 1 | 2, enemyMoves: Choice[], minimum = 80000) {
+    const id = `${key(turn)}:${minimum}`, cached = defenseCache.get(id);
+    if (cached) return cached;
+    const points = defenseTargets(board, turn, enemyMoves, minimum, Math.min(deadline, performance.now() + 4));
+    if (defenseCache.size >= 512) defenseCache.clear();
+    defenseCache.set(id, points);
+    return points;
   }
   function search(turn: 1 | 2, depth: number, alpha: number, beta: number, ply: number, extension = 4): number {
     checkTime();
@@ -317,6 +329,7 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
     if (moves.some(m => m.attack >= WIN)) return MATE - ply;
     const enemyWins = enemyMoves.filter(m => m.attack >= WIN);
     if (enemyWins.length > 1) return -MATE + ply + 1;
+    const defended = enemyMoves.some(m => m.attack >= 80000) ? defensivePoints(turn, enemyMoves) : new Set<number>();
     let selected: Choice[], quietScore = -Infinity;
     if (enemyWins.length) {
       selected = moves.filter(m => m.at === enemyWins[0].at);
@@ -325,20 +338,19 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
       const standPat = evaluateChoices(moves, enemyMoves);
       if (extension <= 0) return standPat;
       // An opponent open-three/fork cannot be ignored by standing pat.
-      const threatened = enemyMoves.some(m => m.attack >= 100000);
+      const threatened = enemyMoves.some(m => m.attack >= 30000);
       if (!threatened) {
         quietScore = standPat;
         if (standPat >= beta) return standPat;
         alpha = Math.max(alpha, standPat);
       }
-      selected = moves.filter(m => m.attack >= 15000 || (threatened && m.defense >= 8000));
+      selected = moves.filter(m => m.attack >= 15000 || defended.has(m.at) || (threatened && m.defense >= 8000));
       if (!selected.length) return standPat;
     } else {
-      selected = selectSearchMoves(moves, ply < 3 ? 20 : 14);
       const priority = (move: Choice) => move.at === entry?.move ? 1e12 :
-        move.attack >= 30000 || move.defense >= 30000 ? 1e10 + move.attack + move.defense :
+        move.attack >= 30000 || move.defense >= 30000 || defended.has(move.at) ? 1e10 + move.attack + move.defense :
         (killers.get(ply)?.includes(move.at) ? 1e8 : 0) + history[turn - 1][move.at] + move.attack + move.defense * 1.1;
-      selected.sort((a, b) => priority(b) - priority(a));
+      selected = selectSearchMoves([...moves].sort((a, b) => priority(b) - priority(a)), ply < 3 ? 20 : 14, defended);
     }
     if (ply >= 48) return evaluateChoices(moves, enemyMoves);
     let best = quietScore, bestMove = selected[0].at;
@@ -347,7 +359,7 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
       const score = played(move.at, turn, () => {
         const nextExtension = depth <= 0 ? extension - 1 : extension;
         if (i === 0 || !Number.isFinite(alpha)) return -search(other(turn), depth - 1, -beta, -alpha, ply + 1, nextExtension);
-        const quiet = move.attack < 8000 && move.defense < 8000 && !enemyWins.length;
+        const quiet = move.attack < 8000 && move.defense < 8000 && !enemyWins.length && !defended.has(move.at);
         const reduction = depth >= 3 && i >= 6 && quiet ? 1 : 0;
         let value = -search(other(turn), depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, nextExtension);
         if (reduction && value > alpha) value = -search(other(turn), depth - 1, -alpha - 1, -alpha, ply + 1, nextExtension);
@@ -375,6 +387,15 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
   let bestMove = root[0].at;
   onProgress?.(bestMove);
   try {
+    const enemyRoot = options(other(stone));
+    // All four-producing threats are retained. Only the strongest three
+    // preparations get extra connection-point analysis, to keep the root
+    // from expanding to almost the entire board in a quiet position.
+    const preparations = new Set([...enemyRoot].sort((a, b) => b.attack - a.attack)
+      .filter(m => m.attack >= 8000 && m.attack < 30000).slice(0, 3).map(m => m.at));
+    const plans = enemyRoot.filter(m => m.attack >= 30000 || preparations.has(m.at));
+    const connections = defenseTargets(board, stone, plans, 8000, Math.min(deadline, performance.now() + Math.min(60, budgetMs * .01)));
+    root = selectSearchMoves(options(stone), 24, connections);
     let proof = prove(stone, 32, started + budgetMs * .15);
     if (proof === null && root.some(m => m.attack >= 8000 && m.attack < WIN)) {
       proof = proveThreat(board, stone, "VCT", Math.min(started + budgetMs * .18, performance.now() + Math.min(800, budgetMs * .08)), 12).move;
@@ -383,24 +404,39 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
     else {
       let danger = prove(other(stone), 24, started + budgetMs * .22);
       let vctDanger = false;
-      if (danger === null && root.some(m => m.defense >= 80000 && m.defense < WIN)) {
+      if (danger === null && enemyRoot.some(m => m.attack >= 8000 && m.attack < WIN)) {
         danger = proveThreat(board, other(stone), "VCT", Math.min(started + budgetMs * .26, performance.now() + Math.min(400, budgetMs * .04)), 10).move;
         vctDanger = danger !== null;
       }
-      if (danger !== null) {
+      {
         const defense = options(stone).find(m => m.at === danger);
         if (defense && !root.some(m => m.at === danger)) root.unshift(defense);
         const safe: Choice[] = [], screenUntil = started + budgetMs * .40;
+        const residualRisk = new Map<number, number>();
         for (let i = 0; i < root.length; i++) {
-          const until = Math.min(screenUntil, performance.now() + Math.max(1, (screenUntil - performance.now()) / (root.length - i)));
+          if (performance.now() >= screenUntil) { safe.push(...root.slice(i)); break; }
+          const until = Math.min(screenUntil, performance.now() + Math.max(0, (screenUntil - performance.now()) / (root.length - i)));
           const lost = played(root[i].at, stone, () => {
-            const vcfUntil = vctDanger ? Math.min(until, performance.now() + (until - performance.now()) * .5) : until;
+            if (winningLine(board, root[i].at).length) return false;
+            const replies = options(other(stone));
+            if (!replies.length) { residualRisk.set(root[i].at, 0); return false; }
+            if (replies.some(m => m.attack >= WIN)) return true;
+            const threats = replies.map(m => m.attack).sort((a, b) => b - a);
+            // Ordering only: a quiet reply is not proof that this move is safe.
+            residualRisk.set(root[i].at, (threats[0] ?? 0) + (threats[1] ?? 0) * .4 + (threats[2] ?? 0) * .15);
+            if (!replies.some(m => m.attack >= 8000)) return false;
+            const checkVct = vctDanger || replies.some(m => m.attack >= 80000);
+            const vcfUntil = checkVct ? Math.min(until, performance.now() + (until - performance.now()) * .5) : until;
             if (prove(other(stone), 24, vcfUntil) !== null) return true;
-            return vctDanger && proveThreat(board, other(stone), "VCT", until, 10).status === "proven";
+            return checkVct && proveThreat(board, other(stone), "VCT", until, 12).status === "proven";
           });
           if (!lost) safe.push(root[i]); else rejectedAttacks++;
         }
-        if (safe.length) { root = safe; bestMove = root[0].at; onProgress?.(bestMove); }
+        if (safe.length) {
+          safe.sort((a, b) => ((residualRisk.get(a.at) ?? Infinity) - a.attack * .25) -
+            ((residualRisk.get(b.at) ?? Infinity) - b.attack * .25) || order(a, b));
+          root = safe; bestMove = root[0].at; onProgress?.(bestMove);
+        }
       }
       for (let depth = 1; depth <= 34; depth++) {
         let alpha = -Infinity;
