@@ -1,16 +1,23 @@
 services:
   dodo-postgres:
     image: postgres:17-alpine
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: ${DODO_DB_NAME:-discordbot}
-      POSTGRES_USER: ${DODO_DB_USER:-discordbot}
-      POSTGRES_PASSWORD: ${DODO_DB_PASSWORD:-discordbot-local}
+      POSTGRES_DB: discordbot
+      POSTGRES_USER: discordbot
+    entrypoint:
+      - sh
+      - -c
+      - |
+        export POSTGRES_PASSWORD="$${DODO_DB_PASSWORD}"
+        exec docker-entrypoint.sh postgres
     ports:
       - "5432:5432"
     volumes:
       - dodo_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DODO_DB_USER:-discordbot} -d ${DODO_DB_NAME:-discordbot}"]
+      test: ["CMD-SHELL", "pg_isready -U discordbot -d discordbot"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -19,14 +26,11 @@ services:
     image: amazon/dynamodb-local:latest
     ports:
       - "8000:8000"
-    # 파일 기반 저장 — 컨테이너를 내려도(down) 데이터 유지. 초기화하려면 ./dynamodb-data 폴더 삭제.
     command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
     user: root
     volumes:
       - ./dynamodb-data:/home/dynamodblocal/data
 
-  # 도도새배구 등 웹 미니게임 — 로컬은 이미지 빌드 없이 node 베이스 이미지 + 볼륨 마운트로 바로 실행.
-  # 운영용 games/client/Dockerfile(멀티스테이지 빌드)은 배포 단계에서 별도로 작성.
   activity-client:
     image: node:22-alpine
     working_dir: /app
@@ -43,11 +47,9 @@ services:
   activity-server:
     image: node:22-alpine
     working_dir: /app
+    env_file:
+      - .env
     environment:
-      ACTIVITY_INTERNAL_SECRET: ${ACTIVITY_INTERNAL_SECRET:-}
-      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
-      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
-      # 봇도 같은 compose 네트워크에서 도커로 뜰 때는 host.docker.internal 대신 서비스명으로 접근.
       BOT_INTERNAL_URL: http://bot:3002
     volumes:
       - ./games/server:/app
@@ -57,19 +59,26 @@ services:
       - "3001:3001"
     command: sh -c "npm install && npm run dev"
 
-  # 봇을 컨테이너로 띄울 때용 — .env는 전부 localhost 기준이라 같은 네트워크의 서비스명으로 덮어쓴다.
   bot:
     build: .
-    env_file: .env
+    env_file:
+      - .env
+
     environment:
       DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
       ACTIVITY_SERVER_URL: http://activity-server:3001
       BOT_INTERNAL_HOST: 0.0.0.0
-      DODO_DATABASE_URL: postgresql://${DODO_DB_USER:-discordbot}:${DODO_DB_PASSWORD:-discordbot-local}@dodo-postgres:5432/${DODO_DB_NAME:-discordbot}
-    # 이미지는 빌드 시점 스냅샷이라 소스만 고치면 컨테이너 안 코드와 어긋난다 — 소스를 그대로 덮어써서
-    # bot/core/bot.py의 기존 핫리로드(watchfiles)가 실제로 동작하게 한다.
+
     volumes:
       - .:/app
+
+    command:
+      - sh
+      - -c
+      - |
+        export DODO_DATABASE_URL="postgresql://$${DODO_DB_USER:-discordbot}:$${DODO_DB_PASSWORD}@dodo-postgres:5432/$${DODO_DB_NAME:-discordbot}"
+        exec python -m bot.main
+
     depends_on:
       dynamodb-local:
         condition: service_started
