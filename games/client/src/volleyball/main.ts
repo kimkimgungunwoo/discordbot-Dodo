@@ -47,7 +47,7 @@ app.innerHTML = `
           </div>
         </div>
       </div>
-      <span id="status" class="connection-status" role="status" aria-live="polite">게임 대기</span>
+
     </section>
     <section class="guide" aria-label="조작 방법">
       <div><kbd>←</kbd><kbd>→</kbd><span>이동 <small>A / D</small></span></div>
@@ -68,7 +68,6 @@ const sound = document.querySelector<HTMLButtonElement>("#sound")!;
 const leftScore = document.querySelector<HTMLElement>("#left-score")!;
 const rightScore = document.querySelector<HTMLElement>("#right-score")!;
 const phase = document.querySelector<HTMLElement>("#phase")!;
-const status = document.querySelector<HTMLElement>("#status")!;
 const playerNames = {
   left: document.querySelector<HTMLElement>("#left-name")!,
   right: document.querySelector<HTMLElement>("#right-name")!,
@@ -121,7 +120,6 @@ function updateUi() {
     start.disabled = !isPlayer || !session.canRematch;
     document.querySelector("#host-note")!.textContent = session.rematching ? "재시작중..." : session.message ?? "";
     if (!session.started) document.querySelector("#card-title")!.textContent = "플레이어 연결 대기";
-    status.textContent = session.message ?? "";
   } else {
     start.hidden = false;
     start.disabled = !session.info.ready || !isHost;
@@ -135,7 +133,6 @@ function updateUi() {
     document.querySelector<HTMLElement>("#card-copy")!.hidden = true;
   }
   phase.textContent = ({ lobby: "대기", countdown: "준비", playing: "경기 중", point: "득점", gameover: "종료", stopped: "연결 종료" })[screen];
-  status.textContent = session.message || phase.textContent;
   if (finished) {
     const winnerName = state.winner ? session.info.players[state.winner].displayName : "";
     document.querySelector("#card-title")!.textContent = winnerName ? winnerName + " 승리" : "경기 중단";

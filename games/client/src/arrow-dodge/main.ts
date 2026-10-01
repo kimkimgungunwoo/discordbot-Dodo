@@ -31,7 +31,10 @@ root.innerHTML = `<main class="shell arrow-shell">
   <section class="arrow-arcade" aria-label="도도새 화살피하기 게임">
     <div class="arrow-stage">
       <canvas id="game" width="960" height="768" aria-label="방향키 또는 WASD로 도도새를 움직여 화살을 피하세요"></canvas>
-      <div class="survival-time"><small>TIME</small><strong id="time">0.00</strong><span>초</span></div>
+      <div class="score-panel">
+        <div class="survival-time"><small>TIME</small><strong id="time">0.00</strong><span>초</span></div>
+        <div class="personal-best"><small>내 최고점수</small><strong id="best-score">0.00초</strong></div>
+      </div>
       <div class="overlay" id="overlay"><div class="start-card">
         <h2 id="title">화살 피하기</h2>
         <p id="copy">사방에서 날아오는 화살을 피해<br>최대한 오래 살아남으세요.</p>
@@ -39,7 +42,7 @@ root.innerHTML = `<main class="shell arrow-shell">
         <p class="host-note" id="note">누르면 2초 뒤 시작</p>
       </div></div>
     </div>
-    <span id="status" class="connection-status" role="status" aria-live="polite"></span>
+
   </section>
   <section class="arrow-guide"><span><kbd>WASD</kbd> 또는 <kbd>방향키</kbd> 이동</span><span>대각선 이동 가능</span></section>
   <div class="arrow-touch" aria-label="터치 조작">
@@ -58,7 +61,7 @@ const copy = document.querySelector<HTMLElement>("#copy")!;
 const start = document.querySelector<HTMLButtonElement>("#start")!;
 const note = document.querySelector<HTMLElement>("#note")!;
 const time = document.querySelector<HTMLElement>("#time")!;
-const status = document.querySelector<HTMLElement>("#status")!;
+const bestScore = document.querySelector<HTMLElement>("#best-score")!;
 const sound = document.querySelector<HTMLButtonElement>("#sound")!;
 const renderSpectators = createSpectatorBar(document.querySelector<HTMLElement>(".arrow-stage")!);
 bindTouch(root);
@@ -73,7 +76,8 @@ window.addEventListener("keydown", event => {
 function updateUi() {
   const state = session.state;
   time.textContent = (state.survivalTicks / 60).toFixed(2);
-  status.textContent = session.message;
+  const currentScore = Math.round(state.survivalTicks * 1000 / 60);
+  bestScore.textContent = `${(Math.max(session.bestScore, currentScore) / 1000).toFixed(2)}초`;
   renderSpectators(session.spectators, session.online);
   const gameover = state.phase === "gameover";
   const waiting = state.phase === "ready";

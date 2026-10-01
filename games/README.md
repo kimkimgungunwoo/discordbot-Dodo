@@ -37,6 +37,7 @@ BOT_INTERNAL_PORT=3002
 ACTIVITY_INTERNAL_SECRET=<봇과 서버가 공유하는 32자 이상의 무작위 비밀값>
 DISCORD_CLIENT_ID=<Discord application ID>
 DISCORD_CLIENT_SECRET=<Discord OAuth2 client secret>
+DODO_DATABASE_URL=postgresql://discordbot:<비밀번호>@localhost:5432/discordbot  # 봇을 로컬에서 직접 실행할 때
 ```
 
 운영에서 봇도 컨테이너라면 `ACTIVITY_SERVER_URL=http://activity-server:3001`, `BOT_INTERNAL_URL=http://bot:3002`, `ACTIVITY_PUBLIC_URL=https://<실제 도메인>`으로 바꾼다(`docker-compose.prod.yml` 기준). 내부 API(`/internal/*`)는 공용 프록시에 노출하지 않는다.
@@ -58,7 +59,7 @@ OAuth 승인 범위는 `identify`, `guilds.members.read`다.
 
 ## 사용자 흐름
 
-1. 서버 채팅에서 `!게임`을 입력하면 **봇전 / 대결** 선택 버튼이 뜬다. 명령어 작성자만 선택할 수 있으며 메뉴는 3분 후 만료된다.
+1. 서버 채팅에서 `!게임`을 입력하면 게임·통계 드롭다운이 뜬다. 배구나 오목을 선택하면 **봇전 / 대결** 선택 버튼으로 이어진다. 명령어 작성자만 선택할 수 있으며 메뉴는 3분 후 만료된다.
 2. **봇전**은 **쉬움 / 보통 / 어려움 / 극한** 중 하나를 선택하면 바로 세션을 생성하고, 방 메시지가 처음부터 진행 중 상태(배구 하러 가기 버튼)로 뜬다. 다른 사용자는 관전만 가능하다.
 3. **대결**은 참가/참가 취소/관전/게임 시작/방 닫기가 있는 대기방을 만든다. 상대가 참가해야 방장이 시작할 수 있다.
 4. 방 메시지의 **배구 하러 가기** 버튼(방 ID가 담긴 일반 링크)을 누르면 브라우저(또는 Discord 인앱 브라우저)가 열린다. 처음 접속이면 "Discord로 로그인" → Discord OAuth 동의 → 코드 교환 → 바로 해당 방에 입장. 방 선택 화면은 없다(링크에 방 ID가 이미 있음).
@@ -111,7 +112,7 @@ docker compose exec -T bot python -m unittest bot.cogs.game.test_hub   # 또는 
 
 ## 운영 배포
 
-`docker-compose.prod.yml`에 `bot`, `activity-server`, `caddy`(activity-client 정적 빌드 + 리버스 프록시) 세 서비스가 있다.
+`docker-compose.prod.yml`에 `bot`, `activity-server`, `caddy`(activity-client 정적 빌드 + 리버스 프록시), `dodo-postgres`가 있다. 운영 `.env`에는 `DODO_DB_PASSWORD`를 반드시 설정한다. 경기 원본과 랭킹 집계는 PostgreSQL 볼륨 `dodo_postgres_data`에 보관하며 기존 포인트·활동 통계용 DynamoDB와 분리한다.
 
 - `games/server/Dockerfile`: `npm ci` 후 `tsx`로 그대로 실행(별도 컴파일 산출물 없음).
 - `games/client/Dockerfile`: 멀티스테이지 — Vite로 정적 빌드 → `caddy:2-alpine` 이미지에 결과물 복사.

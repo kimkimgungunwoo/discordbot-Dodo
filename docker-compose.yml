@@ -1,4 +1,20 @@
 services:
+  dodo-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DODO_DB_NAME:-discordbot}
+      POSTGRES_USER: ${DODO_DB_USER:-discordbot}
+      POSTGRES_PASSWORD: ${DODO_DB_PASSWORD:-discordbot-local}
+    ports:
+      - "5432:5432"
+    volumes:
+      - dodo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DODO_DB_USER:-discordbot} -d ${DODO_DB_NAME:-discordbot}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   dynamodb-local:
     image: amazon/dynamodb-local:latest
     ports:
@@ -49,11 +65,20 @@ services:
       DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
       ACTIVITY_SERVER_URL: http://activity-server:3001
       BOT_INTERNAL_HOST: 0.0.0.0
+      DODO_DATABASE_URL: postgresql://${DODO_DB_USER:-discordbot}:${DODO_DB_PASSWORD:-discordbot-local}@dodo-postgres:5432/${DODO_DB_NAME:-discordbot}
     # 이미지는 빌드 시점 스냅샷이라 소스만 고치면 컨테이너 안 코드와 어긋난다 — 소스를 그대로 덮어써서
     # bot/core/bot.py의 기존 핫리로드(watchfiles)가 실제로 동작하게 한다.
     volumes:
       - .:/app
     depends_on:
-      - dynamodb-local
-      - activity-server
-      - activity-client
+      dynamodb-local:
+        condition: service_started
+      activity-server:
+        condition: service_started
+      activity-client:
+        condition: service_started
+      dodo-postgres:
+        condition: service_healthy
+
+volumes:
+  dodo_postgres_data:

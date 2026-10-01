@@ -400,7 +400,19 @@ class Analytics(commands.Cog):
 
     @commands.group(name="통계", invoke_without_command=True)
     async def stat_group(self, ctx: commands.Context):
-        await ctx.reply(embed=category_embed("analytics", ctx.clean_prefix), mention_author=False)
+        from bot.cogs.command_menu import CommandMenuView, MenuItem
+
+        async def run(interaction, command):
+            await interaction.response.edit_message(view=None)
+            await command.callback(self, ctx)
+        items = [
+            MenuItem("채팅 통계", "chat", lambda i: run(i, self.chat_overall), emoji="💬"),
+            MenuItem("통화 통계", "voice", lambda i: run(i, self.voice_overall), emoji="🎙️"),
+            MenuItem("유저 통계", "user", lambda i: run(i, self.user_stat), emoji="👤"),
+            MenuItem("서버 전체 통계", "server", lambda i: run(i, self.server_overall), emoji="📊"),
+        ]
+        view = CommandMenuView(ctx.author.id, items, placeholder="통계 메뉴를 선택하세요")
+        view.message = await ctx.reply(embed=category_embed("analytics", ctx.clean_prefix), view=view, mention_author=False)
 
     @stat_group.command(name="재분석")
     async def reanalyze(self, ctx: commands.Context):
