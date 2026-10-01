@@ -1,8 +1,6 @@
-import { IncrementalThreats } from "./omok-incremental.js";
-import { proveThreat } from "./omok-proof.js";
-import { openingMove } from "./omok-opening.js";
-import { forbiddenMove, isLegalMove, legalMoves } from "./renju.js";
-export { forbiddenMove, isLegalMove, legalMoves } from "./renju.js";
+// Frozen pre-upgrade benchmark baseline; not imported by production.
+import { forbiddenMove, isLegalMove, legalMoves } from "../../../shared/renju.js";
+export { forbiddenMove, isLegalMove, legalMoves } from "../../../shared/renju.js";
 export const SIZE = 15;
 export type Stone = 0 | 1 | 2;
 export type Difficulty = "easy" | "normal" | "hard" | "extreme" | "transcendent";
@@ -10,8 +8,8 @@ export const LABELS: Record<Difficulty, string> = { easy: "쉬움", normal: "중
 export const DIFFICULTIES = Object.keys(LABELS) as Difficulty[];
 export const TURN_LIMIT_MS = 45_000;
 export const TOSS_MS = 4000;
-export const TRANSCENDENT_BUDGET_MS = 16_000;
-export const AI_RESPONSE_LIMIT_MS = 19_000;
+export const TRANSCENDENT_BUDGET_MS = 11_000;
+export const AI_RESPONSE_LIMIT_MS = 14_000;
 export interface BoardState { board: Stone[]; turn: 1 | 2; winner: Stone; draw: boolean; moves: number[]; line: number[] }
 const directions = [[1, 0], [0, 1], [1, 1], [1, -1]];
 export const other = (stone: 1 | 2): 1 | 2 => stone === 1 ? 2 : 1;
@@ -211,19 +209,17 @@ function timeBoundedMove(board: Stone[], stone: 1 | 2, profile: Profile, random:
   overallScored.sort((a, b) => b.score - a.score);
   return pickWithTemperature(overallScored, temperature, random);
 }
-export function selectSearchMoves<T extends { attack: number; defense: number }>(moves: T[], quietWidth: number): T[] {
-  const forcing = moves.filter(m => m.attack >= 30000 || m.defense >= 10000000);
-  return [...forcing, ...moves.filter(m => m.attack < 30000 && m.defense < 10000000).slice(0, Math.max(0, quietWidth - forcing.length))];
-}
-export interface SearchStats { nodes: number; depth: number; forcedWin: boolean; elapsedMs: number; rejectedAttacks?: number; evaluations?: number }
+export interface SearchStats { nodes: number; depth: number; forcedWin: boolean; elapsedMs: number; rejectedAttacks?: number }
 export interface SearchOptions { budgetMs?: number; onProgress?: (move: number) => void }
 export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSCENDENT_BUDGET_MS, stats?: SearchStats, onProgress?: (move: number) => void): number {
   const started = performance.now(), deadline = started + Math.max(0, budgetMs);
-  const geometry = new IncrementalThreats(board);
   const MATE = 1_000_000_000, WIN = 10000000, timeout = Symbol("search timeout");
   type Choice = { at: number; attack: number; defense: number };
   type Entry = { depth: number; score: number; bound: "exact" | "lower" | "upper"; move: number };
   const table = new Map<string, Entry>(), moveCache = new Map<string, [Choice[], Choice[]]>();
+  const shapeCache = new Map<string, [number, number]>();
+  const neighborhoods = Array.from({ length: 225 }, (_, at) => directions.flatMap(([dx, dy]) =>
+    Array.from({ length: 11 }, (_, n) => index(at % SIZE + dx * (n - 5), Math.floor(at / SIZE) + dy * (n - 5)))));
   const proofs = new Map<string, number>(), killers = new Map<number, number[]>();
   const history = [new Float64Array(225), new Float64Array(225)];
   let nodes = 0, completedDepth = 0, forcedWin = false, rejectedAttacks = 0;
@@ -245,15 +241,20 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
     if (cached) return cached[turn - 1];
     const pair: [Choice[], Choice[]] = [[], []];
     const score = (at: number) => {
-      const values = geometry.scores(at);
-      // Every forbidden shape contains a four, two open threes, or an
-      // overline. A score below a single open three cannot contain one.
-      const blackLegal = values[0] < 8000 || isLegalMove(board, at, 1);
+      const blackLegal = isLegalMove(board, at, 1);
+      let shape = "";
+      for (const next of neighborhoods[at]) shape += next < 0 ? "3" : board[next];
+      let values = shapeCache.get(shape);
+      if (!values) {
+        values = [threat(board, at, 1, true, true), threat(board, at, 2, true, true)];
+        if (shapeCache.size >= 16000) shapeCache.clear();
+        shapeCache.set(shape, values);
+      }
       const black = blackLegal ? values[0] : 0, white = values[1];
       if (blackLegal) pair[0].push({ at, attack: black, defense: white });
       pair[1].push({ at, attack: white, defense: black });
     };
-    const nearby = geometry.candidates();
+    const nearby = candidates(board, 2);
     for (const at of nearby) if (!board[at]) score(at);
     if (!pair[0].length || !pair[1].length) {
       const seen = new Set(nearby);
@@ -265,8 +266,8 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
     return pair[turn - 1];
   }
   function played<T>(at: number, turn: 1 | 2, action: () => T): T {
-    board[at] = turn; toggle(at, turn); geometry.update(at, 0, turn);
-    try { return action(); } finally { toggle(at, turn); board[at] = 0; geometry.update(at, turn, 0); }
+    board[at] = turn; toggle(at, turn);
+    try { return action(); } finally { toggle(at, turn); board[at] = 0; }
   }
   // Only a fully verified continuous-four sequence is a proof. Timeouts
   // mean unknown, so defensive screening never discards an unproven move.
@@ -283,7 +284,6 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
       if (performance.now() >= until) break;
       const proven = played(move.at, turn, () => {
         const replies = options(other(turn));
-        if (!replies.length) return false; // Server declares a draw when the defender has no legal move.
         if (replies.some(m => m.attack >= WIN)) return false;
         const threats = options(turn).filter(m => m.attack >= WIN);
         if (threats.length > 1) return true;
@@ -331,10 +331,10 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
         if (standPat >= beta) return standPat;
         alpha = Math.max(alpha, standPat);
       }
-      selected = moves.filter(m => m.attack >= 15000 || (threatened && m.defense >= 8000));
+      selected = moves.filter(m => m.attack >= 15000 || (threatened && m.defense >= 8000)).slice(0, 10);
       if (!selected.length) return standPat;
     } else {
-      selected = selectSearchMoves(moves, ply < 3 ? 20 : 14);
+      selected = moves.slice(0, ply < 3 ? 18 : 12);
       const priority = (move: Choice) => move.at === entry?.move ? 1e12 :
         move.attack >= 30000 || move.defense >= 30000 ? 1e10 + move.attack + move.defense :
         (killers.get(ply)?.includes(move.at) ? 1e8 : 0) + history[turn - 1][move.at] + move.attack + move.defense * 1.1;
@@ -365,44 +365,32 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
       }
     }
     if (depth > 0) {
-      if (table.size >= 72000) table.clear();
+      if (table.size >= 48000) table.clear();
       table.set(id, { depth, score: best, move: bestMove, bound: best <= alphaStart ? "upper" : best >= betaStart ? "lower" : "exact" });
     }
     return best;
   }
-  let root = selectSearchMoves(ranked(board, stone, 2, true, true), 24);
+  let root = ranked(board, stone, 2, true, true).slice(0, 24);
   if (!root.length) throw new Error("착수할 수 있는 곳이 없습니다.");
   let bestMove = root[0].at;
   onProgress?.(bestMove);
   try {
-    let proof = prove(stone, 32, started + budgetMs * .15);
-    if (proof === null && root.some(m => m.attack >= 8000 && m.attack < WIN)) {
-      proof = proveThreat(board, stone, "VCT", Math.min(started + budgetMs * .18, performance.now() + Math.min(800, budgetMs * .08)), 12).move;
-    }
+    const proof = prove(stone, 32, started + budgetMs * .15);
     if (proof !== null) { bestMove = proof; forcedWin = true; }
     else {
-      let danger = prove(other(stone), 24, started + budgetMs * .22);
-      let vctDanger = false;
-      if (danger === null && root.some(m => m.defense >= 80000 && m.defense < WIN)) {
-        danger = proveThreat(board, other(stone), "VCT", Math.min(started + budgetMs * .26, performance.now() + Math.min(400, budgetMs * .04)), 10).move;
-        vctDanger = danger !== null;
-      }
+      const danger = prove(other(stone), 24, started + budgetMs * .22);
       if (danger !== null) {
         const defense = options(stone).find(m => m.at === danger);
         if (defense && !root.some(m => m.at === danger)) root.unshift(defense);
         const safe: Choice[] = [], screenUntil = started + budgetMs * .40;
         for (let i = 0; i < root.length; i++) {
           const until = Math.min(screenUntil, performance.now() + Math.max(1, (screenUntil - performance.now()) / (root.length - i)));
-          const lost = played(root[i].at, stone, () => {
-            const vcfUntil = vctDanger ? Math.min(until, performance.now() + (until - performance.now()) * .5) : until;
-            if (prove(other(stone), 24, vcfUntil) !== null) return true;
-            return vctDanger && proveThreat(board, other(stone), "VCT", until, 10).status === "proven";
-          });
+          const lost = played(root[i].at, stone, () => prove(other(stone), 24, until) !== null);
           if (!lost) safe.push(root[i]); else rejectedAttacks++;
         }
         if (safe.length) { root = safe; bestMove = root[0].at; onProgress?.(bestMove); }
       }
-      for (let depth = 1; depth <= 34; depth++) {
+      for (let depth = 1; depth <= 26; depth++) {
         let alpha = -Infinity;
         const scores: { move: Choice; score: number }[] = [];
         for (const move of root) {
@@ -418,7 +406,7 @@ export function transcendentMove(board: Stone[], stone: 1 | 2, budgetMs = TRANSC
     }
   } catch (error) { if (error !== timeout) throw error; }
   onProgress?.(bestMove);
-  if (stats) Object.assign(stats, { nodes, depth: completedDepth, forcedWin, rejectedAttacks, evaluations: geometry.evaluations, elapsedMs: performance.now() - started });
+  if (stats) Object.assign(stats, { nodes, depth: completedDepth, forcedWin, rejectedAttacks, elapsedMs: performance.now() - started });
   return bestMove;
 }
 
@@ -432,12 +420,11 @@ export function chooseMove(state: BoardState, difficulty: Difficulty = "normal",
   if (block) return block.at;
   if (!forced.length) throw new Error("착수할 수 있는 곳이 없습니다.");
   if (forced.length === 1) return forced[0].at;
-  if (difficulty === "transcendent") {
-    const opening = openingMove(board, stone);
-    if (opening !== null) { options.onProgress?.(opening); return opening; }
-    return transcendentMove(board, stone, options.budgetMs, undefined, options.onProgress);
-  }
+  if (difficulty === "transcendent") return transcendentMove(board, stone, options.budgetMs, undefined, options.onProgress);
   const profile = PROFILES[difficulty];
   if (!profile.search) return greedyMove(board, stone, profile, random);
   return isTimed(profile.search) ? timeBoundedMove(board, stone, profile, random) : searchMove(board, stone, profile, random);
 }
+
+// Test-only access to compare the incremental evaluator with the frozen implementation.
+export { threat as legacyThreat };
