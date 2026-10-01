@@ -1,0 +1,57 @@
+# 오목 초월 강화 검증
+
+## 교체 기준
+
+알고리즘 추가나 테스트 통과만으로 강화 완료로 간주하지 않는다. 최종 평가 조건은 다음과 같다.
+
+- 조정에 사용하지 않은 시작 배치 50개, 배치마다 흑백을 바꾼 총 100경기.
+- 양쪽 동일하게 수당 11,000ms, 매 수 새 워커, old space 128MB/young space 16MB.
+- 실제 `place`로 모든 착수·금수·승리·무승부 판정. 불법 수나 워커 오류는 실험 실패이며 상대 승리로 집계하지 않는다.
+- 배치 단위 paired bootstrap 95% 구간 하한이 50%를 초과해야 실력 우세 기준 통과. 무승부는 0.5점.
+- 평가 중 소스가 바뀌면 중단한다. 다른 코드/설정의 결과를 합치거나 중복 경기를 세지 않는다.
+
+최종 승률은 `summarize-omok.ts`의 `strengthGatePassed`로 확인한다. 아직 완료되지 않은 실험은 완료된 결과로 해석하면 안 된다. 이전 4경기 결과 파일은 이전 구현의 개발 기록이며 이 기준을 충족하지 않는다.
+
+## 구조
+
+`omok-incremental.ts`는 착수/되돌리기 때 영향받은 네 방향의 11칸 코드와 주변 후보 개수만 갱신한다. 줄 패턴은 숫자 코드로 캐시하고 변경된 교차점만 다시 평가한다. 구버전의 기하학적 평가값을 그대로 유지해 계산 최적화와 평가 정책 변경을 분리했다. 금수 가능성이 있는 모양은 실제 판에서 `isLegalMove`로 다시 검사한다. 교차 방향에 의존하는 금수 결과를 줄 캐시에 저장하지 않는다.
+
+`omok.ts`의 PVS·치환표·반복 심화·연속사 증명은 구버전을 기준으로 유지한다. 사를 만드는 공격과 즉시 승리 방어는 후보 폭으로 자르지 않는다. 평범한 삼의 가능성을 전부 강제수로 취급해 탐색 폭이 폭증했던 변경은 철회했다. 삼을 이용한 강제 수순은 VCT에서 확인한다. 정적 후보 점수만으로 승리를 확정하지 않는다.
+
+`omok-proof.ts`는 증분 평가를 사용하는 VCF/VCT AND/OR 증명기다. 상대의 즉시 승리 및 반격을 우선 확인하고, 강제 사가 없으면 멀리 떨어진 수를 포함한 모든 합법적인 방어를 확인한다. 시간/깊이 제한은 `unknown`이다. 후보 생성은 선택적이므로 unknown은 강제승리가 없다는 뜻이 아니다. 복합 위협이 있는 루트에서만 최대 100ms 범위의 추가 VCT 검사를 수행한다.
+
+`omok-patterns.ts`는 사·삼의 돌 집합과 연결/완성점을 확인하는 명시적인 패턴 분석 도구다. 비싼 분석을 모든 PVS 노드마다 반복하던 방식은 제거했다. `omok-opening.ts`는 정확한 판 일치와 대칭 변환만 허용하는 3개의 소규모 중앙 배치 데이터이며, 대규모 정석집이 아니다.
+
+## 재현
+
+검증:
+
+```sh
+games/server/node_modules/.bin/tsx --test games/server/tests/omok*.test.ts
+npm run build --prefix games/server
+npm run build --prefix games/client
+```
+
+같은 판/시간의 깊이·노드 계측:
+
+```sh
+games/server/node_modules/.bin/tsx games/server/scripts/profile-omok.ts
+```
+
+조정용과 최종 평가용 배치는 별도 seed로 생성하며 대칭 중복을 제거한다. 최종 평가 결과를 보고 같은 배치에 맞춰 조정하면 그 배치는 더 이상 미사용 평가 세트가 아니다. 재조정 시 별도 평가 세트/명세가 필요하다.
+
+```sh
+OMOK_SUITE=train OMOK_BUDGET_MS=1000 OMOK_PAIRS=8 OMOK_OUTPUT=/tmp/omok-train.jsonl games/server/node_modules/.bin/tsx games/server/scripts/benchmark-omok.ts
+OMOK_SUITE=heldout OMOK_BUDGET_MS=11000 OMOK_PAIRS=50 OMOK_OUTPUT=/tmp/omok-heldout.jsonl games/server/node_modules/.bin/tsx games/server/scripts/benchmark-omok.ts
+games/server/node_modules/.bin/tsx games/server/scripts/summarize-omok.ts /tmp/omok-heldout.jsonl
+```
+
+`OMOK_FROM`/`OMOK_TO`로 배치 범위를 나눌 수 있다. 동시 대국은 최대 2개로 제한한다. 결과 파일을 동일한 코드/설정으로 지정하면 완료된 경기를 건너뛰고 재개한다. 조정용 환경변수는 벤치마크 전용으로 배포 설정 추가는 없다.
+
+## 현재 확인된 기능 검증
+
+- 무작위 착수/전체 되돌리기에서 구버전 평가와 일치.
+- 장목·정확한 오목·테두리 평가, 금수 간소화 검사 통과.
+- 양쪽 색상의 VCF, 백 쌍삼 VCT, 가짜 증명·시간초과·보드 복원 검사 통과.
+- 실제 서버의 128MB 워커에서 11초 탐색 정상 종료.
+- 고정된 세 판의 1초 계측: 노드 약 2.6~3.2배, 완료 깊이 1~2 증가. 이는 승률 증명이 아니며 최종 대국으로 별도 확인한다.
