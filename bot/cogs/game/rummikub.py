@@ -6,6 +6,8 @@ async def lobby_action(cog, room, action, user):
     if room["handoff"]:
         return "경기를 전달 중이라 참가자를 변경할 수 없습니다."
     seats = room["seats"]
+    previous_seats = [dict(seat) for seat in seats]
+    previous_p2 = room.get("p2Id")
     if action == "join":
         if any(s["userId"] == str(user.id) for s in seats):
             return "이미 참가 중입니다."
@@ -33,7 +35,10 @@ async def lobby_action(cog, room, action, user):
     else:
         return "지원하지 않는 조작입니다."
     room["p2Id"] = next((int(s["userId"]) for s in seats[1:] if s["userId"]), None)
-    await cog.edit_room(room)
+    if await cog.edit_room(room) is False:
+        seats[:] = previous_seats
+        room["p2Id"] = previous_p2
+        return "대기방 메시지를 갱신하지 못해 참가자 변경을 취소했습니다. 잠시 후 다시 시도해주세요."
     return "참가 목록을 변경했습니다."
 
 

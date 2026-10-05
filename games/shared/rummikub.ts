@@ -49,13 +49,32 @@ export function meld(ids: number[]): Meld | null {
   }
   return null;
 }
+/** Current valid placement determines a joker's value; old values only help unfinished drafts. */
+export function tableJokerBindings(group: number[], original: number[][]): Record<number, Binding> {
+  const current = meld(group);
+  if (current) return current.jokers;
+  const bindings: Record<number, Binding> = {};
+  for (const id of group.filter(id => id >= 104)) {
+    const source = original.find(row => row.includes(id));
+    if (source?.some(tileId => tileId < 104 && group.includes(tileId))) {
+      const binding = meld(source)?.jokers[id];
+      if (binding) bindings[id] = binding;
+    }
+  }
+  return bindings;
+}
 /** Sort a run into ascending number order, including jokers' inferred slots. */
-export function arrangeRun(ids: number[]): number[] {
+export function arrangeRun(ids: number[], preserve: Record<number, Binding> = {}): number[] {
+  if (ids.length < 3 || ids.length > 13 || new Set(ids).size !== ids.length
+      || ids.some(id => !Number.isInteger(id) || id < 0 || id > 105)) return [...ids];
   const real = ids.filter(id => id < 104).map(tile);
   const jokers = ids.filter(id => id >= 104);
   if (real.length < 2 || new Set(real.map(t => t.color)).size !== 1
       || new Set(real.map(t => t.number)).size !== real.length) return [...ids];
   const low = Math.min(...real.map(t => t.number)), high = Math.max(...real.map(t => t.number));
+  // A valid displayed run already supplies the intended joker values. Preserve
+  // them even for newly played hand jokers (their values affect opening points).
+  const bindings = { ...(meld(ids)?.jokers ?? {}), ...preserve };
   for (let start = 1; start + ids.length - 1 <= 13; start++) {
     const end = start + ids.length - 1;
     if (start > low || end < high) continue;
@@ -63,7 +82,18 @@ export function arrangeRun(ids: number[]): number[] {
     const byNumber = new Map(real.map(t => [t.number, t.id]));
     const missing = slots.filter(number => !byNumber.has(number));
     if (missing.length !== jokers.length) continue;
-    missing.forEach((number, i) => byNumber.set(number, jokers[i]));
+    let compatible = true;
+    for (const id of jokers) {
+      const binding = bindings[id];
+      if (!binding) continue;
+      if (!binding.colors.includes(real[0].color) || !missing.includes(binding.number) || byNumber.has(binding.number)) {
+        compatible = false; break;
+      }
+      byNumber.set(binding.number, id);
+    }
+    if (!compatible) continue;
+    const free = missing.filter(number => !byNumber.has(number));
+    jokers.filter(id => !bindings[id]).forEach((id, i) => byNumber.set(free[i], id));
     return slots.map(number => byNumber.get(number)!);
   }
   return [...ids];
@@ -97,6 +127,7 @@ export function validateTurn(state: State, table: number[][]): string | null {
   }
   // A table joker cannot be pocketed. Changing its represented tile requires
   // a matching real replacement in the resulting table; it must be reused now.
+  const replacementsNeeded: Binding[] = [];
   for (const group of state.table) {
     const old = meld(group)!;
     const changed = Object.entries(old.jokers).filter(([id, binding]) => {
@@ -104,20 +135,16 @@ export function validateTurn(state: State, table: number[][]): string | null {
       const staysWithOriginal = table[nextIndex].some(t => t < 104 && group.includes(t));
       return !staysWithOriginal || next.number !== binding.number || !next.colors.some(c => binding.colors.includes(c));
     });
-    if (!changed.length) continue;
-    const changedIds = changed.map(([id]) => Number(id));
-    // Replacement tiles must come from this player's hand and be used on the
-    // table this turn. The original meld's other tiles may be split among any
-    // valid resulting melds; requiring them all in one meld rejects legal plays.
-    const replacements = [...own].filter(id => table.some(g => g.includes(id)));
-    const replaced = (index: number, remaining: number[]): boolean => index === changed.length || remaining.some((id, i) => {
-      const value = tile(id), binding = changed[index][1];
-      return value.number === binding.number && binding.colors.includes(value.color)
-        && replaced(index + 1, remaining.filter((_, j) => j !== i));
-    });
-    const hasReplacement = replaced(0, replacements);
-    if (!hasReplacement) return "조커를 다른 용도로 쓰려면 원래 조합에 맞는 일반 패로 교체하고 이번 턴에 다시 사용해주세요.";
+    replacementsNeeded.push(...changed.map(([, binding]) => binding));
   }
+  // Match across the WHOLE table, consuming each physical hand tile once.
+  // Old melds may be split; the final-table validity was checked above.
+  const replaced = (index: number, remaining: number[]): boolean => index === replacementsNeeded.length || remaining.some((id, i) => {
+    const value = tile(id), binding = replacementsNeeded[index];
+    return value.number === binding.number && binding.colors.includes(value.color)
+      && replaced(index + 1, remaining.filter((_, j) => j !== i));
+  });
+  if (!replaced(0, played.filter(id => id < 104))) return "조커를 다른 용도로 쓰려면 각각에 맞는 일반 패로 교체하고 이번 턴에 다시 사용해주세요.";
   return null;
 }
 function finish(state: State, winner: number | null) {

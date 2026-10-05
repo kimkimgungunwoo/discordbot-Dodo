@@ -153,7 +153,8 @@ class LobbyView(discord.ui.View):
         self.room_id = room_id
         if cog.rooms.get(room_id, {}).get("game") == "rummikub" and not playing:
             for action, label in (("bot_normal", "중간 봇 추가"), ("bot_hard", "어려움 봇 추가"), ("bot_remove", "봇 제거")):
-                item = discord.ui.Button(label=label, style=discord.ButtonStyle.secondary, row=1)
+                item = discord.ui.Button(label=label, style=discord.ButtonStyle.secondary, row=1,
+                                         custom_id=f"dodo:rummikub:{action}:{room_id}")
                 async def configure(event, action=action):
                     await self.cog.action(self.room_id, action, event)
                 item.callback = configure
@@ -370,20 +371,31 @@ class Game(commands.Cog):
                 return room
 
     async def edit_room(self, room, *, closed: str | None = None):
-        old = self.views.pop(room["roomId"], None)
-        if old:
-            old.stop()
         channel = self.bot.get_channel(room["channelId"])
         if channel is None:
-            return
+            try:
+                channel = await self.bot.fetch_channel(room["channelId"])
+            except (discord.HTTPException, discord.NotFound):
+                log.warning("Could not find Dodo lobby channel %s", room["channelId"])
+                return False
         view = None if closed else LobbyView(self, room["roomId"], room["status"] == "PLAYING")
-        if view:
-            self.views[room["roomId"]] = view
         try:
             message = channel.get_partial_message(room["messageId"])
             await message.edit(embed=discord.Embed(title=f"도도새{game_name(room)}", description=closed) if closed else self.embed(room), view=view)
         except discord.HTTPException:
-            log.warning("Could not update Dodo lobby message")
+            log.exception("Could not update Dodo lobby message %s", room.get("messageId"))
+            if view:
+                view.stop()
+            return False
+        old = self.views.pop(room["roomId"], None)
+        if old:
+            old.stop()
+        if view:
+            # Stopping the previous view removes matching component IDs from
+            # discord.py's store, including IDs just registered by message.edit.
+            self.bot.add_view(view, message_id=room["messageId"])
+            self.views[room["roomId"]] = view
+        return True
 
     async def _mark_message_closed(self, message: discord.Message | None):
         if message is None:
