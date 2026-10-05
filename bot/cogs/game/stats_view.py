@@ -6,6 +6,7 @@ from .registry import GAMES
 
 
 FILTERS = {
+    "rummikub:PVP": ("rummikub", "PVP", "🀄 루미큐브 · 포인트"),
     "rock_run:SOLO": ("rock_run", "SOLO", "🏜️ 바위달리기 · 일반"),
     "rock_run:ENDLESS": ("rock_run", "SOLO", "🏜️ 바위달리기 · 엔드리스"),
     "arrow_dodge:SOLO": ("arrow_dodge", "SOLO", "🏹 화살피하기 · 솔로"),
@@ -89,6 +90,8 @@ class GameStatsView(discord.ui.View):
 
     @staticmethod
     def _record(stats: dict, game: str, mode: str, endless: bool = False) -> str:
+        if game == "rummikub":
+            return f"플레이 **{stats['plays']}회**\n누적 포인트 **{stats['total_score']:+,}점**\n봇 보정 포함 · 승패 레이팅 미사용"
         if game == "rock_run":
             value = f"{(stats.get('best_score') or 0) / 1000:.2f}초" if endless else f"{stats.get('best_score') or 0:,}점"
             return f"플레이 **{stats['plays']}회**\n최고 기록 **{value}**"
@@ -108,6 +111,12 @@ class GameStatsView(discord.ui.View):
         embed = self.filter_embed()
         embed.title = f"{label} · 내 전적"
         embed.description = self._record(stats, game, mode, self.filter_key == "rock_run:ENDLESS") if stats else "아직 기록된 경기가 없습니다."
+        if game == "rummikub" and stats:
+            history = await self.store.rummikub_history(self.owner_id)
+            if history:
+                embed.add_field(name="최근 10경기 · 획득/차감 포인트", value="\n".join(
+                    f"<t:{int(row['ended_at'].timestamp())}:f> · **{row['score']:+,}점** · 사람 {row['humans']} / 봇 {row['bots']}"
+                    for row in history), inline=False)
         await interaction.edit_original_response(embed=embed, view=self)
 
     async def _show_rank(self, interaction: discord.Interaction, scope_type: str):
@@ -119,7 +128,9 @@ class GameStatsView(discord.ui.View):
         medals = ["🥇", "🥈", "🥉"]
         for index, row in enumerate(rows, 1):
             prefix = medals[index - 1] if index <= 3 else f"`{index:>2}.`"
-            if game == "rock_run":
+            if game == "rummikub":
+                value = f"{row['total_score']:+,}점 · {row['plays']}회"
+            elif game == "rock_run":
                 value = f"{(row['best_score'] or 0) / 1000:.2f}초" if self.filter_key == "rock_run:ENDLESS" else f"{row['best_score'] or 0:,}점"
             elif game == "arrow_dodge":
                 value = f"{(row['best_score'] or 0) / 1000:.2f}초"

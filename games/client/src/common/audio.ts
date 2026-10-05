@@ -33,6 +33,25 @@ export class GameAudio {
     }
   }
 
+  playRummikub(kind: "place" | "draw" | "turn" | "win" | "error" | "reset") {
+    if (this.muted || !this.context || this.context.state !== "running") return;
+    const context = this.context;
+    const notes = { place: [640], draw: [440, 330], turn: [523, 784], win: [523, 659, 784, 1047], error: [185, 155], reset: [390, 290] }[kind];
+    notes.forEach((frequency, index) => {
+      const oscillator = context.createOscillator(), gain = context.createGain();
+      const start = context.currentTime + index * 0.085, duration = kind === "place" ? 0.075 : 0.13;
+      oscillator.type = "triangle";
+      oscillator.frequency.setValueAtTime(frequency, start);
+      if (kind === "place") oscillator.frequency.exponentialRampToValueAtTime(320, start + duration);
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.06, start + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      oscillator.connect(gain); gain.connect(context.destination);
+      oscillator.start(start); oscillator.stop(start + duration + 0.01);
+      oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+    });
+  }
+
   playArrowVolley(count: number) {
     if (this.muted || !this.context || this.context.state !== "running" || count < 1) return;
     const context = this.context;

@@ -7,6 +7,7 @@ import { identity, member, DiscordRateLimitError } from "./auth.js";
 import { OmokRoom } from "./omok-room.js";
 import { RockRunRoom } from "./rock-run-room.js";
 import { ArrowDodgeRoom } from "./arrow-dodge-room.js";
+import { RummikubRoom } from "./rummikub-room.js";
 
 const secret = process.env.ACTIVITY_INTERNAL_SECRET ?? "";
 const clientId = process.env.DISCORD_CLIENT_ID ?? "";
@@ -40,7 +41,8 @@ export const server = createServer(async (req, res) => {
       if (typeof value.roomId !== "string") return json(res, 400, { error: "Invalid room" });
       rooms.get(value.roomId)?.broadcast({ type: "ROOM_CLOSED", message: "방장이 방을 닫았습니다." });
       const closing = rooms.get(value.roomId);
-      if (closing instanceof OmokRoom) closing.dispose();
+      if (closing instanceof RummikubRoom) closing.abort("방장이 방을 닫았습니다.");
+      if (closing instanceof OmokRoom || closing instanceof RummikubRoom) closing.dispose();
       rooms.delete(value.roomId);
       return json(res, 200, { ok: true });
     }
@@ -55,11 +57,11 @@ export const server = createServer(async (req, res) => {
         rooms.delete(definition.roomId);
       }
       const existing = rooms.get(definition.roomId);
-      if (existing && ((Object.keys(existing.definition) as Array<keyof typeof definition>).some(key => key !== "matchId" && existing.definition[key] !== definition[key]))) return json(res, 409, { error: "Room conflict" });
+      if (existing && ((Object.keys(existing.definition) as Array<keyof typeof definition>).some(key => key !== "matchId" && JSON.stringify(existing.definition[key]) !== JSON.stringify(definition[key])))) return json(res, 409, { error: "Room conflict" });
       if (!existing && rooms.size >= 200) return json(res, 503, { error: "Room capacity reached" });
       if (existing && definition.matchId && existing.matchId !== definition.matchId) return json(res, 409, { error: "다른 경기가 진행 중입니다." });
       const room = existing ?? (definition.game === "rock_run" ? new RockRunRoom(definition) : definition.game === "omok" ? new OmokRoom(definition)
-        : definition.game === "arrow_dodge" ? new ArrowDodgeRoom(definition) : new RelayRoom(definition));
+        : definition.game === "arrow_dodge" ? new ArrowDodgeRoom(definition) : definition.game === "rummikub" ? new RummikubRoom(definition) : new RelayRoom(definition));
       rooms.set(definition.roomId, room);
       if (stale && stale !== room) stale.broadcast({ type: "MATCH_REPLACED" });
       return json(res, existing ? 200 : 201, { roomId: definition.roomId, matchId: room.matchId, seed: room.seed, tickRate: 60 });
@@ -94,6 +96,7 @@ export const server = createServer(async (req, res) => {
       if (typeof value.roomId !== "string") return json(res, 400, { error: "Invalid room" });
       const room = rooms.get(value.roomId);
       if (!room) return json(res, 404, { error: "방이 만료되었습니다. 디스코드 채팅의 [게임 시작] 버튼으로 새로 시작해주세요." });
+      if (room instanceof RummikubRoom) return json(res, 409, { error: "디스코드 대기방에서 게임 시작을 눌러주세요." });
       if (value.matchId !== room.matchId) return json(res, 409, { error: "경기가 변경되었습니다. 다시 연결해주세요." });
       if (!room.result || !room.delivered) return json(res, 409, { error: "경기 결과 전송을 기다려주세요." });
       const { hostId, p2Id, mode } = room.definition;
@@ -176,7 +179,8 @@ wss.on("connection", socket => {
         room.join(candidate); peer = candidate; clearTimeout(timeout);
         return;
       }
-      if (message.type === "MOVE" && room instanceof OmokRoom) room.move(peer, message);
+      if (message.type === "RUMMI_ACTION" && room instanceof RummikubRoom) room.handle(peer, message);
+      else if (message.type === "MOVE" && room instanceof OmokRoom) room.move(peer, message);
       else if (message.type === "INPUT") room!.input(peer, message);
       else if (message.type === "RESULT") room!.report(peer, message);
     } catch (error) {
@@ -211,7 +215,7 @@ const callbacks = setInterval(() => {
 server.listen(Number(process.env.PORT ?? 3001), "0.0.0.0", () => console.log("[activity-server] ready"));
 export function shutdown() {
   clearInterval(callbacks);
-  for (const room of rooms.values()) if (room instanceof OmokRoom) room.dispose();
+  for (const room of rooms.values()) if (room instanceof OmokRoom || room instanceof RummikubRoom) room.dispose();
   for (const client of wss.clients) client.terminate();
   wss.close(); server.close();
 }

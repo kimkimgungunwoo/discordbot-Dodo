@@ -117,3 +117,21 @@ FROM dodo_ruleset r
 WHERE s.ruleset_id=r.ruleset_id AND r.game_code='rock_run' AND s.mode='SOLO' AND s.difficulty_key='';
 INSERT INTO dodo_game(game_code,name) VALUES ('rock_run','바위달리기') ON CONFLICT DO NOTHING;
 INSERT INTO dodo_ruleset(game_code,version) VALUES ('rock_run','rock-run-v1') ON CONFLICT DO NOTHING;
+
+-- Preserve legacy seat names while admitting four-seat games.
+ALTER TABLE dodo_match_participant DROP CONSTRAINT IF EXISTS dodo_match_participant_seat_check;
+ALTER TABLE dodo_match_participant ADD CONSTRAINT dodo_match_participant_seat_check
+    CHECK (seat IN ('LEFT', 'RIGHT', 'SOLO', 'P1', 'P2', 'P3', 'P4'));
+ALTER TABLE dodo_match_participant ADD COLUMN IF NOT EXISTS bot_difficulty TEXT;
+CREATE TABLE IF NOT EXISTS rummikub_match (
+    match_id TEXT PRIMARY KEY REFERENCES dodo_match(match_id) ON DELETE CASCADE,
+    winner_seat SMALLINT CHECK (winner_seat BETWEEN 0 AND 3)
+);
+CREATE INDEX IF NOT EXISTS dodo_stats_total_rank ON dodo_player_stat
+    (ruleset_id, mode, difficulty_key, scope_type, scope_id, total_score DESC);
+CREATE INDEX IF NOT EXISTS dodo_participant_history ON dodo_match_participant(player_id, match_id);
+INSERT INTO dodo_game(game_code,name) VALUES ('rummikub','루미큐브') ON CONFLICT DO NOTHING;
+INSERT INTO dodo_ruleset(game_code,version)
+    SELECT 'rummikub','rummikub-points-v1'
+    WHERE NOT EXISTS (SELECT 1 FROM dodo_ruleset WHERE game_code='rummikub')
+ON CONFLICT DO NOTHING;

@@ -13,6 +13,7 @@ import discord
 from discord.ext import commands
 
 from .registry import GAMES
+from .rummikub import lobby_action as rummikub_lobby_action
 from .stats_view import GameStatsView
 from api.dodo import DodoGameStore, DodoStorageError
 
@@ -150,6 +151,13 @@ class LobbyView(discord.ui.View):
         super().__init__(timeout=None)
         self.cog = cog
         self.room_id = room_id
+        if cog.rooms.get(room_id, {}).get("game") == "rummikub" and not playing:
+            for action, label in (("bot_normal", "중간 봇 추가"), ("bot_hard", "어려움 봇 추가"), ("bot_remove", "봇 제거")):
+                item = discord.ui.Button(label=label, style=discord.ButtonStyle.secondary, row=1)
+                async def configure(event, action=action):
+                    await self.cog.action(self.room_id, action, event)
+                item.callback = configure
+                self.add_item(item)
         if cog.rooms.get(room_id, {}).get("mode") in ("CPU", "SOLO"):
             for item in list(self.children):
                 if item.custom_id in ("dodo:join", "dodo:cancel"):
@@ -258,6 +266,13 @@ class Game(commands.Cog):
         if room.get("last_result"):
             description = room["last_result"] + "\n\n" + description
         embed = discord.Embed(title=f"도도새{game_name(room)}", description=description, color=discord.Color.green())
+        if room.get("game") == "rummikub":
+            for i, color in enumerate(("🔵", "🔴", "🟢", "🟠")):
+                seat = room["seats"][i] if i < len(room["seats"]) else None
+                value = (f'<@{seat["userId"]}>' if seat["userId"] else seat["name"]) if seat else "참가 대기"
+                embed.add_field(name=f"{color} {i + 1}P", value=value)
+            embed.set_footer(text="2~4인 · 턴 제한 60초")
+            return embed
         embed.add_field(name="플레이어" if solo else "1P · 방장", value=f'<@{room["hostId"]}>')
         if room.get("game") == "rock_run":
             embed.add_field(name="모드", value="엔드리스 · 4단계 속도" if room.get("runMode") == "endless" else "일반 · 6단계")
@@ -268,6 +283,8 @@ class Game(commands.Cog):
         return embed
 
     async def select_mode(self, ctx: commands.Context, game="volleyball"):
+        if game == "rummikub":
+            return await self.create_room(ctx, game=game, mode="PVP")
         if not ctx.guild:
             await ctx.send("서버 채널에서 사용해주세요.")
             return
@@ -330,6 +347,8 @@ class Game(commands.Cog):
                             hostId=ctx.author.id, p2Id=None, spectators=set(), status="WAITING", handoff=False, mode=mode, difficulty=difficulty,
                             runMode=run_mode, matchId=None, previousMatchId=None)
                 self.rooms[room_id] = room
+                if game == "rummikub":
+                    room["seats"] = [{"userId": str(ctx.author.id), "name": ctx.author.display_name[:80]}]
                 if mode == "CPU":
                     try:
                         await self._do_handoff(room)
@@ -438,6 +457,21 @@ class Game(commands.Cog):
             if room["status"] != "WAITING":
                 await interaction.followup.send("이미 시작한 경기에는 관전만 가능합니다.", ephemeral=True)
                 return
+            if room.get("game") == "rummikub":
+                if action != "start":
+                    message = await rummikub_lobby_action(self, room, action, interaction.user)
+                    await interaction.followup.send(message, ephemeral=True)
+                    return
+                if len(room["seats"]) < 2:
+                    await interaction.followup.send("사람 또는 봇을 추가해 2명 이상으로 시작해주세요.", ephemeral=True)
+                    return
+                try:
+                    await self.handoff_room(room)
+                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    await interaction.followup.send("게임 서버 연결에 실패했습니다. 다시 시작해주세요.", ephemeral=True)
+                    return
+                await interaction.followup.send("루미큐브 하러 가기 버튼으로 들어오세요.", ephemeral=True)
+                return
             if action in ("join", "cancel"):
                 if room["mode"] in ("CPU", "SOLO"):
                     await interaction.followup.send("이 게임에는 플레이어로 참가할 수 없습니다.", ephemeral=True)
@@ -478,6 +512,8 @@ class Game(commands.Cog):
         payload = {key: str(room[key]) for key in ("roomId", "guildId", "hostId", "matchId")}
         payload.update(p2Id=str(room["p2Id"]) if room["p2Id"] else None, mode=room["mode"])
         payload["game"] = room.get("game", "volleyball")
+        if payload["game"] == "rummikub":
+            payload["seats"] = room["seats"]
         if payload["game"] == "rock_run":
             payload["runMode"] = room.get("runMode", "normal")
         definition = GAMES[payload["game"]]
