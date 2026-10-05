@@ -4,7 +4,7 @@ import { dodoProfile } from "../common/sprites";
 import { GameAudio } from "../common/audio";
 import { bindSoundControl } from "../common/sound-control";
 import { authenticate } from "../discord-session";
-import { SEAT_COLORS, arrangeRun, copyTable, meld, tile, checkDraft, requireUneditedTable, type View } from "../../../shared/rummikub";
+import { SEAT_COLORS, arrangeRun, copyTable, meld, tile, checkDraft, requireUneditedTable, tableJokerBindings, type View } from "../../../shared/rummikub";
 import { LocalGame } from "./practice";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
@@ -22,9 +22,12 @@ let alertText = "", suppressClick = false, dragging: { id: number; x: number; y:
 const editable = () => !!view && connected && !pending && view.started && !view.finished && view.seat === view.turn;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
-function tileMarkup(id: number, onTable = false) {
+function tileMarkup(id: number, onTable = false, binding?: { number: number; colors: number[] }) {
   const t = tile(id), color = t.color < 0 ? "#776044" : SEAT_COLORS[t.color];
-  return `<button class="r-tile ${selected.has(id) ? "selected" : ""} ${onTable && recentTiles.has(id) ? "just-placed" : ""}" data-tile="${id}" style="--tile-color:${color}" aria-pressed="${selected.has(id)}" aria-label="${t.number ? ["파랑", "빨강", "초록", "주황"][t.color] + ' ' + t.number : '조커'}"><b>${t.number || "★"}</b><small>${t.number ? ["●", "◆", "▲", "■"][t.color] : "JOKER"}</small></button>`;
+  const colors = ["파랑", "빨강", "초록", "주황"], marks = ["●", "◆", "▲", "■"];
+  const represented = binding ? `${binding.colors.map(c => marks[c]).join("/")} ${binding.number}` : "";
+  const label = t.number ? colors[t.color] + " " + t.number : represented ? `조커 · ${binding!.colors.map(c => colors[c]).join("/")} ${binding!.number}` : "조커";
+  return `<button class="r-tile ${selected.has(id) ? "selected" : ""} ${onTable && recentTiles.has(id) ? "just-placed" : ""}" data-tile="${id}" style="--tile-color:${color}" aria-pressed="${selected.has(id)}" aria-label="${label}" ${represented ? `title="조커 · ${label.slice(5)}로 사용 중"` : ""}><b>${t.number || "★"}</b><small>${t.number ? marks[t.color] : represented || "JOKER"}</small></button>`;
 }
 function receive(next: View) {
   recentTiles.clear();
@@ -68,11 +71,12 @@ function move(ids: number[], target: number | "rack" | "new", at?: number) {
   const table = copyTable(view.table);
   // Compute insertion offset before removing selected tiles from the same meld.
   let insert = typeof target === "number" ? (at ?? table[target].length) - table[target].slice(0, at ?? table[target].length).filter(id => ids.includes(id)).length : 0;
+  const existingBindings = typeof target === "number" ? tableJokerBindings(view.table[target], view.original) : {};
   for (let i = 0; i < table.length; i++) table[i] = table[i].filter(id => !ids.includes(id));
   if (target === "new") table.push(arrangeRun(ids));
   else if (typeof target === "number") {
     table[target].splice(insert, 0, ...ids);
-    table[target] = arrangeRun(table[target]);
+    table[target] = arrangeRun(table[target], existingBindings);
   }
   change(table.filter(g => g.length));
 }
@@ -93,7 +97,7 @@ function render() {
         ? "종료 예고 · 이번 차례에도 패를 내지 않으면 두 바퀴 연속 진행 없음으로 경기가 종료됩니다. 손패 수가 가장 적은 사람은 감점하지 않습니다."
         : `뽑을 패가 없습니다 · 연속 진행 없음 ${v.stalledTurns}/${v.stallLimit}턴. 두 바퀴 동안 아무도 패를 내지 않으면 종료됩니다.`}</aside>` : ""}
       <section class="r-table" aria-label="공용 테이블">
-        ${v.table.map((group, i) => `<div class="r-meld ${meld(group) ? "valid" : "invalid"}" data-group="${i}"><button class="r-grip" data-select-group="${i}" aria-label="조합 전체 선택" ${!can ? "disabled" : ""}>⠿</button><button class="r-insert" data-place="${i}" data-at="0" aria-label="조합 앞에 놓기">+</button>${group.map(id => tileMarkup(id, true)).join("")}<button class="r-insert" data-place="${i}" data-at="${group.length}" aria-label="조합 뒤에 놓기">+</button></div>`).join("")}
+        ${v.table.map((group, i) => { const bindings = tableJokerBindings(group, v.original); return `<div class="r-meld ${meld(group) ? "valid" : "invalid"}" data-group="${i}"><button class="r-grip" data-select-group="${i}" aria-label="조합 전체 선택" ${!can ? "disabled" : ""}>⠿</button><button class="r-insert" data-place="${i}" data-at="0" aria-label="조합 앞에 놓기">+</button>${group.map(id => tileMarkup(id, true, bindings[id])).join("")}<button class="r-insert" data-place="${i}" data-at="${group.length}" aria-label="조합 뒤에 놓기">+</button></div>`; }).join("")}
         <button class="r-new" data-new ${!can ? "disabled" : ""}>+ 새 조합<span>패를 끌어 놓으세요</span></button>
       </section>
       <section class="r-hand-area"><div class="r-hand-heading"><strong>${v.seat < 0 ? "관전 중 · 모든 손패 비공개" : `내 손패 · ${hand.length}개`}</strong><button data-sort>정렬: ${sortBy === "color" ? "색상" : "숫자"}</button></div><div class="r-rack" data-rack>${hand.map(id => tileMarkup(id)).join("")}${!hand.length ? '<span class="r-empty">' + (v.seat < 0 ? "테이블의 진행 상황만 표시합니다." : "손패 없음") + '</span>' : ""}</div></section>

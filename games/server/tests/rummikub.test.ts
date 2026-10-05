@@ -46,6 +46,29 @@ test("new tiles auto-sort ascending into runs and joker slots while groups retai
   const group = [id(2, 7), id(0, 7), id(1, 7)];
   assert.deepEqual(arrangeRun(group), group);
 });
+test("adding a tile never silently changes an existing table joker's represented number", () => {
+  const old = [id(0, 5), id(0, 6), 104], binding = meld(old)!.jokers[104];
+  assert.equal(binding.number, 7);
+  assert.deepEqual(arrangeRun([...old, id(0, 8)], { 104: binding }), [id(0, 5), id(0, 6), 104, id(0, 8)]);
+  const impossible = arrangeRun([...old, id(0, 3)], { 104: binding });
+  assert.deepEqual(impossible, [...old, id(0, 3)]);
+  assert.equal(meld(impossible), null, "leave an impossible draft visible instead of rebinding the joker");
+});
+test("a committed table joker keeps its represented tile unless that exact tile replaces it", () => {
+  const table = [[id(0, 5), id(0, 6), 104]];
+  const originalBinding = meld(table[0])!.jokers[104];
+  assert.deepEqual(originalBinding, { number: 7, colors: [0] });
+  const unauthorized = fixture([id(0, 3), id(3, 1)], table, true);
+  const changedValue = [[id(0, 3), 104, id(0, 5), id(0, 6)]];
+  assert.equal(meld(changedValue[0])!.jokers[104].number, 4);
+  assert.match(validateTurn(unauthorized, changedValue)!, /조커/);
+
+  const reclaimed = fixture([id(0, 11), id(1, 3), id(2, 3), id(3, 3), id(3, 1)], [[id(0, 10), 104, id(0, 12)]], true);
+  const valid = [[id(0, 10), id(0, 11), id(0, 12)], [id(1, 3), id(2, 3), id(3, 3), 104]];
+  assert.equal(validateTurn(reclaimed, valid), null);
+  endTurn(reclaimed, valid);
+  assert.deepEqual(meld(reclaimed.table[1])!.jokers[104], { number: 3, colors: [0] });
+});
 test("first registration requires own 30 and cannot extend/manipulate existing groups", () => {
   const game = fixture([...run(0, 9), id(3, 1)], [run(1, 1)]);
   assert.equal(validateTurn(game, [...game.table, run(0, 9)]), null);
