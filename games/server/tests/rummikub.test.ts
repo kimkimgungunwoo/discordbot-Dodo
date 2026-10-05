@@ -1,6 +1,6 @@
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { BOT_THINK_MS, BOT_TILE_MS, BOT_SETTLE_MS, BOT_FINAL_TURN_MS, botPlacementSteps, checkDraft, copyTable, createGame, endTurn, meld, tile, validateTurn, type State } from "../../shared/rummikub.js";
+import { BOT_THINK_MS, BOT_TILE_MS, BOT_SETTLE_MS, BOT_FINAL_TURN_MS, arrangeRun, botPlacementSteps, checkDraft, copyTable, createGame, endTurn, meld, tile, validateTurn, type State } from "../../shared/rummikub.js";
 import { botTurn } from "../../shared/rummikub-bot.js";
 import { LocalGame } from "../../client/src/rummikub/practice.js";
 import { RummikubRoom } from "../src/rummikub-room.js";
@@ -39,6 +39,13 @@ test("runs, reversed runs, groups and joker values reject wrapping/duplicate col
   assert.equal(meld([id(0, 1), id(0, 2), 104])?.points, 6);
   assert.equal(meld([id(0, 1), 104, 105])?.points, 3); // valid same-number group
 });
+test("new tiles auto-sort ascending into runs and joker slots while groups retain order", () => {
+  assert.deepEqual(arrangeRun([id(0, 3), id(0, 1), id(0, 2)]), run(0, 1, 3));
+  assert.deepEqual(arrangeRun([id(0, 4), 104, id(0, 2)]), [id(0, 2), 104, id(0, 4)]);
+  assert.deepEqual(arrangeRun([id(0, 4), id(0, 1), id(0, 3), 105]), [id(0, 1), 105, id(0, 3), id(0, 4)]);
+  const group = [id(2, 7), id(0, 7), id(1, 7)];
+  assert.deepEqual(arrangeRun(group), group);
+});
 test("first registration requires own 30 and cannot extend/manipulate existing groups", () => {
   const game = fixture([...run(0, 9), id(3, 1)], [run(1, 1)]);
   assert.equal(validateTurn(game, [...game.table, run(0, 9)]), null);
@@ -69,6 +76,17 @@ test("table joker requires matching replacement and reuse in same turn", () => {
   assert.match(validateTurn(game, [[id(0, 10), id(1, 10), id(2, 10)]])!, /사용할 수 없는/);
   const stealing = fixture([id(1, 3), id(1, 4), id(1, 10), id(2, 10), id(1, 12), id(2, 12)], table, true);
   assert.match(validateTurn(stealing, [[id(0, 10), id(1, 10), id(2, 10)], [id(0, 12), id(1, 12), id(2, 12)], [id(1, 3), id(1, 4), 104]])!, /조커/);
+});
+test("reclaimed table joker permits splitting the old run into multiple valid melds", () => {
+  const table = [[id(0, 1), 104, ...run(0, 3, 4)]];
+  const hand = [id(0, 2), id(1, 7), id(2, 7), id(3, 7)];
+  const game = fixture(hand, table, true);
+  const rearranged = [run(0, 1, 3), run(0, 4, 3), [id(1, 7), id(2, 7), id(3, 7), 104]];
+  assert.ok(rearranged.every(group => meld(group)), "every resulting table meld is valid");
+  assert.equal(validateTurn(game, rearranged), null);
+  endTurn(game, rearranged);
+  assert.equal(game.hands[0].length, 0);
+  assert.equal(game.winner, 0);
 });
 test("win scores conserve points; joker costs 30; exhausted pile doesn't deadlock", () => {
   const game = fixture(run(0, 9)); game.hands[1] = [104, id(1, 5)];

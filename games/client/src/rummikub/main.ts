@@ -4,7 +4,7 @@ import { dodoProfile } from "../common/sprites";
 import { GameAudio } from "../common/audio";
 import { bindSoundControl } from "../common/sound-control";
 import { authenticate } from "../discord-session";
-import { SEAT_COLORS, copyTable, meld, tile, checkDraft, requireUneditedTable, type View } from "../../../shared/rummikub";
+import { SEAT_COLORS, arrangeRun, copyTable, meld, tile, checkDraft, requireUneditedTable, type View } from "../../../shared/rummikub";
 import { LocalGame } from "./practice";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
@@ -69,8 +69,11 @@ function move(ids: number[], target: number | "rack" | "new", at?: number) {
   // Compute insertion offset before removing selected tiles from the same meld.
   let insert = typeof target === "number" ? (at ?? table[target].length) - table[target].slice(0, at ?? table[target].length).filter(id => ids.includes(id)).length : 0;
   for (let i = 0; i < table.length; i++) table[i] = table[i].filter(id => !ids.includes(id));
-  if (target === "new") table.push(ids);
-  else if (typeof target === "number") table[target].splice(insert, 0, ...ids);
+  if (target === "new") table.push(arrangeRun(ids));
+  else if (typeof target === "number") {
+    table[target].splice(insert, 0, ...ids);
+    table[target] = arrangeRun(table[target]);
+  }
   change(table.filter(g => g.length));
 }
 function render() {
