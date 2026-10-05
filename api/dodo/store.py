@@ -83,6 +83,8 @@ class DodoGameStore:
         users = [("LEFT" if mode != "SOLO" else "SOLO", int(room["hostId"]))]
         if room.get("p2Id"):
             users.append(("RIGHT", int(room["p2Id"])))
+        if game == "rummikub":
+            users = [(f"P{i + 1}", int(seat["userId"])) for i, seat in enumerate(room["seats"]) if not seat.get("bot")]
 
         try:
             async with self.pool.acquire() as connection, connection.transaction():
@@ -104,13 +106,23 @@ class DodoGameStore:
                     player_id = await self._player(connection, user_id)
                     player_ids[user_id] = player_id
                     score = self._score_for(game, seat, payload)
-                    outcome = "ABORTED" if aborted else self._outcome(user_id, winner_id, draw, game in ("arrow_dodge", "rock_run"))
+                    outcome = "ABORTED" if aborted else self._outcome(user_id, winner_id, draw, game in ("arrow_dodge", "rock_run", "rummikub"))
                     participant_ids[seat] = await connection.fetchval(
                         """INSERT INTO dodo_match_participant(match_id, player_id, actor_type, seat, outcome, score)
                            VALUES($1,$2,'USER',$3,$4,$5) RETURNING participant_id""",
                         inserted, player_id, seat, outcome, score,
                     )
-                if mode == "CPU":
+                if game == "rummikub":
+                    for i, seat in enumerate(room["seats"]):
+                        if not seat.get("bot"):
+                            continue
+                        await connection.execute(
+                            """INSERT INTO dodo_match_participant(match_id,actor_type,seat,outcome,score,bot_difficulty)
+                               VALUES($1,'CPU',$2,$3,$4,$5)""",
+                            inserted, f"P{i + 1}", "ABORTED" if aborted else "SCORE",
+                            self._score_for(game, f"P{i + 1}", payload), seat["bot"],
+                        )
+                elif mode == "CPU":
                     seat = "RIGHT"
                     outcome = "ABORTED" if aborted else "DRAW" if draw else "WIN" if winner_id is None else "LOSS"
                     participant_ids[seat] = await connection.fetchval(
@@ -130,13 +142,18 @@ class DodoGameStore:
 
     @staticmethod
     def _score_for(game: str, seat: str, payload: dict) -> int | None:
+        if game == "rummikub":
+            scores = payload.get("seatScores")
+            return scores[int(seat[1:]) - 1] if scores else None
         if game == "arrow_dodge":
             return int(payload.get("survivalMs", 0))
         score = payload.get("score") or {}
         return score.get("left" if seat in ("LEFT", "SOLO") else "right")
 
     async def _insert_detail(self, connection, game: str, match_id: str, payload: dict):
-        if game == "arrow_dodge":
+        if game == "rummikub":
+            await connection.execute("INSERT INTO rummikub_match(match_id,winner_seat) VALUES($1,$2)", match_id, payload.get("winnerSeat"))
+        elif game == "arrow_dodge":
             await connection.execute("INSERT INTO arrow_dodge_match VALUES($1,$2)", match_id, payload["survivalMs"])
         elif game == "rock_run":
             await connection.execute("INSERT INTO rock_run_match(match_id, score, stage, cleared, elapsed_ms, run_mode) VALUES($1,$2,$3,$4,$5,$6)",
@@ -169,7 +186,7 @@ class DodoGameStore:
         scopes = [("GLOBAL", 0), ("GUILD", int(room["guildId"]))]
         for scope_type, scope_id in scopes:
             deltas = {uid: 0 for uid in player_ids}
-            if mode == "PVP" and len(player_ids) == 2:
+            if game != "rummikub" and mode == "PVP" and len(player_ids) == 2:
                 left_uid, right_uid = int(room["hostId"]), int(room["p2Id"])
                 left_rating = await self._rating(connection, player_ids[left_uid], ruleset_id, mode, difficulty, scope_type, scope_id)
                 right_rating = await self._rating(connection, player_ids[right_uid], ruleset_id, mode, difficulty, scope_type, scope_id)
@@ -178,8 +195,11 @@ class DodoGameStore:
                 delta = round(32 * (actual_left - expected_left))
                 deltas[left_uid], deltas[right_uid] = delta, -delta
             for user_id, player_id in player_ids.items():
-                outcome = self._outcome(user_id, winner_id, draw, game in ("arrow_dodge", "rock_run"))
-                score = self._score_for(game, "LEFT" if user_id == int(room["hostId"]) else "RIGHT", payload)
+                outcome = self._outcome(user_id, winner_id, draw, game in ("arrow_dodge", "rock_run", "rummikub"))
+                seat = "LEFT" if user_id == int(room["hostId"]) else "RIGHT"
+                if game == "rummikub":
+                    seat = next(f"P{i + 1}" for i, s in enumerate(room["seats"]) if str(s.get("userId")) == str(user_id))
+                score = self._score_for(game, seat, payload)
                 await connection.execute(
                     """INSERT INTO dodo_player_stat(
                            player_id,ruleset_id,mode,difficulty_key,scope_type,scope_id,
@@ -220,9 +240,9 @@ class DodoGameStore:
                           difficulty: str = "", limit: int = 10) -> list[dict]:
         if not self.pool:
             return []
-        order = "best_score DESC NULLS LAST, plays ASC" if game in ("arrow_dodge", "rock_run") else \
+        order = "total_score DESC, p.discord_user_id ASC" if game == "rummikub" else "best_score DESC NULLS LAST, plays ASC" if game in ("arrow_dodge", "rock_run") else \
             "rating DESC, wins DESC" if mode == "PVP" else "wins DESC, losses ASC"
-        query = f"""SELECT p.discord_user_id,s.plays,s.wins,s.losses,s.draws,s.best_score,s.rating
+        query = f"""SELECT p.discord_user_id,s.plays,s.wins,s.losses,s.draws,s.best_score,s.rating,s.total_score
                     FROM dodo_player_stat s JOIN dodo_player p USING(player_id)
                     JOIN dodo_ruleset r USING(ruleset_id)
                     WHERE r.game_code=$1 AND s.mode=$2 AND s.difficulty_key=$3
@@ -232,3 +252,18 @@ class DodoGameStore:
             return [dict(row) for row in await connection.fetch(
                 query, game, mode, difficulty if mode == "CPU" or game == "rock_run" else "", scope_type, scope_id, limit,
             )]
+
+    async def rummikub_history(self, discord_user_id: int) -> list[dict]:
+        if not self.pool:
+            return []
+        async with self.pool.acquire() as connection:
+            rows = await connection.fetch(
+                """SELECT m.ended_at, mp.score, m.guild_id,
+                          (SELECT count(*) FROM dodo_match_participant a WHERE a.match_id=m.match_id AND a.actor_type='USER') AS humans,
+                          (SELECT count(*) FROM dodo_match_participant a WHERE a.match_id=m.match_id AND a.actor_type='CPU') AS bots
+                   FROM dodo_match_participant mp JOIN dodo_player p USING(player_id)
+                   JOIN dodo_match m USING(match_id) JOIN dodo_ruleset r USING(ruleset_id)
+                   WHERE p.discord_user_id=$1 AND r.game_code='rummikub' AND r.active AND m.status='COMPLETED'
+                   ORDER BY m.ended_at DESC, m.match_id DESC LIMIT 10""", discord_user_id,
+            )
+            return [dict(row) for row in rows]

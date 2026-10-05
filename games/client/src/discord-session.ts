@@ -1,4 +1,4 @@
-const GAME_PATHS = { volleyball: "/volleyball", omok: "/omok", arrow_dodge: "/arrow-dodge", rock_run: "/rock-run" } as const;
+const GAME_PATHS = { volleyball: "/volleyball", omok: "/omok", arrow_dodge: "/arrow-dodge", rock_run: "/rock-run", rummikub: "/rummikub" } as const;
 const ROOM_KEY = "dodo:room";
 const TOKEN_KEY = "dodo:token";
 
@@ -35,7 +35,7 @@ export async function authenticate(root: HTMLElement, game: keyof typeof GAME_PA
     const panel = document.createElement("section");
     panel.className = "start-card";
     const title = document.createElement("h2");
-    title.textContent = game === "rock_run" ? "도도새 바위 달리기" : game === "omok" ? "도도새오목" : game === "arrow_dodge" ? "도도새 화살피하기" : "도도새배구";
+    title.textContent = game === "rummikub" ? "도도새 루미큐브" : game === "rock_run" ? "도도새 바위 달리기" : game === "omok" ? "도도새오목" : game === "arrow_dodge" ? "도도새 화살피하기" : "도도새배구";
     const button = document.createElement("button");
     button.className = "primary"; button.textContent = "Discord로 로그인";
     panel.append(title, button); root.replaceChildren(panel);
