@@ -144,3 +144,11 @@ CREATE TABLE IF NOT EXISTS othello_match (
 );
 INSERT INTO dodo_game(game_code,name) VALUES ('othello','오델로') ON CONFLICT DO NOTHING;
 INSERT INTO dodo_ruleset(game_code,version) VALUES ('othello','othello-v1') ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS alkkagi_match (
+    match_id TEXT PRIMARY KEY REFERENCES dodo_match(match_id) ON DELETE CASCADE,
+    left_remaining SMALLINT NOT NULL CHECK (left_remaining BETWEEN 0 AND 6),
+    right_remaining SMALLINT NOT NULL CHECK (right_remaining BETWEEN 0 AND 6)
+);
+INSERT INTO dodo_game(game_code,name) VALUES ('alkkagi','알까기') ON CONFLICT DO NOTHING;
+INSERT INTO dodo_ruleset(game_code,version) VALUES ('alkkagi','alkkagi-v1') ON CONFLICT DO NOTHING;

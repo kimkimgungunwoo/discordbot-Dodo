@@ -6,6 +6,8 @@ from .registry import GAMES
 
 
 FILTERS = {
+    "alkkagi:CPU": ("alkkagi", "CPU", "⚪ 알까기 · 봇전"),
+    "alkkagi:PVP": ("alkkagi", "PVP", "⚫ 알까기 · 대결"),
     "othello:CPU": ("othello", "CPU", "🔴 오델로 · 봇전"),
     "othello:PVP": ("othello", "PVP", "🔵 오델로 · 대결"),
     "rummikub:PVP": ("rummikub", "PVP", "🀄 루미큐브 · 포인트"),
@@ -44,6 +46,8 @@ class _DifficultySelect(discord.ui.Select):
 
     def _options(self, game: str):
         labels = GAMES[game].difficulty_labels
+        if labels and self.stats_view.difficulty_key not in labels:
+            self.stats_view.difficulty_key = "normal"
         return [discord.SelectOption(label=label, value=value, default=value == self.stats_view.difficulty_key)
                 for value, label in labels.items()] or [discord.SelectOption(label="해당 없음", value="normal")]
 

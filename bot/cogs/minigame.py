@@ -135,7 +135,7 @@ class Minigame(commands.Cog):
         self.bot = bot
 
     async def _route_dodo_game(self, ctx: commands.Context, game_name: str):
-        game = {"루미큐브": "rummikub", "배구": "volleyball", "오목": "omok", "오델로": "othello", "화살피하기": "arrow_dodge", "바위달리기": "rock_run", "고군분투": "rock_run"}.get(game_name.strip())
+        game = {"루미큐브": "rummikub", "배구": "volleyball", "오목": "omok", "오델로": "othello", "알까기": "alkkagi", "화살피하기": "arrow_dodge", "바위달리기": "rock_run", "고군분투": "rock_run"}.get(game_name.strip())
         if game is None:
             await ctx.send("`!게임` 메뉴에서 게임을 선택해주세요.")
             return
@@ -171,6 +171,7 @@ class Minigame(commands.Cog):
             MenuItem("루미큐브", "rummikub", lambda event: choose("루미큐브", event), None, "🃏"),
             MenuItem("바위달리기", "rock_run", lambda event: choose("바위달리기", event), None, "🏜️"),
             MenuItem("배구", "volleyball", lambda event: choose("배구", event), None, "🏐"),
+            MenuItem("알까기", "alkkagi", lambda event: choose("알까기", event), None, "⚪"),
             MenuItem("오델로", "othello", lambda event: choose("오델로", event), None, "🔴"),
             MenuItem("오목", "omok", lambda event: choose("오목", event), None, "⚫"),
             MenuItem("화살피하기", "arrow", lambda event: choose("화살피하기", event), None, "🏹"),

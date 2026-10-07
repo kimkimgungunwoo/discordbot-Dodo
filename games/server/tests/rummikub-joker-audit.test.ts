@@ -16,7 +16,7 @@ function state(hand: number[], table: number[][]): State {
     round: 1, passes: 0, finished: false, winner: null, scores: [] };
 }
 
-test("one physical replacement cannot recover jokers in two different old melds", () => {
+test("two jokers may be recovered through legal splitting without exact hand replacements", () => {
   const old = [[id(0, 10), 104, id(0, 12)], [id(0, 10, 1), 105, id(0, 12, 1)]];
   const hand = [id(0, 11), id(1, 10), id(2, 10), id(1, 12), id(2, 12),
     id(1, 3), id(1, 4), id(2, 3), id(2, 4)];
@@ -24,7 +24,7 @@ test("one physical replacement cannot recover jokers in two different old melds"
     [id(0, 10, 1), id(1, 10), id(2, 10)], [id(0, 12, 1), id(1, 12), id(2, 12)],
     [id(1, 3), id(1, 4), 104], [id(2, 3), id(2, 4), 105]];
   assert.ok(target.every(group => meld(group)));
-  assert.match(validateTurn(state(hand, old), target) ?? "", /조커/);
+  assert.equal(validateTurn(state(hand, old), target), null);
   const both = [target[0], [id(0, 10, 1), id(0, 11, 1), id(0, 12, 1)], ...target.slice(3)];
   assert.equal(validateTurn(state([...hand, id(0, 11, 1)], old), both), null);
 });

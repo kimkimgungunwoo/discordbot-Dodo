@@ -4,7 +4,7 @@ import { dodoProfile } from "../common/sprites";
 import { GameAudio } from "../common/audio";
 import { bindSoundControl } from "../common/sound-control";
 import { authenticate } from "../discord-session";
-import { SEAT_COLORS, arrangeRun, copyTable, meld, tile, checkDraft, requireUneditedTable, tableJokerBindings, type View } from "../../../shared/rummikub";
+import { SEAT_COLORS, arrangeRun, copyTable, meld, tile, checkDraft, turnIssues, requireUneditedTable, tableJokerBindings, type View } from "../../../shared/rummikub";
 import { LocalGame } from "./practice";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
@@ -84,6 +84,10 @@ function render() {
   if (!view) return;
   const scrollTop = root.querySelector(".r-table")?.scrollTop ?? 0;
   const v = view, can = editable(), used = new Set(v.table.flat());
+  const ownTurn = v.started && !v.finished && v.seat >= 0 && v.seat === v.turn;
+  const issues = ownTurn ? turnIssues({ table: v.original, hands: [v.hand], turn: 0, opened: [v.seats[v.seat].opened] } as Parameters<typeof turnIssues>[0], v.table) : { message: null, groups: [] };
+  const invalidGroups = new Set(issues.groups);
+  const edited = JSON.stringify(v.original) !== JSON.stringify(v.table);
   const hand = v.hand.filter(id => !used.has(id)).sort((a, b) => sortBy === "color" ? tile(a).color - tile(b).color || tile(a).number - tile(b).number : tile(a).number - tile(b).number || tile(a).color - tile(b).color);
   const bot = v.seats[v.turn].bot;
   const placing = bot && JSON.stringify(v.table) !== JSON.stringify(v.original);
@@ -97,15 +101,16 @@ function render() {
         ? "종료 예고 · 이번 차례에도 패를 내지 않으면 두 바퀴 연속 진행 없음으로 경기가 종료됩니다. 손패 수가 가장 적은 사람은 감점하지 않습니다."
         : `뽑을 패가 없습니다 · 연속 진행 없음 ${v.stalledTurns}/${v.stallLimit}턴. 두 바퀴 동안 아무도 패를 내지 않으면 종료됩니다.`}</aside>` : ""}
       <section class="r-table" aria-label="공용 테이블">
-        ${v.table.map((group, i) => { const bindings = tableJokerBindings(group, v.original); return `<div class="r-meld ${meld(group) ? "valid" : "invalid"}" data-group="${i}"><button class="r-grip" data-select-group="${i}" aria-label="조합 전체 선택" ${!can ? "disabled" : ""}>⠿</button><button class="r-insert" data-place="${i}" data-at="0" aria-label="조합 앞에 놓기">+</button>${group.map(id => tileMarkup(id, true, bindings[id])).join("")}<button class="r-insert" data-place="${i}" data-at="${group.length}" aria-label="조합 뒤에 놓기">+</button></div>`; }).join("")}
+        ${v.table.map((group, i) => { const bindings = tableJokerBindings(group, v.original), invalid = invalidGroups.has(i) || !meld(group); return `<div class="r-meld ${invalid ? "invalid" : "valid"}" data-group="${i}" aria-invalid="${invalid}" ${invalid ? 'title="이 조합을 수정해주세요"' : ''}><button class="r-grip" data-select-group="${i}" aria-label="조합 전체 선택" ${!can ? "disabled" : ""}>⠿</button><button class="r-insert" data-place="${i}" data-at="0" aria-label="조합 앞에 놓기">+</button>${group.map(id => tileMarkup(id, true, bindings[id])).join("")}<button class="r-insert" data-place="${i}" data-at="${group.length}" aria-label="조합 뒤에 놓기">+</button></div>`; }).join("")}
         <button class="r-new" data-new ${!can ? "disabled" : ""}>+ 새 조합<span>패를 끌어 놓으세요</span></button>
       </section>
       <section class="r-hand-area"><div class="r-hand-heading"><strong>${v.seat < 0 ? "관전 중 · 모든 손패 비공개" : `내 손패 · ${hand.length}개`}</strong><button data-sort>정렬: ${sortBy === "color" ? "색상" : "숫자"}</button></div><div class="r-rack" data-rack>${hand.map(id => tileMarkup(id)).join("")}${!hand.length ? '<span class="r-empty">' + (v.seat < 0 ? "테이블의 진행 상황만 표시합니다." : "손패 없음") + '</span>' : ""}</div></section>
-      <div class="r-actions"><button data-action="undo" ${!can || !undo.length ? "disabled" : ""}>되돌리기</button><button data-action="reset" ${!can ? "disabled" : ""}>턴 초기화</button><span></span><button data-action="draw" aria-describedby="r-draw-help" ${!can ? "disabled" : ""}>${v.pileCount ? "한 장 받고 넘기기" : "패 없음 · 차례 넘기기"}</button><button class="r-primary" data-action="commit" ${!can ? "disabled" : ""}>턴 종료</button></div>
+      ${ownTurn && edited && issues.message ? `<p class="r-correction" role="status">${escape(issues.message)} 배치를 수정해야 턴을 종료할 수 있습니다.</p>` : ''}
+      <div class="r-actions"><button data-action="undo" ${!can || !undo.length ? "disabled" : ""}>되돌리기</button><button data-action="reset" ${!can ? "disabled" : ""}>턴 초기화</button><span></span><button data-action="draw" aria-describedby="r-draw-help" ${!can || edited ? "disabled" : ""}>${v.pileCount ? "한 장 받고 넘기기" : "패 없음 · 차례 넘기기"}</button><button class="r-primary" data-action="commit" ${!can || !!issues.message ? "disabled" : ""}>턴 종료</button></div>
       <p class="r-draw-help" id="r-draw-help">배치를 수정했다면 '턴 초기화'를 먼저 눌러야 차례를 넘길 수 있습니다.</p>
       <p class="r-notice" role="status" aria-live="polite">${escape(alertText)}</p>
     </section>
-    <details class="r-rules"><summary>조작 · 규칙</summary><p>패를 끌거나 여러 패를 선택한 뒤 + 버튼으로 놓으세요. 조합의 ⠿ 버튼은 묶음 전체를 선택합니다. 연속 숫자는 순서대로 놓으세요.</p><p>첫 등록은 내 패로 30점 이상. 이후에는 테이블 재배열이 가능합니다. 정상 조합은 같은 숫자·다른 색 3~4개 또는 같은 색 연속 숫자 3개 이상입니다.</p><p>60초가 끝나면 유효한 배치는 확정됩니다. 미완성 배치는 초기화하고 한 장 뽑습니다. 턴 종료 검증에 실패하면 배치를 초기화합니다. 조커 잔여 점수는 30점입니다.</p></details>
+    <details class="r-rules"><summary>조작 · 규칙</summary><p>패를 끌거나 여러 패를 선택한 뒤 + 버튼으로 놓으세요. 조합의 ⠿ 버튼은 묶음 전체를 선택합니다. 연속 숫자는 순서대로 놓으세요.</p><p>첫 등록은 내 패로 30점 이상. 이후에는 테이블 재배열이 가능합니다. 정상 조합은 같은 숫자·다른 색 3~4개 또는 같은 색 연속 숫자 3개 이상입니다.</p><p>조커는 손패나 테이블 패로 조합을 재구성해 회수하고 같은 턴에 다시 사용할 수 있습니다. 모든 조합이 유효하고 내 손패를 한 장 이상 내야 합니다.</p><p>60초가 끝나면 유효한 배치는 확정됩니다. 수정 중인 배치가 잘못되었다면 그대로 유지되며 15초씩 수정 시간이 주어집니다. 빨간 테두리의 조합을 수정해야 턴을 끝낼 수 있습니다. 배치를 바꾸지 않았다면 한 장 뽑고 넘깁니다. 조커 잔여 점수는 30점입니다.</p></details>
     ${v.finished ? `<div class="r-overlay"><section class="r-result"><h2>${v.endReason === "stalled" ? "진행 정체로 종료" : v.winner === null ? "경기 종료" : `${v.winner + 1}P 승리!`}</h2>${v.endReason === "stalled" ? "<small>두 바퀴 동안 새로 낸 패가 없어 종료되었습니다. 손패 수가 가장 적은 사람은 공동 최저까지 감점하지 않습니다.</small>" : ""}${v.winner !== null && v.seats.some(seat => seat.bot) ? "<small>봇 승패 보정 적용 · 중급 50% / 어려움 75% · 사람끼리 100%</small>" : ""}${v.scores.map((score, i) => `<p><b style="color:${SEAT_COLORS[i]}">${i + 1}P · ${escape(v.seats[i].name)}</b><strong>${score > 0 ? "+" : ""}${score}점${v.endReason === "stalled" && score === 0 ? " · 감점 없음" : ""}</strong></p>`).join("")}<small>${online ? "전적·포인트 랭킹: !게임 통계 → 루미큐브. 재경기는 디스코드 대기방에서 시작해주세요." : "연습 결과는 저장하지 않습니다."}</small><button data-restart>${online ? "테이블 확인" : "다시 시작"}</button></section></div>` : ""}
   </main>`;
   root.querySelector(".r-tools")!.append(soundButton);

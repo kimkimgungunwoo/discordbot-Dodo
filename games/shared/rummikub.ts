@@ -96,7 +96,9 @@ export function arrangeRun(ids: number[], preserve: Record<number, Binding> = {}
     jokers.filter(id => !bindings[id]).forEach((id, i) => byNumber.set(free[i], id));
     return slots.map(number => byNumber.get(number)!);
   }
-  return [...ids];
+  // Keep the displayed value when possible, but a legal manipulation may
+  // change a joker's role. Retry without stale draft bindings if necessary.
+  return Object.keys(preserve).length ? arrangeRun(ids) : [...ids];
 }
 export interface State {
   hands: number[][]; pile: number[]; table: number[][]; opened: boolean[];
@@ -115,38 +117,26 @@ export function checkDraft(state: State, table: unknown): asserts table is numbe
   if (original.some(id => !ids.includes(id))) throw new Error("기존 테이블 패를 손패로 가져올 수 없습니다.");
   if (!state.opened[state.turn] && state.table.some(group => !table.some(g => g.length === group.length && g.every((id: number, i: number) => id === group[i])))) throw new Error("첫 등록 전에는 기존 조합을 바꿀 수 없습니다.");
 }
-export function validateTurn(state: State, table: number[][]): string | null {
-  try { checkDraft(state, table); } catch (e) { return (e as Error).message; }
+export interface TurnIssues { message: string | null; groups: number[] }
+export function turnIssues(state: State, table: number[][]): TurnIssues {
+  try { checkDraft(state, table); } catch (e) { return { message: (e as Error).message, groups: [] }; }
   const evaluated = table.map(meld);
-  if (evaluated.some(g => !g)) return "모든 조합을 같은 숫자·다른 색 3~4개 또는 같은 색 연속 숫자 3개 이상으로 맞춰주세요.";
+  const invalid = evaluated.flatMap((group, index) => group ? [] : [index]);
+  if (invalid.length) return { message: "빨간 테두리의 조합을 같은 숫자·다른 색 3~4개 또는 같은 색 연속 숫자 3개 이상으로 맞춰주세요.", groups: invalid };
   const own = new Set(state.hands[state.turn]), played = table.flat().filter(id => own.has(id));
-  if (!played.length) return "패를 내지 않았다면 한 장 뽑기를 선택해주세요.";
+  if (!played.length) return { message: "패를 내지 않았다면 한 장 뽑기를 선택해주세요.", groups: [] };
   if (!state.opened[state.turn]) {
     const points = table.reduce((sum, group, i) => sum + (group.every(id => own.has(id)) ? evaluated[i]!.points : 0), 0);
-    if (points < 30) return "첫 등록은 자기 손패만으로 합계 30점 이상이어야 합니다.";
+    if (points < 30) return { message: `첫 등록은 자기 손패만으로 합계 30점 이상이어야 합니다. 현재 ${points}점입니다.`, groups: table.flatMap((group, index) => group.every(id => own.has(id)) ? [index] : []) };
   }
-  // A table joker cannot be pocketed. Changing its represented tile requires
-  // a matching real replacement in the resulting table; it must be reused now.
-  const replacementsNeeded: Binding[] = [];
-  for (const group of state.table) {
-    const old = meld(group)!;
-    const changed = Object.entries(old.jokers).filter(([id, binding]) => {
-      const nextIndex = table.findIndex(g => g.includes(Number(id))), next = evaluated[nextIndex]!.jokers[Number(id)];
-      const staysWithOriginal = table[nextIndex].some(t => t < 104 && group.includes(t));
-      return !staysWithOriginal || next.number !== binding.number || !next.colors.some(c => binding.colors.includes(c));
-    });
-    replacementsNeeded.push(...changed.map(([, binding]) => binding));
-  }
-  // Match across the WHOLE table, consuming each physical hand tile once.
-  // Old melds may be split; the final-table validity was checked above.
-  const replaced = (index: number, remaining: number[]): boolean => index === replacementsNeeded.length || remaining.some((id, i) => {
-    const value = tile(id), binding = replacementsNeeded[index];
-    return value.number === binding.number && binding.colors.includes(value.color)
-      && replaced(index + 1, remaining.filter((_, j) => j !== i));
-  });
-  if (!replaced(0, played.filter(id => id < 104))) return "조커를 다른 용도로 쓰려면 각각에 맞는 일반 패로 교체하고 이번 턴에 다시 사용해주세요.";
-  return null;
+  // Official manipulation rules allow freeing a joker with rack/table tiles
+  // or by splitting/rebuilding sets. Its old value is not a permanent binding.
+  // checkDraft preserves every physical table tile (including each joker),
+  // evaluated requires all final sets to be legal, and played requires a rack
+  // tile this turn. Together these also enforce immediate table reuse.
+  return { message: null, groups: [] };
 }
+export function validateTurn(state: State, table: number[][]): string | null { return turnIssues(state, table).message; }
 function finish(state: State, winner: number | null) {
   state.finished = true; state.winner = winner;
   const penalties = state.hands.map(h => h.reduce((sum, id) => sum + (tile(id).number || 30), 0));
