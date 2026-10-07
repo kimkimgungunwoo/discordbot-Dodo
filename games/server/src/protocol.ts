@@ -1,7 +1,7 @@
 import { DIFFICULTIES, type Difficulty } from "../../shared/omok.js";
 import type { Seat } from "../../shared/rummikub.js";
 export interface Input { x: -1 | 0 | 1; y: -1 | 0 | 1; jump: boolean; hit: boolean; start?: boolean }
-export interface Definition { game?: "volleyball" | "omok" | "arrow_dodge" | "rock_run" | "rummikub"; seats?: Seat[]; matchId?: string; roomId: string; guildId: string; hostId: string; p2Id: string | null; mode: "CPU" | "PVP" | "SOLO"; difficulty?: Difficulty; runMode?: "normal" | "endless"; bestScore?: number }
+export interface Definition { game?: "volleyball" | "omok" | "othello" | "arrow_dodge" | "rock_run" | "rummikub"; seats?: Seat[]; matchId?: string; roomId: string; guildId: string; hostId: string; p2Id: string | null; mode: "CPU" | "PVP" | "SOLO"; difficulty?: Difficulty; runMode?: "normal" | "endless"; bestScore?: number }
 export interface Frame { tick: number; left: Input; right: Input | null }
 export interface Result { matchId: string; reason?: string; roomId: string; winnerId: string | null; score: { left: number; right: number }; seatScores?: number[]; winnerSeat?: number | null; stage?: number; cleared?: boolean; elapsedMs?: number; runMode?: "normal" | "endless"; survivalMs?: number; moveCount?: number; aborted?: boolean; winnerSide?: "left" | "right" | "draw" }
 export interface Peer { id: string; name: string; avatarUrl?: string; send: (message: unknown) => void }
@@ -10,7 +10,7 @@ export function validInput(input: any): input is Input {
     (input.start === undefined || typeof input.start === "boolean");
 }
 export function validDefinition(value: any): value is Definition {
-  if (value?.game !== undefined && !["volleyball", "omok", "arrow_dodge", "rock_run", "rummikub"].includes(value.game)) return false;
+  if (value?.game !== undefined && !["volleyball", "omok", "othello", "arrow_dodge", "rock_run", "rummikub"].includes(value.game)) return false;
   const game = value?.game ?? "volleyball";
   const modeValid = game === "rummikub" ? value.mode === "PVP" && validSeats(value.seats, value.hostId)
     : (game === "arrow_dodge" || game === "rock_run")

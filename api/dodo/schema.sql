@@ -135,3 +135,12 @@ INSERT INTO dodo_ruleset(game_code,version)
     SELECT 'rummikub','rummikub-points-v1'
     WHERE NOT EXISTS (SELECT 1 FROM dodo_ruleset WHERE game_code='rummikub')
 ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS othello_match (
+    match_id TEXT PRIMARY KEY REFERENCES dodo_match(match_id) ON DELETE CASCADE,
+    left_score SMALLINT NOT NULL CHECK (left_score BETWEEN 0 AND 64),
+    right_score SMALLINT NOT NULL CHECK (right_score BETWEEN 0 AND 64),
+    move_count SMALLINT NOT NULL CHECK (move_count BETWEEN 0 AND 60)
+);
+INSERT INTO dodo_game(game_code,name) VALUES ('othello','오델로') ON CONFLICT DO NOTHING;
+INSERT INTO dodo_ruleset(game_code,version) VALUES ('othello','othello-v1') ON CONFLICT DO NOTHING;

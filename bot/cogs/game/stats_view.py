@@ -6,6 +6,8 @@ from .registry import GAMES
 
 
 FILTERS = {
+    "othello:CPU": ("othello", "CPU", "🔴 오델로 · 봇전"),
+    "othello:PVP": ("othello", "PVP", "🔵 오델로 · 대결"),
     "rummikub:PVP": ("rummikub", "PVP", "🀄 루미큐브 · 포인트"),
     "rock_run:SOLO": ("rock_run", "SOLO", "🏜️ 바위달리기 · 일반"),
     "rock_run:ENDLESS": ("rock_run", "SOLO", "🏜️ 바위달리기 · 엔드리스"),
@@ -137,7 +139,7 @@ class GameStatsView(discord.ui.View):
             elif mode == "PVP":
                 value = f"{row['rating']:,}점 · {row['wins']}승 {row['draws']}무 {row['losses']}패"
             else:
-                value = f"{row['wins']}승 {row['losses']}패"
+                value = f"{row['wins']}승 {row['draws']}무 {row['losses']}패"
             lines.append(f"{prefix} <@{row['discord_user_id']}> · **{value}**")
         embed = self.filter_embed()
         embed.title = f"{label} · {'서버' if scope_type == 'GUILD' else '전체'} 랭킹"
