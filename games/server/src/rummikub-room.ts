@@ -65,7 +65,7 @@ export class RummikubRoom extends RelayRoom {
       }
       else if (message.action === "commit") {
         const error = validateTurn(this.game, this.draft);
-        if (error) { this.draft = copyTable(this.game.table); this.revision++; throw new Error(error + " 배치를 턴 시작 상태로 되돌렸습니다."); }
+        if (error) throw new Error(error + " 배치를 수정하거나 '턴 초기화'를 눌러주세요.");
         endTurn(this.game, this.draft); this.nextTurn(); return;
       } else throw new Error("알 수 없는 조작입니다.");
       this.lastActivity = Date.now(); this.revision++; this.presence();
@@ -73,8 +73,18 @@ export class RummikubRoom extends RelayRoom {
   }
   timeout() {
     if (this.result || !this.started) return;
-    // A valid draft is committed; an incomplete draft is discarded atomically.
-    endTurn(this.game, this.draft, !!validateTurn(this.game, this.draft)); this.nextTurn();
+    const edited = JSON.stringify(this.draft) !== JSON.stringify(this.game.table);
+    const error = validateTurn(this.game, this.draft);
+    if (edited && error) {
+      // Keep the user's work and require correction, including after expiry.
+      this.deadline = Date.now() + 15_000;
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.timeout(), 15_000); this.timer.unref();
+      for (const peer of this.peers) if (this.seat(peer.id) === this.game.turn)
+        peer.send({ type: "RUMMI_ERROR", message: error + " 배치는 유지됩니다. 수정 후 턴을 종료해주세요." });
+      this.presence(); return;
+    }
+    endTurn(this.game, this.draft, !!error); this.nextTurn();
   }
   private nextTurn() {
     this.dispose(); this.lastActivity = Date.now(); this.revision++;

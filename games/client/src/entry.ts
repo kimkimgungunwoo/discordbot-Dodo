@@ -1,5 +1,6 @@
 const path = location.pathname.replace(/\/$/, "");
-if (path === "/othello") await import("./othello/main");
+if (path === "/alkkagi") await import("./alkkagi/main");
+else if (path === "/othello") await import("./othello/main");
 else if (path === "/rummikub") await import("./rummikub/main");
 else if (path === "/omok") await import("./omok/main");
 else if (path === "/rock-run") await import("./rock-run/main");

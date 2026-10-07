@@ -1,0 +1,5 @@
+@import '../omok/style.css';
+.board-wrap { background: #f1eedf; }
+#board { display: block; width: 100%; height: auto; aspect-ratio: 1; touch-action: none; user-select: none; }
+#board:focus-visible { outline: 2px solid #59614c; outline-offset: 4px; }
+.omok-status { border: 1px solid #303b36; border-top: 0; font-size: 12px; }

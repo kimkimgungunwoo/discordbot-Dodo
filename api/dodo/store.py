@@ -161,6 +161,11 @@ class DodoGameStore:
         elif game == "volleyball":
             score = payload["score"]
             await connection.execute("INSERT INTO volleyball_match VALUES($1,$2,$3)", match_id, score["left"], score["right"])
+        elif game == "alkkagi":
+            await connection.execute(
+                "INSERT INTO alkkagi_match(match_id,left_remaining,right_remaining) VALUES($1,$2,$3)",
+                match_id, payload["score"]["left"], payload["score"]["right"],
+            )
         elif game == "othello":
             await connection.execute(
                 "INSERT INTO othello_match(match_id,left_score,right_score,move_count) VALUES($1,$2,$3,$4)",

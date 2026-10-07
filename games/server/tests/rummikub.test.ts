@@ -1,6 +1,6 @@
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { BOT_THINK_MS, BOT_TILE_MS, BOT_SETTLE_MS, BOT_FINAL_TURN_MS, arrangeRun, botPlacementSteps, checkDraft, copyTable, createGame, endTurn, meld, tile, validateTurn, type State } from "../../shared/rummikub.js";
+import { BOT_THINK_MS, BOT_TILE_MS, BOT_SETTLE_MS, BOT_FINAL_TURN_MS, arrangeRun, botPlacementSteps, checkDraft, copyTable, createGame, endTurn, meld, tile, turnIssues, validateTurn, type State } from "../../shared/rummikub.js";
 import { botTurn } from "../../shared/rummikub-bot.js";
 import { LocalGame } from "../../client/src/rummikub/practice.js";
 import { RummikubRoom } from "../src/rummikub-room.js";
@@ -29,6 +29,44 @@ test("106 unique physical tiles, 14 per seat, duplicate copies and two jokers", 
   }
   assert.equal(tile(104).number, 0); assert.equal(tile(105).number, 0);
 });
+test("correction markers select only invalid melds and clear after correction", () => {
+  const state = fixture([...run(1, 9), id(3, 1)], [run(0, 1)], true);
+  const draft = [run(0, 1), run(1, 9, 2), [id(1, 11)]];
+  assert.deepEqual(turnIssues(state, draft).groups, [1, 2]);
+  assert.deepEqual(turnIssues(state, [run(0, 1), run(1, 9)]), { message: null, groups: [] });
+});
+test("initial registration below 30 marks new melds while preserving existing melds", () => {
+  const state = fixture(run(1, 1), [run(0, 9)]);
+  const issue = turnIssues(state, [run(0, 9), run(1, 1)]);
+  assert.deepEqual(issue.groups, [1]); assert.match(issue.message!, /현재 6점/);
+});
+test("online invalid commit and repeated timeouts preserve draft until corrected commit", t => {
+  const { room, peers } = readyRoom(t, 2);
+  Object.assign(room.game, fixture([...run(0, 9), id(3, 1)]));
+  const before = structuredClone(room.game), draft = [run(0, 9, 2), [id(0, 11)]];
+  action(room, peers[0].peer, "draft", draft); action(room, peers[0].peer, "commit");
+  for (let i = 0; i < 3; i++) {
+    room.timeout(); assert.deepEqual(room.game, before); assert.deepEqual(room.draft, draft);
+  }
+  action(room, peers[0].peer, "draft", [run(0, 9)]); action(room, peers[0].peer, "commit");
+  assert.deepEqual(room.game.table, [run(0, 9)]); assert.deepEqual(room.game.hands[0], [id(3, 1)]);
+  assert.equal(room.game.turn, 1); assert.equal(room.game.opened[0], true);
+});
+test("practice invalid commit and repeated timeouts preserve draft until corrected commit", t => {
+  const views: any[] = [], messages: string[] = [];
+  const local = new LocalGame(2, "normal", view => views.push(view), message => messages.push(message));
+  t.after(() => local.dispose()); Object.assign(local.state, fixture([...run(0, 9), id(3, 1)])); local.start();
+  const before = structuredClone(local.state), draft = [run(0, 9, 2), [id(0, 11)]];
+  local.action("draft", draft); local.action("commit");
+  for (let i = 0; i < 3; i++) {
+    (local as any).timeout(); assert.deepEqual(local.state, before); assert.deepEqual(views.at(-1).table, draft);
+    assert.ok(views.at(-1).deadline > Date.now());
+  }
+  assert.match(messages.at(-1)!, /배치는 유지됩니다/);
+  local.action("draft", [run(0, 9)]); local.action("commit");
+  assert.deepEqual(local.state.table, [run(0, 9)]); assert.deepEqual(local.state.hands[0], [id(3, 1)]);
+  assert.equal(local.state.turn, 1);
+});
 test("runs, reversed runs, groups and joker values reject wrapping/duplicate colors/gaps", () => {
   assert.ok(meld(run(0, 1))); assert.ok(meld(run(1, 10).reverse()));
   assert.ok(meld([id(0, 5), id(1, 5), id(2, 5), id(3, 5)]));
@@ -46,22 +84,22 @@ test("new tiles auto-sort ascending into runs and joker slots while groups retai
   const group = [id(2, 7), id(0, 7), id(1, 7)];
   assert.deepEqual(arrangeRun(group), group);
 });
-test("adding a tile never silently changes an existing table joker's represented number", () => {
+test("adding tiles preserves a joker slot when possible and otherwise permits valid rearrangement", () => {
   const old = [id(0, 5), id(0, 6), 104], binding = meld(old)!.jokers[104];
   assert.equal(binding.number, 7);
   assert.deepEqual(arrangeRun([...old, id(0, 8)], { 104: binding }), [id(0, 5), id(0, 6), 104, id(0, 8)]);
   const impossible = arrangeRun([...old, id(0, 3)], { 104: binding });
-  assert.deepEqual(impossible, [...old, id(0, 3)]);
-  assert.equal(meld(impossible), null, "leave an impossible draft visible instead of rebinding the joker");
+  assert.deepEqual(impossible, [id(0, 3), 104, id(0, 5), id(0, 6)]);
+  assert.equal(meld(impossible)!.jokers[104].number, 4);
 });
-test("a committed table joker keeps its represented tile unless that exact tile replaces it", () => {
+test("a table joker can change value in a legal final rearrangement", () => {
   const table = [[id(0, 5), id(0, 6), 104]];
   const originalBinding = meld(table[0])!.jokers[104];
   assert.deepEqual(originalBinding, { number: 7, colors: [0] });
   const unauthorized = fixture([id(0, 3), id(3, 1)], table, true);
   const changedValue = [[id(0, 3), 104, id(0, 5), id(0, 6)]];
   assert.equal(meld(changedValue[0])!.jokers[104].number, 4);
-  assert.match(validateTurn(unauthorized, changedValue)!, /조커/);
+  assert.equal(validateTurn(unauthorized, changedValue), null);
 
   const reclaimed = fixture([id(0, 11), id(1, 3), id(2, 3), id(3, 3), id(3, 1)], [[id(0, 10), 104, id(0, 12)]], true);
   const valid = [[id(0, 10), id(0, 11), id(0, 12)], [id(1, 3), id(2, 3), id(3, 3), 104]];
@@ -90,7 +128,7 @@ test("registered players split and extend table without losing any existing tile
   assert.match(validateTurn(game, [run(0, 4, 4)])!, /기존 테이블/);
   endTurn(game, [run(0, 1), run(0, 4, 4)]); assert.equal(game.hands[0].length, 1);
 });
-test("table joker requires matching replacement and reuse in same turn", () => {
+test("table joker must remain on the table in a valid final arrangement", () => {
   const table = [[id(0, 10), 104, id(0, 12)]];
   const hand = [id(0, 11), id(1, 3), id(1, 4), id(3, 1)];
   const game = fixture(hand, table, true);
@@ -98,7 +136,7 @@ test("table joker requires matching replacement and reuse in same turn", () => {
   assert.match(validateTurn(game, [run(0, 10)])!, /기존 테이블/);
   assert.match(validateTurn(game, [[id(0, 10), id(1, 10), id(2, 10)]])!, /사용할 수 없는/);
   const stealing = fixture([id(1, 3), id(1, 4), id(1, 10), id(2, 10), id(1, 12), id(2, 12)], table, true);
-  assert.match(validateTurn(stealing, [[id(0, 10), id(1, 10), id(2, 10)], [id(0, 12), id(1, 12), id(2, 12)], [id(1, 3), id(1, 4), 104]])!, /조커/);
+  assert.equal(validateTurn(stealing, [[id(0, 10), id(1, 10), id(2, 10)], [id(0, 12), id(1, 12), id(2, 12)], [id(1, 3), id(1, 4), 104]]), null);
 });
 test("reclaimed table joker permits splitting the old run into multiple valid melds", () => {
   const table = [[id(0, 1), 104, ...run(0, 3, 4)]];
@@ -149,10 +187,10 @@ test("both table jokers can be replaced and reused using two distinct matching t
   const hand = [id(0, 10), id(0, 11), id(1, 3), id(1, 4), id(2, 5), id(2, 6)];
   assert.equal(validateTurn(fixture(hand, table, true), [run(0, 9, 4), [id(1, 3), id(1, 4), 104], [id(2, 5), id(2, 6), 105]]), null);
 });
-test("moving a joker into an unrelated group still needs replacement even at the same value", () => {
+test("a joker can move into another group when all original tiles remain in valid sets", () => {
   const table = [[id(0, 10), 104, id(0, 12)]];
   const hand = [id(1, 10), id(2, 10), id(1, 12), id(2, 12), id(1, 11), id(2, 11)];
-  assert.match(validateTurn(fixture(hand, table, true), [[id(0, 10), id(1, 10), id(2, 10)], [id(0, 12), id(1, 12), id(2, 12)], [id(1, 11), id(2, 11), 104]])!, /조커/);
+  assert.equal(validateTurn(fixture(hand, table, true), [[id(0, 10), id(1, 10), id(2, 10)], [id(0, 12), id(1, 12), id(2, 12)], [id(1, 11), id(2, 11), 104]]), null);
 });
 test("definition admits 2–4 mixed seats, rejects duplicate users and forged bots", () => {
   assert.ok(validDefinition(definition));
@@ -170,11 +208,13 @@ test("four-player private snapshots and spectators never carry opponent hand IDs
   assert.deepEqual(spectator.messages.at(-1).hand, []);
   const before = room.revision; action(room, spectator.peer, "draw"); action(room, peers[1].peer, "draw"); assert.equal(room.revision, before);
 });
-test("invalid timeout fully rolls back table/hand before drawing exactly one", t => {
+test("invalid timeout preserves draft, hand and turn and gives correction time", t => {
   const { room, peers } = readyRoom(t); const original = structuredClone(room.game);
   action(room, peers[0].peer, "draft", [[room.game.hands[0][0]]]);
   room.timeout(); assert.deepEqual(room.game.table, original.table); assert.deepEqual(room.game.hands[0].slice(0, 14), original.hands[0]);
-  assert.equal(room.game.hands[0].length, 15); assert.equal(room.game.pile.length, original.pile.length - 1); assert.equal(room.game.turn, 1);
+  assert.deepEqual(room.draft, [[original.hands[0][0]]]);
+  assert.equal(room.game.hands[0].length, 14); assert.equal(room.game.pile.length, original.pile.length); assert.equal(room.game.turn, 0);
+  assert.ok(room.deadline > Date.now());
 });
 test("valid timeout commits; reconnect restores draft; stale requests cannot consume next turn", t => {
   const { room, peers } = readyRoom(t, 2); Object.assign(room.game, fixture([...run(0, 9), id(3, 1)]));
@@ -185,10 +225,10 @@ test("valid timeout commits; reconnect restores draft; stale requests cannot con
   room.timeout(); assert.deepEqual(room.game.table, [run(0, 9)]); assert.deepEqual(room.game.hands[0], [id(3, 1)]);
   const before = structuredClone(room.game); room.handle(peers[1].peer, old); assert.deepEqual(room.game, before);
 });
-test("invalid confirm resets draft, reset/undo never changes turn-start hand", t => {
+test("invalid confirm preserves draft, reset/undo never changes turn-start hand", t => {
   const { room, peers } = readyRoom(t); const hand = [...room.game.hands[0]];
   action(room, peers[0].peer, "draft", [[hand[0]]]); action(room, peers[0].peer, "commit");
-  assert.deepEqual(room.draft, []); assert.deepEqual(room.game.hands[0], hand); assert.equal(room.game.turn, 0);
+  assert.deepEqual(room.draft, [[hand[0]]]); assert.deepEqual(room.game.hands[0], hand); assert.equal(room.game.turn, 0);
 });
 test("closed rooms stop accepting actions", t => {
   const { room, peers } = readyRoom(t); room.abort("closed"); const before = structuredClone(room.game);

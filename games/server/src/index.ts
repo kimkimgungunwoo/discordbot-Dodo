@@ -11,6 +11,8 @@ import { RummikubRoom } from "./rummikub-room.js";
 
 import { OthelloRoom } from "./othello-room.js";
 
+import { AlkkagiRoom } from "./alkkagi-room.js";
+
 const secret = process.env.ACTIVITY_INTERNAL_SECRET ?? "";
 const clientId = process.env.DISCORD_CLIENT_ID ?? "";
 const rooms = new Map<string, RelayRoom>();
@@ -44,7 +46,7 @@ export const server = createServer(async (req, res) => {
       rooms.get(value.roomId)?.broadcast({ type: "ROOM_CLOSED", message: "방장이 방을 닫았습니다." });
       const closing = rooms.get(value.roomId);
       if (closing instanceof RummikubRoom) closing.abort("방장이 방을 닫았습니다.");
-      if (closing instanceof OmokRoom || closing instanceof OthelloRoom || closing instanceof RummikubRoom) closing.dispose();
+      if (closing instanceof OmokRoom || closing instanceof OthelloRoom || closing instanceof AlkkagiRoom || closing instanceof RummikubRoom) closing.dispose();
       rooms.delete(value.roomId);
       return json(res, 200, { ok: true });
     }
@@ -62,7 +64,7 @@ export const server = createServer(async (req, res) => {
       if (existing && ((Object.keys(existing.definition) as Array<keyof typeof definition>).some(key => key !== "matchId" && JSON.stringify(existing.definition[key]) !== JSON.stringify(definition[key])))) return json(res, 409, { error: "Room conflict" });
       if (!existing && rooms.size >= 200) return json(res, 503, { error: "Room capacity reached" });
       if (existing && definition.matchId && existing.matchId !== definition.matchId) return json(res, 409, { error: "다른 경기가 진행 중입니다." });
-      const room = existing ?? (definition.game === "rock_run" ? new RockRunRoom(definition) : definition.game === "othello" ? new OthelloRoom(definition) : definition.game === "omok" ? new OmokRoom(definition)
+      const room = existing ?? (definition.game === "rock_run" ? new RockRunRoom(definition) : definition.game === "alkkagi" ? new AlkkagiRoom(definition) : definition.game === "othello" ? new OthelloRoom(definition) : definition.game === "omok" ? new OmokRoom(definition)
         : definition.game === "arrow_dodge" ? new ArrowDodgeRoom(definition) : definition.game === "rummikub" ? new RummikubRoom(definition) : new RelayRoom(definition));
       rooms.set(definition.roomId, room);
       if (stale && stale !== room) stale.broadcast({ type: "MATCH_REPLACED" });
@@ -181,7 +183,8 @@ wss.on("connection", socket => {
         room.join(candidate); peer = candidate; clearTimeout(timeout);
         return;
       }
-      if (message.type === "RUMMI_ACTION" && room instanceof RummikubRoom) room.handle(peer, message);
+      if (message.type === "SHOT" && room instanceof AlkkagiRoom) room.fire(peer, message);
+      else if (message.type === "RUMMI_ACTION" && room instanceof RummikubRoom) room.handle(peer, message);
       else if (message.type === "MOVE" && (room instanceof OmokRoom || room instanceof OthelloRoom)) room.move(peer, message);
       else if (message.type === "INPUT") room!.input(peer, message);
       else if (message.type === "RESULT") room!.report(peer, message);
@@ -217,7 +220,7 @@ const callbacks = setInterval(() => {
 server.listen(Number(process.env.PORT ?? 3001), "0.0.0.0", () => console.log("[activity-server] ready"));
 export function shutdown() {
   clearInterval(callbacks);
-  for (const room of rooms.values()) if (room instanceof OmokRoom || room instanceof OthelloRoom || room instanceof RummikubRoom) room.dispose();
+  for (const room of rooms.values()) if (room instanceof OmokRoom || room instanceof OthelloRoom || room instanceof AlkkagiRoom || room instanceof RummikubRoom) room.dispose();
   for (const client of wss.clients) client.terminate();
   wss.close(); server.close();
 }

@@ -37,13 +37,22 @@ export class LocalGame {
       }
       else if (action === "commit") {
         const error = validateTurn(this.state, this.draft);
-        if (error) { this.draft = copyTable(this.state.table); throw new Error(error + " 배치를 초기화했습니다."); }
+        if (error) throw new Error(error + " 배치를 수정하거나 '턴 초기화'를 눌러주세요.");
         endTurn(this.state, this.draft); this.next(); return;
       }
       this.revision++; this.emit();
     } catch (error) { this.revision++; this.emit(); this.notify((error as Error).message); }
   }
-  private timeout() { endTurn(this.state, this.draft, !!validateTurn(this.state, this.draft)); this.next(); }
+  private timeout() {
+    const edited = JSON.stringify(this.draft) !== JSON.stringify(this.state.table);
+    const error = validateTurn(this.state, this.draft);
+    if (edited && error) {
+      this.deadline = Date.now() + 15_000;
+      clearTimeout(this.timer); this.timer = setTimeout(() => this.timeout(), 15_000);
+      this.emit(); this.notify(error + " 배치는 유지됩니다. 수정 후 턴을 종료해주세요."); return;
+    }
+    endTurn(this.state, this.draft, !!error); this.next();
+  }
   private next() {
     this.dispose(); this.revision++; this.draft = copyTable(this.state.table); this.deadline = this.state.finished ? 0 : Date.now() + TURN_MS;
     this.emit(); if (this.state.finished) return;
