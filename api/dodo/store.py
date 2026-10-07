@@ -161,6 +161,11 @@ class DodoGameStore:
         elif game == "volleyball":
             score = payload["score"]
             await connection.execute("INSERT INTO volleyball_match VALUES($1,$2,$3)", match_id, score["left"], score["right"])
+        elif game == "othello":
+            await connection.execute(
+                "INSERT INTO othello_match(match_id,left_score,right_score,move_count) VALUES($1,$2,$3,$4)",
+                match_id, payload["score"]["left"], payload["score"]["right"], payload["moveCount"],
+            )
         elif game == "omok":
             side = payload["winnerSide"]
             result_type = "DRAW" if side == "draw" else f"{side.upper()}_WIN"

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from . import arrow_dodge, omok, volleyball, rock_run, rummikub
+from . import othello, arrow_dodge, omok, volleyball, rock_run, rummikub
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,7 @@ class GameDefinition:
 
 
 GAMES = {
+    "othello": GameDefinition("othello", "오델로", "/othello", ("CPU", "PVP"), omok.DIFFICULTY_LABELS, othello.verify_result),
     "rummikub": GameDefinition("rummikub", "루미큐브", "/rummikub", ("PVP",), {"normal": "중간", "hard": "어려움"}, rummikub.verify_result),
     "rock_run": GameDefinition("rock_run", "바위달리기", "/rock-run", ("SOLO",), {}, rock_run.verify_result, True),
     "volleyball": GameDefinition("volleyball", "배구", "/volleyball", ("CPU", "PVP"), volleyball.DIFFICULTY_LABELS, volleyball.verify_result),
