@@ -17,9 +17,14 @@ let recentTiles = new Set<number>(), soundBaseline = false;
 const params = new URLSearchParams(location.search), online = params.has("room") || params.has("code");
 let view: View | undefined, pending = false, connected = !online, terminal = false, socket: WebSocket | undefined;
 let selected = new Set<number>(), undo: number[][][] = [], sortBy: "color" | "number" = "color", offset = 0;
+let handOrder: number[] = [], manualOrder = false;
+let newestHandTiles = new Set<number>();
 let local: LocalGame | undefined, reconnect: ReturnType<typeof setTimeout> | undefined, retries = 0;
-let alertText = "", suppressClick = false, dragging: { id: number; x: number; y: number; moved: boolean } | undefined, ghost: HTMLElement | undefined;
+let alertText = "", suppressClick = false, dragging: { id: number; x: number; y: number; moved: boolean; fromRack: boolean; pointer: number } | undefined, ghost: HTMLElement | undefined;
+let rackMarker: HTMLElement | undefined;
 const editable = () => !!view && connected && !pending && view.started && !view.finished && view.seat === view.turn;
+const rackEditable = () => !!view && view.seat >= 0 && !view.finished;
+const compareHand = (a: number, b: number) => sortBy === "color" ? tile(a).color - tile(b).color || tile(a).number - tile(b).number || a - b : tile(a).number - tile(b).number || tile(a).color - tile(b).color || a - b;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
 function tileMarkup(id: number, onTable = false, binding?: { number: number; colors: number[] }) {
@@ -27,7 +32,8 @@ function tileMarkup(id: number, onTable = false, binding?: { number: number; col
   const colors = ["파랑", "빨강", "초록", "주황"], marks = ["●", "◆", "▲", "■"];
   const represented = binding ? `${binding.colors.map(c => marks[c]).join("/")} ${binding.number}` : "";
   const label = t.number ? colors[t.color] + " " + t.number : represented ? `조커 · ${binding!.colors.map(c => colors[c]).join("/")} ${binding!.number}` : "조커";
-  return `<button class="r-tile ${selected.has(id) ? "selected" : ""} ${onTable && recentTiles.has(id) ? "just-placed" : ""}" data-tile="${id}" style="--tile-color:${color}" aria-pressed="${selected.has(id)}" aria-label="${label}" ${represented ? `title="조커 · ${label.slice(5)}로 사용 중"` : ""}><b>${t.number || "★"}</b><small>${t.number ? marks[t.color] : represented || "JOKER"}</small></button>`;
+  const newest = !onTable && newestHandTiles.has(id);
+  return `<button class="r-tile ${selected.has(id) ? "selected" : ""} ${newest ? "newly-drawn" : ""} ${onTable && recentTiles.has(id) ? "just-placed" : ""}" data-tile="${id}" style="--tile-color:${color}" aria-pressed="${selected.has(id)}" aria-label="${label}${newest ? " · 최근 받은 패" : ""}" ${represented ? `title="조커 · ${label.slice(5)}로 사용 중"` : ""}><b>${t.number || "★"}</b><small>${t.number ? marks[t.color] : represented || "JOKER"}</small></button>`;
 }
 function receive(next: View) {
   recentTiles.clear();
@@ -40,7 +46,15 @@ function receive(next: View) {
     else if (recentTiles.size || JSON.stringify(view.table) !== JSON.stringify(next.table)) audio.playRummikub(next.table.flat().length < before.size ? "reset" : "place");
   }
   soundBaseline = true;
-  if (view?.turnId !== next.turnId || view?.matchId !== next.matchId) { undo = []; selected.clear(); alertText = ""; }
+  if (view?.turnId !== next.turnId || view?.matchId !== next.matchId) { clearDrag(); undo = []; selected.clear(); alertText = ""; }
+  const newHand = view?.matchId !== next.matchId || view?.seat !== next.seat;
+  if (newHand) { handOrder = []; manualOrder = false; newestHandTiles.clear(); }
+  const owned = new Set(next.hand), known = new Set(handOrder);
+  const incoming = next.hand.filter(id => !known.has(id));
+  handOrder = [...handOrder.filter(id => owned.has(id)), ...incoming];
+  if (newHand) handOrder.sort(compareHand);
+  else if (incoming.length) newestHandTiles = new Set(incoming);
+  newestHandTiles = new Set([...newestHandTiles].filter(id => owned.has(id)));
   view = next; offset = next.serverNow - Date.now(); pending = false; retries = 0;
   render();
 }
@@ -80,6 +94,32 @@ function move(ids: number[], target: number | "rack" | "new", at?: number) {
   }
   change(table.filter(g => g.length));
 }
+function rackPosition(x: number, y: number) {
+  const tiles = [...root.querySelectorAll<HTMLElement>("[data-rack] [data-tile]")];
+  if (!tiles.length) return undefined;
+  const boxes = tiles.map(element => ({element, box: element.getBoundingClientRect()}));
+  const distance = (box: DOMRect) => Math.max(box.top-y, y-box.bottom, 0);
+  const nearest = boxes.reduce((a,b) => distance(a.box) <= distance(b.box) ? a : b);
+  const row = boxes.filter(item => Math.abs(item.box.top-nearest.box.top) < 10);
+  const before = row.find(item => x < item.box.left+item.box.width/2);
+  const anchor = before ?? row[row.length-1];
+  const index = tiles.indexOf(anchor.element)+(before ? 0 : 1);
+  return { before: tiles[index] ? Number(tiles[index].dataset.tile) : undefined,
+    x: before ? anchor.box.left-3 : anchor.box.right+3, y: anchor.box.top, height: anchor.box.height };
+}
+function reorderHand(ids: number[], before?: number) {
+  if (!rackEditable() || !view) return;
+  const used = new Set(view.table.flat());
+  const moving = new Set(ids.filter(id => view!.hand.includes(id) && !used.has(id)));
+  if (!moving.size || (before !== undefined && moving.has(before))) return;
+  const ordered = handOrder.filter(id => moving.has(id)), rest = handOrder.filter(id => !moving.has(id));
+  const at = before === undefined ? rest.length : rest.indexOf(before);
+  if (at < 0) return;
+  rest.splice(at,0,...ordered); handOrder = rest; manualOrder = true; selected.clear(); render();
+}
+function clearDrag() {
+  ghost?.remove(); ghost = undefined; rackMarker?.remove(); rackMarker = undefined; dragging = undefined;
+}
 function render() {
   if (!view) return;
   const scrollTop = root.querySelector(".r-table")?.scrollTop ?? 0;
@@ -88,7 +128,7 @@ function render() {
   const issues = ownTurn ? turnIssues({ table: v.original, hands: [v.hand], turn: 0, opened: [v.seats[v.seat].opened] } as Parameters<typeof turnIssues>[0], v.table) : { message: null, groups: [] };
   const invalidGroups = new Set(issues.groups);
   const edited = JSON.stringify(v.original) !== JSON.stringify(v.table);
-  const hand = v.hand.filter(id => !used.has(id)).sort((a, b) => sortBy === "color" ? tile(a).color - tile(b).color || tile(a).number - tile(b).number : tile(a).number - tile(b).number || tile(a).color - tile(b).color);
+  const hand = handOrder.filter(id => !used.has(id));
   const bot = v.seats[v.turn].bot;
   const placing = bot && JSON.stringify(v.table) !== JSON.stringify(v.original);
   const turnText = v.finished ? "경기 종료" : !connected ? "재연결 중" : !v.started ? "참가자 접속 대기" : v.turn === v.seat ? "내 차례" : `${v.turn + 1}P 차례${bot ? placing ? " · 패 놓는 중" : " · 패 고르는 중" : ""}`;
@@ -104,7 +144,7 @@ function render() {
         ${v.table.map((group, i) => { const bindings = tableJokerBindings(group, v.original), invalid = invalidGroups.has(i) || !meld(group); return `<div class="r-meld ${invalid ? "invalid" : "valid"}" data-group="${i}" aria-invalid="${invalid}" ${invalid ? 'title="이 조합을 수정해주세요"' : ''}><button class="r-grip" data-select-group="${i}" aria-label="조합 전체 선택" ${!can ? "disabled" : ""}>⠿</button><button class="r-insert" data-place="${i}" data-at="0" aria-label="조합 앞에 놓기">+</button>${group.map(id => tileMarkup(id, true, bindings[id])).join("")}<button class="r-insert" data-place="${i}" data-at="${group.length}" aria-label="조합 뒤에 놓기">+</button></div>`; }).join("")}
         <button class="r-new" data-new ${!can ? "disabled" : ""}>+ 새 조합<span>패를 끌어 놓으세요</span></button>
       </section>
-      <section class="r-hand-area"><div class="r-hand-heading"><strong>${v.seat < 0 ? "관전 중 · 모든 손패 비공개" : `내 손패 · ${hand.length}개`}</strong><button data-sort>정렬: ${sortBy === "color" ? "색상" : "숫자"}</button></div><div class="r-rack" data-rack>${hand.map(id => tileMarkup(id)).join("")}${!hand.length ? '<span class="r-empty">' + (v.seat < 0 ? "테이블의 진행 상황만 표시합니다." : "손패 없음") + '</span>' : ""}</div></section>
+      <section class="r-hand-area"><div class="r-hand-heading"><strong>${v.seat < 0 ? "관전 중 · 모든 손패 비공개" : `내 손패 · ${hand.length}개`}</strong><button data-sort ${v.seat < 0 ? "disabled" : ""}>${manualOrder ? "직접 정렬" : `정렬: ${sortBy === "color" ? "색상" : "숫자"}`}</button></div><div class="r-rack" data-rack>${hand.map(id => tileMarkup(id)).join("")}${!hand.length ? '<span class="r-empty">' + (v.seat < 0 ? "테이블의 진행 상황만 표시합니다." : "손패 없음") + '</span>' : ""}</div></section>
       ${ownTurn && edited && issues.message ? `<p class="r-correction" role="status">${escape(issues.message)} 배치를 수정해야 턴을 종료할 수 있습니다.</p>` : ''}
       <div class="r-actions"><button data-action="undo" ${!can || !undo.length ? "disabled" : ""}>되돌리기</button><button data-action="reset" ${!can ? "disabled" : ""}>턴 초기화</button><span></span><button data-action="draw" aria-describedby="r-draw-help" ${!can || edited ? "disabled" : ""}>${v.pileCount ? "한 장 받고 넘기기" : "패 없음 · 차례 넘기기"}</button><button class="r-primary" data-action="commit" ${!can || !!issues.message ? "disabled" : ""}>턴 종료</button></div>
       <p class="r-draw-help" id="r-draw-help">배치를 수정했다면 '턴 초기화'를 먼저 눌러야 차례를 넘길 수 있습니다.</p>
@@ -136,8 +176,8 @@ root.addEventListener("click", event => {
   const target = (event.target as HTMLElement).closest<HTMLElement>("button");
   if (!target) { if ((event.target as HTMLElement).closest("[data-rack]")) move([...selected], "rack"); return; }
   if (target.hasAttribute("data-restart")) { if (online) root.querySelector(".r-overlay")?.remove(); else location.reload(); return; }
-  if (target.hasAttribute("data-sort")) { sortBy = sortBy === "color" ? "number" : "color"; render(); return; }
-  if (!editable() || !view) return;
+  if (target.hasAttribute("data-sort") && rackEditable()) { sortBy = sortBy === "color" ? "number" : "color"; manualOrder = false; handOrder.sort(compareHand); render(); return; }
+  if (!view || (!editable() && !(rackEditable() && target.closest("[data-rack]")))) return;
   if (target.dataset.tile !== undefined) {
     const id = Number(target.dataset.tile); if (selected.has(id)) selected.delete(id); else selected.add(id); render();
   } else if (target.dataset.selectGroup !== undefined) {
@@ -149,25 +189,37 @@ root.addEventListener("click", event => {
 });
 root.addEventListener("pointerdown", event => {
   suppressClick = false;
-  if (!editable() || event.button !== 0) return;
+  if (event.button !== 0) return;
   const t = (event.target as HTMLElement).closest<HTMLElement>("[data-tile]"); if (!t) return;
-  dragging = { id: Number(t.dataset.tile), x: event.clientX, y: event.clientY, moved: false };
+  const fromRack = !!t.closest("[data-rack]");
+  if (fromRack ? !rackEditable() : !editable()) return;
+  dragging = { id: Number(t.dataset.tile), x: event.clientX, y: event.clientY, moved: false, fromRack, pointer: event.pointerId };
 });
 window.addEventListener("pointermove", event => {
-  if (!dragging) return;
+  if (!dragging || dragging.pointer !== event.pointerId) return;
   if (!dragging.moved && Math.hypot(event.clientX - dragging.x, event.clientY - dragging.y) < 6) return;
   if (!dragging.moved) {
     dragging.moved = true; if (!selected.has(dragging.id)) selected = new Set([dragging.id]);
+    if (dragging.fromRack && view) selected = new Set([...selected].filter(id => view!.hand.includes(id) && !view!.table.flat().includes(id)));
     ghost = document.createElement("div"); ghost.className = "r-drag-ghost"; ghost.innerHTML = [...selected].map(id => tileMarkup(id)).join(""); document.body.append(ghost);
   }
   event.preventDefault(); ghost!.style.left = event.clientX + 8 + "px"; ghost!.style.top = event.clientY + 8 + "px";
+  rackMarker?.remove(); rackMarker = undefined;
+  if (dragging.fromRack && document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-rack]")) {
+    const position = rackPosition(event.clientX,event.clientY);
+    if (position) {
+      rackMarker = document.createElement("div"); rackMarker.className = "r-rack-marker";
+      Object.assign(rackMarker.style,{left:position.x+"px",top:position.y+"px",height:position.height+"px"}); document.body.append(rackMarker);
+    }
+  }
 }, { passive: false });
 window.addEventListener("pointerup", event => {
-  if (!dragging) return;
+  if (!dragging || dragging.pointer !== event.pointerId) return;
   if (dragging.moved) {
     const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
     const group = target?.closest<HTMLElement>("[data-group]"), rack = target?.closest("[data-rack]"), next = target?.closest("[data-new]");
-    if (rack) move([...selected], "rack");
+    if (rack && dragging.fromRack) reorderHand([...selected],rackPosition(event.clientX,event.clientY)?.before);
+    else if (rack) move([...selected], "rack");
     else if (group && view) {
       const index = Number(group.dataset.group), t = target?.closest<HTMLElement>("[data-tile]");
       let at = view.table[index].length;
@@ -175,13 +227,14 @@ window.addEventListener("pointerup", event => {
       if (target?.closest<HTMLElement>("[data-at]")) at = Number(target.closest<HTMLElement>("[data-at]")!.dataset.at);
       move([...selected], index, at);
     } else if (next || target?.classList.contains("r-table")) move([...selected], "new");
-    ghost?.remove(); ghost = undefined;
+    clearDrag();
     // Suppress the synthetic click, but end dragging before the next mouse move.
     suppressClick = true;
   }
-  dragging = undefined;
+  clearDrag();
 });
-window.addEventListener("pointercancel", () => { ghost?.remove(); ghost = undefined; dragging = undefined; });
+window.addEventListener("pointercancel", clearDrag);
+window.addEventListener("blur", clearDrag);
 function tick() {
   const clock = root.querySelector(".r-clock");
   if (clock && view) { const remaining = Math.max(0, Math.ceil((view.deadline - Date.now() - offset) / 1000)); clock.textContent = view.started && !view.finished ? `${remaining}초` : "--"; clock.classList.toggle("urgent", remaining <= 10 && view.started && !view.finished); }
