@@ -1,6 +1,6 @@
 import '../style.css';
 import './style.css';
-import { freshBoard, shoot, step, remaining, validShot, timeoutShot, SIZE, RADIUS, DRAG_LIMIT, LABELS, TURN_LIMIT_MS, TOSS_MS, AI_RESPONSE_LIMIT_MS, type State, type Shot, type Difficulty } from '../../../shared/alkkagi';
+import { freshBoard, shoot, step, remaining, validShot, timeoutShot, SIZE, RADIUS, DRAG_LIMIT, isFullPower, LABELS, TURN_LIMIT_MS, TOSS_MS, AI_RESPONSE_LIMIT_MS, type State, type Shot, type Difficulty } from '../../../shared/alkkagi';
 import { loadSprites } from '../common/sprites';
 import { GameAudio } from '../common/audio';
 import { bindSoundControl } from '../common/sound-control';
@@ -106,7 +106,7 @@ function render(view: State) {
       ctx.save();ctx.fillStyle='#f1eedf';ctx.strokeStyle='#59614c';ctx.lineWidth=1.5;
       ctx.beginPath();ctx.roundRect(gaugeX,gaugeY,gaugeWidth,gaugeHeight,4);ctx.fill();ctx.stroke();
       ctx.beginPath();ctx.roundRect(gaugeX+2,gaugeY+2,gaugeWidth-4,gaugeHeight-4,2);ctx.clip();
-      ctx.fillStyle=power>=.85?'#b66a45':'#59614c';
+      ctx.fillStyle=isFullPower(length)?'#b66a45':'#59614c';
       ctx.fillRect(gaugeX+2,gaugeY+2,(gaugeWidth-4)*power,gaugeHeight-4);ctx.restore();
     }
   }

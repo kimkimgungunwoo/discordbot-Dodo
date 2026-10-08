@@ -2,9 +2,11 @@ export type Color = 1 | 2;
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'extreme';
 export const LABELS: Record<Difficulty, string> = { easy: '쉬움', normal: '중간', hard: '어려움', extreme: '극한' };
 export const SIZE = 600, RADIUS = 18, MAX_SPEED = 940, DRAG_LIMIT = 150;
+export const FULL_POWER_SPEED = 1200;
+export const isFullPower = (length: number) => length >= DRAG_LIMIT - 1e-6;
 export const TURN_LIMIT_MS = 45_000, TOSS_MS = 4000, AI_RESPONSE_LIMIT_MS = 9000;
-// High friction and damped impacts favor short shots and gradual positioning.
-const DT = 1 / 240, FRICTION = 1170, RESTITUTION = .62, STOP_SPEED = 5;
+// All stones share the same stronger, arcade-style collision response.
+const DT = 1 / 240, FRICTION = 1050, RESTITUTION = 1.3, STOP_SPEED = 5;
 export interface Stone { id: number; color: Color; x: number; y: number; vx: number; vy: number; alive: boolean }
 export interface Shot { id: number; dx: number; dy: number }
 export interface State { stones: Stone[]; turn: Color; revision: number; moving: boolean; winner: 0 | Color; draw: boolean; quietTurns: number; removedBefore: number }
@@ -23,7 +25,9 @@ export function shoot(s: State, shot: Shot): State {
   if (!validShot(s, shot)) throw new Error('자기 돌을 뒤로 당겨 발사해주세요.');
   const next: State = { ...s, stones: s.stones.map(p => ({ ...p })), moving: true, revision: s.revision + 1, removedBefore: s.stones.filter(p => !p.alive).length };
   const stone = next.stones.find(p => p.id === shot.id)!;
-  stone.vx = shot.dx / DRAG_LIMIT * MAX_SPEED; stone.vy = shot.dy / DRAG_LIMIT * MAX_SPEED;
+  const length = Math.hypot(shot.dx,shot.dy);
+  const scale = isFullPower(length) ? FULL_POWER_SPEED / length : MAX_SPEED / DRAG_LIMIT;
+  stone.vx = shot.dx * scale; stone.vy = shot.dy * scale;
   return next;
 }
 // Small fixed steps prevent a fast stone from passing through another stone.
@@ -84,7 +88,8 @@ function candidates(s: State, detailed: boolean): Shot[] {
     const exitX = ux > 0 ? (SIZE-target.x)/ux : ux < 0 ? -target.x/ux : Infinity;
     const exitY = uy > 0 ? (SIZE-target.y)/uy : uy < 0 ? -target.y/uy : Infinity;
     const edgeTravel = Math.min(exitX,exitY);
-    const physicalPower = Math.min(DRAG_LIMIT, Math.sqrt(2 * FRICTION * (Math.max(0,distance-RADIUS*2) + edgeTravel / RESTITUTION**2)) / MAX_SPEED * DRAG_LIMIT);
+    const transfer = (1 + RESTITUTION) / 2;
+    const physicalPower = Math.min(DRAG_LIMIT, Math.sqrt(2 * FRICTION * (Math.max(0,distance-RADIUS*2) + edgeTravel / transfer**2)) / MAX_SPEED * DRAG_LIMIT);
     const contactAngle = Math.asin(Math.min(.95,RADIUS*2/Math.max(RADIUS*2,distance)));
     for (const factor of detailed ? [0,-.25,.25,-.55,.55,-.85,.85] : [0,-.5,.5]) {
       const offset = factor*contactAngle;
