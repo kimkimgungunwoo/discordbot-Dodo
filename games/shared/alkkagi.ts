@@ -1,8 +1,8 @@
 export type Color = 1 | 2;
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'extreme';
 export const LABELS: Record<Difficulty, string> = { easy: '쉬움', normal: '중간', hard: '어려움', extreme: '극한' };
-export const SIZE = 600, RADIUS = 18, MAX_SPEED = 940, DRAG_LIMIT = 150;
-export const FULL_POWER_SPEED = 1200;
+export const SIZE = 600, RADIUS = 18, MAX_SPEED = 800, DRAG_LIMIT = 150;
+export const FULL_POWER_SPEED = 880;
 export const isFullPower = (length: number) => length >= DRAG_LIMIT - 1e-6;
 export const TURN_LIMIT_MS = 45_000, TOSS_MS = 4000, AI_RESPONSE_LIMIT_MS = 9000;
 // All stones share the same stronger, arcade-style collision response.
@@ -13,7 +13,9 @@ export interface State { stones: Stone[]; turn: Color; revision: number; moving:
 export function freshBoard(): State {
   const stones: Stone[] = [];
   for (const color of [1, 2] as Color[]) for (let i = 0; i < 6; i++) {
-    stones.push({ id: stones.length, color, x: 100 + (i % 3) * 200, y: color === 1 ? 450 + Math.floor(i / 3) * 70 : 150 - Math.floor(i / 3) * 70, vx: 0, vy: 0, alive: true });
+    // Rotate the same staggered formation for the opposing side.
+    const rear = i >= 3, x = (rear ? 60 : 120) + (i % 3) * 180, y = rear ? 530 : 450;
+    stones.push({ id: stones.length, color, x: color === 1 ? x : SIZE-x, y: color === 1 ? y : SIZE-y, vx: 0, vy: 0, alive: true });
   }
   return { stones, turn: 1, revision: 0, moving: false, winner: 0, draw: false, quietTurns: 0, removedBefore: 0 };
 }
