@@ -55,6 +55,7 @@ function bird(state: PlayerState, frame: number, accent: string) {
 }
 // Same Dodo artwork, with a seat accent for games supporting more than two players.
 export function dodoProfile(accent: string) { return bird("idle", 0, accent); }
+export function dodoSprite(accent: string, state: PlayerState, frame = 0) { return bird(state, frame, accent); }
 export function loadSprites(): SpriteMap {
   const sprites: SpriteMap = {};
   const states: PlayerState[] = ["idle", "run", "jump", "fall", "hit", "spike", "dive", "lying", "win", "lose"];

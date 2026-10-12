@@ -20,3 +20,8 @@ docs/dynamodb-data/
 # games (도도새배구 등 웹 미니게임 client/server)
 games/*/node_modules/
 games/*/dist/
+
+# Local game planning images and previews
+/output/design/
+/docs/design/*.png
+/games/client/design-preview/

@@ -3,7 +3,7 @@ import { RelayRoom } from "./volleyball-room.js";
 import type { Definition, Peer } from "./protocol.js";
 import { TURN_MS, BOT_THINK_MS, BOT_TILE_MS, BOT_SETTLE_MS, BOT_FINAL_TURN_MS, botPlacementSteps, checkDraft, copyTable, createGame, endTurn, validateTurn, requireUneditedTable, type View } from "../../shared/rummikub.js";
 import { botTurn } from "../../shared/rummikub-bot.js";
-import { settledScores } from "../../shared/rummikub.js";
+import { type Seat, settledScores } from "../../shared/rummikub.js";
 
 export class RummikubRoom extends RelayRoom {
   readonly game;
@@ -33,12 +33,12 @@ export class RummikubRoom extends RelayRoom {
     const seat = this.seat(peer.id);
     const placed = new Set(this.draft.flat());
     return { type: "RUMMI_STATE", matchId: this.matchId, revision: this.revision, turnId: this.game.round, seat,
-      seats: this.definition.seats!.map((s, i) => ({ ...s, count: this.game.hands[i].filter(id => !placed.has(id)).length, opened: this.game.opened[i], connected: !!s.bot || [...this.peers].some(p => p.id === s.userId) })),
+      seats: (this.definition.seats! as Seat[]).map((s, i) => ({ ...s, count: this.game.hands[i].filter(id => !placed.has(id)).length, opened: this.game.opened[i], connected: !!s.bot || [...this.peers].some(p => p.id === s.userId) })),
       hand: seat < 0 ? [] : [...this.game.hands[seat]], table: copyTable(this.draft), original: copyTable(this.game.table), turn: this.game.turn,
       pileCount: this.game.pile.length, deadline: this.deadline, serverNow: Date.now(), started: this.started,
       stalledTurns: this.game.passes, stallLimit: this.game.hands.length * 2,
       endReason: this.game.finished ? this.game.winner === null ? "stalled" : "empty_hand" : null,
-      finished: this.game.finished || !!this.result, winner: this.game.winner, scores: settledScores(this.game.scores, this.game.winner, this.definition.seats!) };
+      finished: this.game.finished || !!this.result, winner: this.game.winner, scores: settledScores(this.game.scores, this.game.winner, this.definition.seats! as Seat[]), rematch: this.rematchStatus() };
   }
   override presence() { for (const peer of this.peers) peer.send(this.snapshot(peer)); }
   override leave(peer: Peer) {
@@ -91,7 +91,7 @@ export class RummikubRoom extends RelayRoom {
     this.draft = copyTable(this.game.table);
     if (this.game.finished) {
       const winner = this.game.winner;
-      const scores = settledScores(this.game.scores, winner, this.definition.seats!);
+      const scores = settledScores(this.game.scores, winner, this.definition.seats! as Seat[]);
       this.result = { roomId: this.definition.roomId, matchId: this.matchId, winnerId: winner === null ? null : this.definition.seats![winner].userId,
         score: { left: scores[0], right: scores[1] }, seatScores: scores, winnerSeat: winner };
       this.finishedAt = Date.now(); this.deadline = 0;
@@ -101,7 +101,7 @@ export class RummikubRoom extends RelayRoom {
       const bot = this.definition.seats![this.game.turn].bot;
       if (bot) {
         this.botTimer = setTimeout(() => {
-          const table = botTurn(this.game, bot);
+          const table = botTurn(this.game, bot as "normal" | "hard");
           if (!table) { endTurn(this.game, this.game.table, true); this.nextTurn(); return; }
           const steps = botPlacementSteps(this.game.table, table);
           const placeNext = (index: number) => {

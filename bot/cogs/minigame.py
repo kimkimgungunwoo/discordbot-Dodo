@@ -135,7 +135,7 @@ class Minigame(commands.Cog):
         self.bot = bot
 
     async def _route_dodo_game(self, ctx: commands.Context, game_name: str):
-        game = {"루미큐브": "rummikub", "배구": "volleyball", "오목": "omok", "오델로": "othello", "알까기": "alkkagi", "화살피하기": "arrow_dodge", "바위달리기": "rock_run", "고군분투": "rock_run"}.get(game_name.strip())
+        game = {"폭탄전": "bomb_battle", "폭탄게임": "bomb_battle", "폭탄": "bomb_battle", "루미큐브": "rummikub", "배구": "volleyball", "오목": "omok", "오델로": "othello", "알까기": "alkkagi", "화살피하기": "arrow_dodge", "바위달리기": "rock_run", "고군분투": "rock_run"}.get(game_name.strip())
         if game is None:
             await ctx.send("`!게임` 메뉴에서 게임을 선택해주세요.")
             return
@@ -168,6 +168,7 @@ class Minigame(commands.Cog):
                 await self._route_dodo_game(ctx, name)
 
         items = [
+            MenuItem("폭탄전", "bomb_battle", lambda event: choose("폭탄전", event), None, "💣"),
             MenuItem("루미큐브", "rummikub", lambda event: choose("루미큐브", event), None, "🃏"),
             MenuItem("바위달리기", "rock_run", lambda event: choose("바위달리기", event), None, "🏜️"),
             MenuItem("배구", "volleyball", lambda event: choose("배구", event), None, "🏐"),

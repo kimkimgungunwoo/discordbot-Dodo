@@ -6,6 +6,7 @@ from .registry import GAMES
 
 
 FILTERS = {
+    "bomb_battle:PVP": ("bomb_battle", "PVP", "💣 폭탄전 · 포인트"),
     "alkkagi:CPU": ("alkkagi", "CPU", "⚪ 알까기 · 봇전"),
     "alkkagi:PVP": ("alkkagi", "PVP", "⚫ 알까기 · 대결"),
     "othello:CPU": ("othello", "CPU", "🔴 오델로 · 봇전"),
@@ -98,6 +99,9 @@ class GameStatsView(discord.ui.View):
     def _record(stats: dict, game: str, mode: str, endless: bool = False) -> str:
         if game == "rummikub":
             return f"플레이 **{stats['plays']}회**\n누적 포인트 **{stats['total_score']:+,}점**\n봇 보정 포함 · 승패 레이팅 미사용"
+        if game == "bomb_battle":
+            return (f"플레이 **{stats['plays']}회**\n누적 포인트 **{stats['total_score']:+,}점**\n"
+                    f"{stats['wins']}승 {stats['draws']}무 {stats['losses']}패 · 봇 보정 포함")
         if game == "rock_run":
             value = f"{(stats.get('best_score') or 0) / 1000:.2f}초" if endless else f"{stats.get('best_score') or 0:,}점"
             return f"플레이 **{stats['plays']}회**\n최고 기록 **{value}**"
@@ -106,7 +110,7 @@ class GameStatsView(discord.ui.View):
             return f"플레이 **{stats['plays']}회**\n최고 생존 **{best:.2f}초**"
         total = stats["wins"] + stats["losses"] + stats["draws"]
         rate = stats["wins"] / total * 100 if total else 0
-        rating = f"\n레이팅 **{stats['rating']:,}**" if mode == "PVP" else ""
+        rating = f"\n레이팅 **{stats['rating']:,}**" if mode == "PVP" and game != "bomb_battle" else ""
         return (f"**{stats['wins']}승 {stats['draws']}무 {stats['losses']}패**\n"
                 f"승률 **{rate:.1f}%** · 최고 연승 **{stats['best_streak']}회**{rating}")
 
@@ -117,8 +121,8 @@ class GameStatsView(discord.ui.View):
         embed = self.filter_embed()
         embed.title = f"{label} · 내 전적"
         embed.description = self._record(stats, game, mode, self.filter_key == "rock_run:ENDLESS") if stats else "아직 기록된 경기가 없습니다."
-        if game == "rummikub" and stats:
-            history = await self.store.rummikub_history(self.owner_id)
+        if game in ("rummikub", "bomb_battle") and stats:
+            history = await self.store.rummikub_history(self.owner_id) if game == "rummikub" else await self.store.points_history(self.owner_id, game)
             if history:
                 embed.add_field(name="최근 10경기 · 획득/차감 포인트", value="\n".join(
                     f"<t:{int(row['ended_at'].timestamp())}:f> · **{row['score']:+,}점** · 사람 {row['humans']} / 봇 {row['bots']}"
@@ -134,13 +138,13 @@ class GameStatsView(discord.ui.View):
         medals = ["🥇", "🥈", "🥉"]
         for index, row in enumerate(rows, 1):
             prefix = medals[index - 1] if index <= 3 else f"`{index:>2}.`"
-            if game == "rummikub":
+            if game in ("rummikub", "bomb_battle"):
                 value = f"{row['total_score']:+,}점 · {row['plays']}회"
             elif game == "rock_run":
                 value = f"{(row['best_score'] or 0) / 1000:.2f}초" if self.filter_key == "rock_run:ENDLESS" else f"{row['best_score'] or 0:,}점"
             elif game == "arrow_dodge":
                 value = f"{(row['best_score'] or 0) / 1000:.2f}초"
-            elif mode == "PVP":
+            elif mode == "PVP" and game != "bomb_battle":
                 value = f"{row['rating']:,}점 · {row['wins']}승 {row['draws']}무 {row['losses']}패"
             else:
                 value = f"{row['wins']}승 {row['draws']}무 {row['losses']}패"
