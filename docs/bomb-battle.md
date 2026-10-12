@@ -72,8 +72,6 @@
 
 - `games/client/src/common/sprites.ts`의 도도새 idle·run·lose 그림을 참가자별 목도리 색으로 사용한다. 기존 스프라이트를 새 그림으로 교체하지 않았다.
 - 중앙 맵, 상단 단판 표시·생존자·시간, 오른쪽 참가자·폭탄·범위, 아래 조작·관전·소리 안내를 둔다.
-- 이전 [생성 시안](../output/design/dodo-bomb-battle-draft.png)은 분위기 참고용이며 정확한 타일·판정의 기준이 아니다. 현재 구현 화면이 디자인 기준이다.
-- [실제 구현 화면](../output/design/dodo-bomb-battle-gameplay.png).
 - `games/shared/bomb-battle.ts`: 공통 격자 규칙과 결정적 상태 진행.
 - `games/shared/bomb-battle-bot.ts`: 미래 폭발과 시간 경로 탐색 봇.
 - `games/server/src/bomb-battle-room.ts`: 고정 틱·인증된 입력·스냅샷·결과·재접속.
