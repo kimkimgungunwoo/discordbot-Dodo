@@ -21,6 +21,11 @@ export class RelayRoom {
   finishedAt: number | null = null;
   constructor(readonly definition: Definition) { this.matchId = definition.matchId ?? randomUUID(); this.definition = { ...definition, matchId: this.matchId }; }
   role(id: string) { return id === this.definition.hostId ? "left" : id === this.definition.p2Id ? "right" : "spectator"; }
+  rematchStatus() {
+    const humans = this.definition.seats ? this.definition.seats.filter(s => s.userId !== null).map(s => s.userId!)
+      : [this.definition.hostId, ...(this.definition.mode === "PVP" && this.definition.p2Id ? [this.definition.p2Id] : [])];
+    return { matchId: this.matchId, votes: [...this.rematchVotes].filter(id => humans.includes(id)), required: humans.length, delivered: this.delivered };
+  }
   broadcast(message: unknown) { for (const peer of this.peers) peer.send(message); }
   ready() {
     return [...this.peers].some(peer => peer.id === this.definition.hostId) &&

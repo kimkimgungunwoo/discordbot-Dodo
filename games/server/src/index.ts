@@ -7,6 +7,7 @@ import { identity, member, DiscordRateLimitError } from "./auth.js";
 import { OmokRoom } from "./omok-room.js";
 import { RockRunRoom } from "./rock-run-room.js";
 import { ArrowDodgeRoom } from "./arrow-dodge-room.js";
+import { BombBattleRoom } from "./bomb-battle-room.js";
 import { RummikubRoom } from "./rummikub-room.js";
 
 import { OthelloRoom } from "./othello-room.js";
@@ -45,8 +46,8 @@ export const server = createServer(async (req, res) => {
       if (typeof value.roomId !== "string") return json(res, 400, { error: "Invalid room" });
       rooms.get(value.roomId)?.broadcast({ type: "ROOM_CLOSED", message: "방장이 방을 닫았습니다." });
       const closing = rooms.get(value.roomId);
-      if (closing instanceof RummikubRoom) closing.abort("방장이 방을 닫았습니다.");
-      if (closing instanceof OmokRoom || closing instanceof OthelloRoom || closing instanceof AlkkagiRoom || closing instanceof RummikubRoom) closing.dispose();
+      if (closing instanceof RummikubRoom || closing instanceof BombBattleRoom) closing.abort("방장이 방을 닫았습니다.");
+      if (closing instanceof OmokRoom || closing instanceof OthelloRoom || closing instanceof AlkkagiRoom || closing instanceof RummikubRoom || closing instanceof BombBattleRoom) closing.dispose();
       rooms.delete(value.roomId);
       return json(res, 200, { ok: true });
     }
@@ -58,13 +59,14 @@ export const server = createServer(async (req, res) => {
       const stale = rooms.get(definition.roomId);
       if (stale?.result && definition.matchId !== stale.matchId) {
         if (!stale.delivered) return json(res, 409, { error: "결과 전송이 완료되지 않았습니다." });
+        if (stale instanceof BombBattleRoom) stale.dispose();
         rooms.delete(definition.roomId);
       }
       const existing = rooms.get(definition.roomId);
       if (existing && ((Object.keys(existing.definition) as Array<keyof typeof definition>).some(key => key !== "matchId" && JSON.stringify(existing.definition[key]) !== JSON.stringify(definition[key])))) return json(res, 409, { error: "Room conflict" });
       if (!existing && rooms.size >= 200) return json(res, 503, { error: "Room capacity reached" });
       if (existing && definition.matchId && existing.matchId !== definition.matchId) return json(res, 409, { error: "다른 경기가 진행 중입니다." });
-      const room = existing ?? (definition.game === "rock_run" ? new RockRunRoom(definition) : definition.game === "alkkagi" ? new AlkkagiRoom(definition) : definition.game === "othello" ? new OthelloRoom(definition) : definition.game === "omok" ? new OmokRoom(definition)
+      const room = existing ?? (definition.game === "bomb_battle" ? new BombBattleRoom(definition) : definition.game === "rock_run" ? new RockRunRoom(definition) : definition.game === "alkkagi" ? new AlkkagiRoom(definition) : definition.game === "othello" ? new OthelloRoom(definition) : definition.game === "omok" ? new OmokRoom(definition)
         : definition.game === "arrow_dodge" ? new ArrowDodgeRoom(definition) : definition.game === "rummikub" ? new RummikubRoom(definition) : new RelayRoom(definition));
       rooms.set(definition.roomId, room);
       if (stale && stale !== room) stale.broadcast({ type: "MATCH_REPLACED" });
@@ -100,17 +102,19 @@ export const server = createServer(async (req, res) => {
       if (typeof value.roomId !== "string") return json(res, 400, { error: "Invalid room" });
       const room = rooms.get(value.roomId);
       if (!room) return json(res, 404, { error: "방이 만료되었습니다. 디스코드 채팅의 [게임 시작] 버튼으로 새로 시작해주세요." });
-      if (room instanceof RummikubRoom) return json(res, 409, { error: "디스코드 대기방에서 게임 시작을 눌러주세요." });
       if (value.matchId !== room.matchId) return json(res, 409, { error: "경기가 변경되었습니다. 다시 연결해주세요." });
-      if (!room.result || !room.delivered) return json(res, 409, { error: "경기 결과 전송을 기다려주세요." });
+      const multi = room instanceof RummikubRoom || room instanceof BombBattleRoom;
+      if (!room.result || (!multi && !room.delivered)) return json(res, 409, { error: "경기 결과 전송을 기다려주세요." });
       const { hostId, p2Id, mode } = room.definition;
-      if (user.id !== hostId && user.id !== p2Id) return json(res, 403, { error: "참가자만 재대결할 수 있습니다." });
+      const humans = multi ? room.definition.seats!.filter(s => s.userId !== null).map(s => s.userId!) : [hostId, ...(mode === "PVP" && p2Id ? [p2Id] : [])];
+      if (!humans.includes(user.id)) return json(res, 403, { error: "참가자만 재대결할 수 있습니다." });
       await member(token, room.definition.guildId);
       if (rooms.get(value.roomId) !== room) return json(res, 409, { error: "경기가 변경되었습니다." });
       if (mode === "PVP") {
         room.rematchVotes.add(user.id);
-        if (!room.rematchVotes.has(hostId) || !p2Id || !room.rematchVotes.has(p2Id))
-          return json(res, 202, { waiting: true, votes: room.rematchVotes.size });
+        room.broadcast({ type: "REMATCH_STATUS", ...room.rematchStatus() });
+        if (!humans.every(id => room.rematchVotes.has(id)) || !room.delivered)
+          return json(res, 202, { waiting: true, votes: room.rematchVotes.size, voters: room.rematchStatus().votes, required: humans.length, waitingForResult: !room.delivered });
       }
       let pending = rematches.get(room.matchId);
       if (!pending) {
@@ -118,7 +122,7 @@ export const server = createServer(async (req, res) => {
           if (!process.env.BOT_INTERNAL_URL) throw new Error("봇 연결 설정이 필요합니다.");
           const response = await fetch(new URL("/internal/game-rematches", process.env.BOT_INTERNAL_URL), {
             method: "POST", headers: { Authorization: "Bearer " + secret, "content-type": "application/json" },
-            body: JSON.stringify({ roomId: value.roomId, matchId: room.matchId, hostId, p2Id }), signal: AbortSignal.timeout(10000),
+            body: JSON.stringify({ roomId: value.roomId, matchId: room.matchId, hostId, p2Id, ...(multi ? { seats: room.definition.seats } : {}) }), signal: AbortSignal.timeout(10000),
           });
           const result = await response.json() as any;
           if (!response.ok) throw new Error(result.error ?? "봇 대기방 갱신에 실패했습니다. 다시 시도해주세요.");
@@ -202,7 +206,7 @@ const REMATCH_GRACE_MS = 6 * 60_000;
 const callbacks = setInterval(() => {
   for (const [roomId, room] of rooms) {
     if (!room.result && Date.now() - room.lastActivity > 5 * 60_000) room.abort("대기 또는 경기 제한 시간이 지났습니다.");
-    if (room.result && room.finishedAt && Date.now() - room.finishedAt > REMATCH_GRACE_MS) { room.broadcast({ type: "ROOM_CLOSED", message: "재경기 대기 시간이 만료되었습니다." }); rooms.delete(roomId); continue; }
+    if (room.result && room.finishedAt && Date.now() - room.finishedAt > REMATCH_GRACE_MS) { room.broadcast({ type: "ROOM_CLOSED", message: "재경기 대기 시간이 만료되었습니다." }); if (room instanceof BombBattleRoom) room.dispose(); rooms.delete(roomId); continue; }
     room.connectionStatus();
     if (!room.result || room.delivered || room.delivering || !process.env.BOT_INTERNAL_URL) continue;
     room.broadcast({ type: "RESULT_PENDING", result: room.result, message: "경기 결과 저장 중..." });
@@ -214,13 +218,14 @@ const callbacks = setInterval(() => {
       if (!response.ok) return;
       room.delivered = true;
       room.broadcast({ type: "FINISHED", result: room.result });
+      if (room instanceof BombBattleRoom || room instanceof RummikubRoom) room.broadcast({ type: "REMATCH_STATUS", ...room.rematchStatus() });
     }).catch(() => {}).finally(() => { room.delivering = false; });
   }
 }, 5000);
 server.listen(Number(process.env.PORT ?? 3001), "0.0.0.0", () => console.log("[activity-server] ready"));
 export function shutdown() {
   clearInterval(callbacks);
-  for (const room of rooms.values()) if (room instanceof OmokRoom || room instanceof OthelloRoom || room instanceof AlkkagiRoom || room instanceof RummikubRoom) room.dispose();
+  for (const room of rooms.values()) if (room instanceof OmokRoom || room instanceof OthelloRoom || room instanceof AlkkagiRoom || room instanceof RummikubRoom || room instanceof BombBattleRoom) room.dispose();
   for (const client of wss.clients) client.terminate();
   wss.close(); server.close();
 }

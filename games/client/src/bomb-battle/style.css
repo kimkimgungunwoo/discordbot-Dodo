@@ -1,0 +1,35 @@
+.bomb-shell { max-width: 1110px; margin: 28px auto; padding: 0 24px 30px; }
+.bomb-shell .heading { margin-bottom: 22px; }
+.bomb-shell .heading h1 { font-size: 29px; }
+.bomb-shell .heading h1 span { font-size: 10px; }
+.bomb-eyebrow { display: block; color: #7c856f; font: 10px monospace; letter-spacing: 3px; margin-bottom: 9px; }
+.bomb-tools { display: flex; gap: 10px; align-items: center; font-size: 12px; }
+.bomb-mode { border: 1px solid #cdd2bf; padding: 8px 10px; background: #eeeee2; }
+.bomb-top { display: flex; align-items: center; justify-content: space-between; padding: 17px 24px; background: #fcfaf2; border-bottom: 2px solid #303b36; font-size: 13px; }
+.bomb-top strong { font: bold 20px monospace; }.bomb-top small { color: #7b846f; font-size: 10px; letter-spacing: 1px; }
+.bomb-top .bomb-clock { font: bold 23px monospace; }.bomb-top .urgent { color: #b65c36; }
+.bomb-layout { display: grid; grid-template-columns: minmax(0,1fr) 246px; background: #f1eedf; }
+.bomb-map { min-width: 0; position: relative; padding: 12px; border-right: 2px solid #303b36; }
+.bomb-map canvas { outline: none; width: 100%; }.bomb-map canvas:focus-visible { box-shadow: inset 0 0 0 2px #668eac; }
+.bomb-side { padding: 22px 17px; background: #eceedd; display: flex; flex-direction: column; gap: 14px; }
+.bomb-side > small { font: 10px monospace; letter-spacing: 2px; color: #737e68; margin-bottom: 2px; }
+.bomb-player { display: flex; align-items: center; gap: 9px; background: #fcfaf2; border: 1px solid #b9c1a9; border-left: 4px solid var(--seat); padding: 12px 9px; box-shadow: 3px 3px 0 #d4dac6; }
+.bomb-player.mine { border-color: var(--seat); }.bomb-player.dead { background: #e4e7dc; }
+.bomb-player canvas { width: 60px; height: 48px; flex-shrink: 0; }.bomb-player > div { min-width: 0; }
+.bomb-player strong { display: block; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bomb-player small { display: block; color: #7c866f; font-size: 10px; margin: 5px 0; }
+.bomb-abilities { font: 11px monospace; color: #596b53; }.bomb-abilities b { color: #303b36; }
+.bomb-legend { margin-top: auto; border-top: 1px solid #c5ccb6; padding-top: 15px; color: #6c7762; font-size: 11px; line-height: 1.9; }
+.bomb-bottom { display: flex; justify-content: space-between; align-items: center; gap: 16px; border-top: 2px solid #303b36; padding: 15px 24px; background: #fcfaf2; font-size: 11px; color: #6c7762; }
+.bomb-bottom kbd { display: inline-block; padding: 3px 6px; font-size: 10px; min-width: 20px; }.bomb-bottom .keys { display: flex; align-items: center; gap: 5px; }
+.bomb-notice { color: #6c7762; font-size: 12px; line-height: 1.7; min-height: 24px; margin-top: 17px; }
+.bomb-result { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: #f3efdfbb; }
+.bomb-result-card { width: min(420px,100%); padding: 30px; background: #fcfaf2; border: 3px solid #303b36; box-shadow: 7px 7px 0 #d2d8c5; text-align: center; }
+.bomb-result-card h2 { font-size: 25px; margin-bottom: 18px; }.bomb-result-card p { color: #6c7762; font-size: 13px; line-height: 1.8; margin-bottom: 24px; }
+.bomb-setup { max-width: 520px; margin: 70px auto; padding: 30px; text-align: center; border: 2px solid #303b36; background: #fcfaf2; box-shadow: 6px 6px 0 #dce0d0; }
+.bomb-setup > canvas { width: 120px; height: 96px; margin: 20px auto; }.bomb-setup p { font-size: 13px; color: #74816c; line-height: 1.8; }
+.bomb-setup label { display: flex; justify-content: space-between; align-items: center; margin: 15px 0; font-size: 13px; }
+.bomb-setup select { color: #303b36; padding: 7px 12px; border: 1px solid #bbc3ad; background: #f8f6ed; font: inherit; }
+.bomb-setup .primary { margin-top: 24px; }.bomb-setup > small { display: block; font-size: 11px; color: #8a927e; margin-top: 20px; }
+@media (max-width: 850px) { .bomb-shell { min-width: 760px; margin-top: 18px; padding: 0 16px 24px; }.bomb-layout { grid-template-columns: minmax(0,1fr) 210px; }.bomb-side { padding: 18px 12px; }.bomb-tools { font-size: 10px; }.bomb-shell .heading h1 { font-size: 25px; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }

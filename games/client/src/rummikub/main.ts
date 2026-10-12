@@ -5,6 +5,7 @@ import { GameAudio } from "../common/audio";
 import { bindSoundControl } from "../common/sound-control";
 import { authenticate } from "../discord-session";
 import { SEAT_COLORS, arrangeRun, copyTable, meld, tile, checkDraft, turnIssues, requireUneditedTable, tableJokerBindings, type View } from "../../../shared/rummikub";
+import { RematchVoting } from "../common/rematch-voting";
 import { LocalGame } from "./practice";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
@@ -22,6 +23,7 @@ let newestHandTiles = new Set<number>();
 let local: LocalGame | undefined, reconnect: ReturnType<typeof setTimeout> | undefined, retries = 0;
 let alertText = "", suppressClick = false, dragging: { id: number; x: number; y: number; moved: boolean; fromRack: boolean; pointer: number } | undefined, ghost: HTMLElement | undefined;
 let rackMarker: HTMLElement | undefined;
+let rematch: RematchVoting | undefined;
 const editable = () => !!view && connected && !pending && view.started && !view.finished && view.seat === view.turn;
 const rackEditable = () => !!view && view.seat >= 0 && !view.finished;
 const compareHand = (a: number, b: number) => sortBy === "color" ? tile(a).color - tile(b).color || tile(a).number - tile(b).number || a - b : tile(a).number - tile(b).number || tile(a).color - tile(b).color || a - b;
@@ -56,6 +58,7 @@ function receive(next: View) {
   else if (incoming.length) newestHandTiles = new Set(incoming);
   newestHandTiles = new Set([...newestHandTiles].filter(id => owned.has(id)));
   view = next; offset = next.serverNow - Date.now(); pending = false; retries = 0;
+  if (rematch) { rematch.configure(next.matchId, next.seat < 0 ? null : next.seats[next.seat].userId, next.seats.filter(s => s.userId !== null).length, next.finished, next.rematch?.delivered ?? false); if (next.rematch) rematch.receive(next.rematch); }
   render();
 }
 function notify(message: string) { alertText = message; audio.playRummikub("error"); const el = root.querySelector(".r-notice"); if (el) el.textContent = message; }
@@ -151,7 +154,7 @@ function render() {
       <p class="r-notice" role="status" aria-live="polite">${escape(alertText)}</p>
     </section>
     <details class="r-rules"><summary>조작 · 규칙</summary><p>패를 끌거나 여러 패를 선택한 뒤 + 버튼으로 놓으세요. 조합의 ⠿ 버튼은 묶음 전체를 선택합니다. 연속 숫자는 순서대로 놓으세요.</p><p>첫 등록은 내 패로 30점 이상. 이후에는 테이블 재배열이 가능합니다. 정상 조합은 같은 숫자·다른 색 3~4개 또는 같은 색 연속 숫자 3개 이상입니다.</p><p>조커는 손패나 테이블 패로 조합을 재구성해 회수하고 같은 턴에 다시 사용할 수 있습니다. 모든 조합이 유효하고 내 손패를 한 장 이상 내야 합니다.</p><p>60초가 끝나면 유효한 배치는 확정됩니다. 수정 중인 배치가 잘못되었다면 그대로 유지되며 15초씩 수정 시간이 주어집니다. 빨간 테두리의 조합을 수정해야 턴을 끝낼 수 있습니다. 배치를 바꾸지 않았다면 한 장 뽑고 넘깁니다. 조커 잔여 점수는 30점입니다.</p></details>
-    ${v.finished ? `<div class="r-overlay"><section class="r-result"><h2>${v.endReason === "stalled" ? "진행 정체로 종료" : v.winner === null ? "경기 종료" : `${v.winner + 1}P 승리!`}</h2>${v.endReason === "stalled" ? "<small>두 바퀴 동안 새로 낸 패가 없어 종료되었습니다. 손패 수가 가장 적은 사람은 공동 최저까지 감점하지 않습니다.</small>" : ""}${v.winner !== null && v.seats.some(seat => seat.bot) ? "<small>봇 승패 보정 적용 · 중급 50% / 어려움 75% · 사람끼리 100%</small>" : ""}${v.scores.map((score, i) => `<p><b style="color:${SEAT_COLORS[i]}">${i + 1}P · ${escape(v.seats[i].name)}</b><strong>${score > 0 ? "+" : ""}${score}점${v.endReason === "stalled" && score === 0 ? " · 감점 없음" : ""}</strong></p>`).join("")}<small>${online ? "전적·포인트 랭킹: !게임 통계 → 루미큐브. 재경기는 디스코드 대기방에서 시작해주세요." : "연습 결과는 저장하지 않습니다."}</small><button data-restart>${online ? "테이블 확인" : "다시 시작"}</button></section></div>` : ""}
+    ${v.finished ? `<div class="r-overlay"><section class="r-result"><h2>${v.endReason === "stalled" ? "진행 정체로 종료" : v.winner === null ? "경기 종료" : `${v.winner + 1}P 승리!`}</h2>${v.endReason === "stalled" ? "<small>두 바퀴 동안 새로 낸 패가 없어 종료되었습니다. 손패 수가 가장 적은 사람은 공동 최저까지 감점하지 않습니다.</small>" : ""}${v.winner !== null && v.seats.some(seat => seat.bot) ? "<small>봇 승패 보정 적용 · 중급 50% / 어려움 75% · 사람끼리 100%</small>" : ""}${v.scores.map((score, i) => `<p><b style="color:${SEAT_COLORS[i]}">${i + 1}P · ${escape(v.seats[i].name)}</b><strong>${score > 0 ? "+" : ""}${score}점${v.endReason === "stalled" && score === 0 ? " · 감점 없음" : ""}</strong></p>`).join("")}<small>${online ? "전적·포인트 랭킹: !게임 통계 → 루미큐브. 사람 참가자 전원의 동의로 재시작합니다." : "연습 결과는 저장하지 않습니다."}</small><p class="r-vote-status" role="status">${online ? escape(rematch?.status ?? "결과 저장 중…") : ""}</p><button data-restart ${online && (!connected || !rematch?.canVote) ? "disabled" : ""}>${online ? rematch?.label ?? "재시작 투표" : "다시 시작"}</button></section></div>` : ""}
   </main>`;
   root.querySelector(".r-tools")!.append(soundButton);
   const tableElement = root.querySelector<HTMLElement>(".r-table")!;
@@ -175,7 +178,7 @@ root.addEventListener("click", event => {
   if (suppressClick) { suppressClick = false; return; }
   const target = (event.target as HTMLElement).closest<HTMLElement>("button");
   if (!target) { if ((event.target as HTMLElement).closest("[data-rack]")) move([...selected], "rack"); return; }
-  if (target.hasAttribute("data-restart")) { if (online) root.querySelector(".r-overlay")?.remove(); else location.reload(); return; }
+  if (target.hasAttribute("data-restart")) { if (online) void rematch?.vote(); else location.reload(); return; }
   if (target.hasAttribute("data-sort") && rackEditable()) { sortBy = sortBy === "color" ? "number" : "color"; manualOrder = false; handOrder.sort(compareHand); render(); return; }
   if (!view || (!editable() && !(rackEditable() && target.closest("[data-rack]")))) return;
   if (target.dataset.tile !== undefined) {
@@ -243,6 +246,7 @@ const ticker = setInterval(tick, 250);
 async function startOnline() {
   try {
     const credentials = await authenticate(root, "rummikub");
+    rematch = new RematchVoting(credentials.roomId, credentials.token, () => { if (view) render(); });
     const connect = () => {
       if (terminal) return;
       const ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`); socket = ws;
@@ -251,6 +255,8 @@ async function startOnline() {
         const message = JSON.parse(event.data);
         if (message.type === "RUMMI_STATE") receive(message);
         else if (message.type === "RUMMI_ERROR") notify(message.message);
+        else if (message.type === "REMATCH_STATUS") rematch!.receive(message);
+        else if (message.type === "FINISHED") rematch!.saved();
         else if (["ROOM_CLOSED", "ERROR"].includes(message.type)) { terminal = message.terminal !== false; alertText = message.message; connected = false; if (view) render(); else root.textContent = message.message; }
         else if (message.type === "MATCH_REPLACED") location.reload();
         else if (message.type === "RESULT_PENDING" && message.result?.aborted) notify(message.result.reason);

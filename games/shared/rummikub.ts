@@ -163,6 +163,7 @@ export function endTurn(state: State, table: number[][], draw = false): void {
 }
 
 export interface View {
+  rematch?: { matchId: string; votes: string[]; required: number; delivered: boolean };
   type: "RUMMI_STATE"; matchId: string; revision: number; turnId: number; seat: number;
   seats: (Seat & { count: number; opened: boolean; connected: boolean })[];
   hand: number[]; table: number[][]; original: number[][]; turn: number; pileCount: number;

@@ -14,6 +14,7 @@ from discord.ext import commands
 
 from .registry import GAMES
 from .rummikub import lobby_action as rummikub_lobby_action
+from .bomb_battle import lobby_action as bomb_battle_lobby_action, DIFFICULTY_LABELS as BOMB_LEVELS
 from .stats_view import GameStatsView
 from api.dodo import DodoGameStore, DodoStorageError
 
@@ -151,6 +152,20 @@ class LobbyView(discord.ui.View):
         super().__init__(timeout=None)
         self.cog = cog
         self.room_id = room_id
+        if cog.rooms.get(room_id, {}).get("game") == "bomb_battle" and not playing:
+            for level, label in BOMB_LEVELS.items():
+                item = discord.ui.Button(label=f"{label} 봇 추가", style=discord.ButtonStyle.secondary, row=1,
+                                         custom_id=f"dodo:bomb:bot_{level}:{room_id}")
+                async def configure(event, level=level):
+                    await self.cog.action(self.room_id, f"bot_{level}", event)
+                item.callback = configure
+                self.add_item(item)
+            item = discord.ui.Button(label="봇 제거", style=discord.ButtonStyle.secondary, row=1,
+                                     custom_id=f"dodo:bomb:bot_remove:{room_id}")
+            async def remove_bot(event):
+                await self.cog.action(self.room_id, "bot_remove", event)
+            item.callback = remove_bot
+            self.add_item(item)
         if cog.rooms.get(room_id, {}).get("game") == "rummikub" and not playing:
             for action, label in (("bot_normal", "중간 봇 추가"), ("bot_hard", "어려움 봇 추가"), ("bot_remove", "봇 제거")):
                 item = discord.ui.Button(label=label, style=discord.ButtonStyle.secondary, row=1,
@@ -200,6 +215,7 @@ class Game(commands.Cog):
         self.room_tasks: dict[str, asyncio.Task] = {}
         self.views: dict[str, LobbyView] = {}
         self.selection_views: set[ModeView] = set()
+        self.action_notices: dict[tuple[int, int], discord.WebhookMessage] = {}
         self.locks: dict[str, asyncio.Lock] = {}
         self.runner: web.AppRunner | None = None
         self.http: aiohttp.ClientSession | None = None
@@ -241,6 +257,7 @@ class Game(commands.Cog):
         for view in self.views.values():
             view.stop()
         self.views.clear()
+        self.action_notices.clear()
         self.room_tasks.clear()
         self.rooms.clear()
         if self.runner:
@@ -267,12 +284,12 @@ class Game(commands.Cog):
         if room.get("last_result"):
             description = room["last_result"] + "\n\n" + description
         embed = discord.Embed(title=f"도도새{game_name(room)}", description=description, color=discord.Color.green())
-        if room.get("game") == "rummikub":
+        if room.get("game") in ("rummikub", "bomb_battle"):
             for i, color in enumerate(("🔵", "🔴", "🟢", "🟠")):
                 seat = room["seats"][i] if i < len(room["seats"]) else None
                 value = (f'<@{seat["userId"]}>' if seat["userId"] else seat["name"]) if seat else "참가 대기"
                 embed.add_field(name=f"{color} {i + 1}P", value=value)
-            embed.set_footer(text="2~4인 · 턴 제한 60초")
+            embed.set_footer(text="2~4인 · 방향키 이동 · Space 폭탄 · PC 전용" if room.get("game") == "bomb_battle" else "2~4인 · 턴 제한 60초")
             return embed
         embed.add_field(name="플레이어" if solo else "1P · 방장", value=f'<@{room["hostId"]}>')
         if room.get("game") == "rock_run":
@@ -284,7 +301,7 @@ class Game(commands.Cog):
         return embed
 
     async def select_mode(self, ctx: commands.Context, game="volleyball"):
-        if game == "rummikub":
+        if game in ("rummikub", "bomb_battle"):
             return await self.create_room(ctx, game=game, mode="PVP")
         if not ctx.guild:
             await ctx.send("서버 채널에서 사용해주세요.")
@@ -348,7 +365,7 @@ class Game(commands.Cog):
                             hostId=ctx.author.id, p2Id=None, spectators=set(), status="WAITING", handoff=False, mode=mode, difficulty=difficulty,
                             runMode=run_mode, matchId=None, previousMatchId=None)
                 self.rooms[room_id] = room
-                if game == "rummikub":
+                if game in ("rummikub", "bomb_battle"):
                     room["seats"] = [{"userId": str(ctx.author.id), "name": ctx.author.display_name[:80]}]
                 if mode == "CPU":
                     try:
@@ -442,6 +459,21 @@ class Game(commands.Cog):
             log.warning("Game room cancellation failed; server expiry will clean it up")
             return False
 
+    async def _reply_action(self, interaction, content):
+        """Keep only the latest ephemeral lobby notice per user and guild."""
+        key = (interaction.guild_id, interaction.user.id)
+        previous = self.action_notices.get(key)
+        # Application followups always return a WebhookMessage (discord.py forces wait).
+        message = await interaction.followup.send(content, ephemeral=True)
+        self.action_notices[key] = message
+        if previous is not None:
+            try:
+                await previous.delete()
+            except discord.HTTPException:
+                pass  # The old interaction token may have expired or been dismissed.
+        while len(self.action_notices) > 512:
+            self.action_notices.pop(next(iter(self.action_notices)))
+
     async def action(self, room_id, action, interaction, *, deferred=False):
         if not deferred:
             await interaction.response.defer(ephemeral=True)
@@ -449,71 +481,72 @@ class Game(commands.Cog):
             room = self.rooms.get(room_id)
             if not room or interaction.guild_id != room["guildId"]:
                 await self._mark_message_closed(interaction.message)
-                await interaction.followup.send("종료된 방입니다.", ephemeral=True)
+                await self._reply_action(interaction, "종료된 방입니다.")
                 return
             user_id = interaction.user.id
             if action == "spectate":
                 room["spectators"].add(user_id)
                 note = f"위 방 메시지의 [{game_name(room)} 하러 가기] 버튼으로 들어오세요." if room["status"] == "PLAYING" else "경기가 시작되면 방 메시지의 게임 링크로 들어오세요."
-                await interaction.followup.send(f"관전자로 등록했습니다. {note}", ephemeral=True)
+                await self._reply_action(interaction, f"관전자로 등록했습니다. {note}")
                 return
             if action in ("start", "close") and user_id != room["hostId"]:
-                await interaction.followup.send("방장만 사용할 수 있습니다.", ephemeral=True)
+                await self._reply_action(interaction, "방장만 사용할 수 있습니다.")
                 return
             if action == "close":
                 self.remove_room(room_id)
                 await self.cancel_handoff(room)
                 await self.edit_room(room, closed="방장이 방을 닫았습니다.")
-                await interaction.followup.send("방을 닫았습니다.", ephemeral=True)
+                await self._reply_action(interaction, "방을 닫았습니다.")
                 return
             if room["status"] != "WAITING":
-                await interaction.followup.send("이미 시작한 경기에는 관전만 가능합니다.", ephemeral=True)
+                await self._reply_action(interaction, "이미 시작한 경기에는 관전만 가능합니다.")
                 return
-            if room.get("game") == "rummikub":
+            if room.get("game") in ("rummikub", "bomb_battle"):
                 if action != "start":
-                    message = await rummikub_lobby_action(self, room, action, interaction.user)
-                    await interaction.followup.send(message, ephemeral=True)
+                    handler = bomb_battle_lobby_action if room.get("game") == "bomb_battle" else rummikub_lobby_action
+                    message = await handler(self, room, action, interaction.user)
+                    await self._reply_action(interaction, message)
                     return
                 if len(room["seats"]) < 2:
-                    await interaction.followup.send("사람 또는 봇을 추가해 2명 이상으로 시작해주세요.", ephemeral=True)
+                    await self._reply_action(interaction, "사람 또는 봇을 추가해 2명 이상으로 시작해주세요.")
                     return
                 try:
                     await self.handoff_room(room)
                 except (aiohttp.ClientError, asyncio.TimeoutError):
-                    await interaction.followup.send("게임 서버 연결에 실패했습니다. 다시 시작해주세요.", ephemeral=True)
+                    await self._reply_action(interaction, "게임 서버 연결에 실패했습니다. 다시 시작해주세요.")
                     return
-                await interaction.followup.send("루미큐브 하러 가기 버튼으로 들어오세요.", ephemeral=True)
+                await self._reply_action(interaction, f"{game_name(room)} 하러 가기 버튼으로 들어오세요.")
                 return
             if action in ("join", "cancel"):
                 if room["mode"] in ("CPU", "SOLO"):
-                    await interaction.followup.send("이 게임에는 플레이어로 참가할 수 없습니다.", ephemeral=True)
+                    await self._reply_action(interaction, "이 게임에는 플레이어로 참가할 수 없습니다.")
                     return
                 if room["handoff"]:
-                    await interaction.followup.send("서버에 경기를 전달 중이라 참가자를 변경할 수 없습니다.", ephemeral=True)
+                    await self._reply_action(interaction, "서버에 경기를 전달 중이라 참가자를 변경할 수 없습니다.")
                     return
                 if action == "join":
                     if room["p2Id"] is not None or user_id == room["hostId"]:
-                        await interaction.followup.send("참가 자리가 없거나 이미 방장입니다.", ephemeral=True)
+                        await self._reply_action(interaction, "참가 자리가 없거나 이미 방장입니다.")
                         return
                     room["p2Id"] = user_id
                     room["spectators"].discard(user_id)
                 else:
                     if room["p2Id"] != user_id:
-                        await interaction.followup.send("현재 2P만 참가를 취소할 수 있습니다.", ephemeral=True)
+                        await self._reply_action(interaction, "현재 2P만 참가를 취소할 수 있습니다.")
                         return
                     room["p2Id"] = None
                 await self.edit_room(room)
-                await interaction.followup.send("참가했습니다." if action == "join" else "참가를 취소했습니다.", ephemeral=True)
+                await self._reply_action(interaction, "참가했습니다." if action == "join" else "참가를 취소했습니다.")
                 return
             if room["mode"] == "PVP" and room["p2Id"] is None:
-                await interaction.followup.send("대결은 상대가 참가해야 시작할 수 있습니다.", ephemeral=True)
+                await self._reply_action(interaction, "대결은 상대가 참가해야 시작할 수 있습니다.")
                 return
             try:
                 await self.handoff_room(room)
             except (aiohttp.ClientError, asyncio.TimeoutError):
-                await interaction.followup.send("서버 응답을 확인하지 못했습니다. 같은 시작 버튼으로 재시도하거나 방을 닫아주세요.", ephemeral=True)
+                await self._reply_action(interaction, "서버 응답을 확인하지 못했습니다. 같은 시작 버튼으로 재시도하거나 방을 닫아주세요.")
                 return
-            await interaction.followup.send(f"게임을 시작했습니다. 위 방 메시지의 [{game_name(room)} 하러 가기] 버튼으로 들어오세요.", ephemeral=True)
+            await self._reply_action(interaction, f"게임을 시작했습니다. 위 방 메시지의 [{game_name(room)} 하러 가기] 버튼으로 들어오세요.")
 
     async def _do_handoff(self, room):
         if not room["handoff"]:
@@ -524,7 +557,7 @@ class Game(commands.Cog):
         payload = {key: str(room[key]) for key in ("roomId", "guildId", "hostId", "matchId")}
         payload.update(p2Id=str(room["p2Id"]) if room["p2Id"] else None, mode=room["mode"])
         payload["game"] = room.get("game", "volleyball")
-        if payload["game"] == "rummikub":
+        if payload["game"] in ("rummikub", "bomb_battle"):
             payload["seats"] = room["seats"]
         if payload["game"] == "rock_run":
             payload["runMode"] = room.get("runMode", "normal")
@@ -566,6 +599,8 @@ class Game(commands.Cog):
                 return web.json_response({"error": "대기방이 닫혔습니다."}, status=404)
             if payload.get("hostId") != str(room["hostId"]) or payload.get("p2Id") != (str(room["p2Id"]) if room["p2Id"] else None):
                 return web.json_response({"error": "참가자가 변경되었습니다. 채팅에서 시작해주세요."}, status=409)
+            if room.get("game") in ("rummikub", "bomb_battle") and payload.get("seats") != room.get("seats"):
+                return web.json_response({"error": "참가자 또는 봇 구성이 변경되었습니다. 새 대기방에서 시작해주세요."}, status=409)
             retry = room["handoff"] and room.get("previousMatchId") == payload["matchId"]
             if retry and room["status"] == "PLAYING":
                 return web.json_response({"roomId": room["roomId"], "matchId": room["matchId"]})
