@@ -1823,3 +1823,21 @@ body:has(.m-shell),body:has(.m-setup){background:#f3f1e7;color:#171714}
 .m-rules-dialog .m-rule-section p+p{margin-top:13px}
 .m-rules-dialog .m-rule-section strong{font-weight:800;color:#25251f}
 @media(max-width:760px){.m-rules-dialog{padding:18px 14px}.m-rules-dialog>header{top:-18px;margin-top:-18px;padding-top:18px;margin-bottom:15px;padding-bottom:12px}.m-rules-dialog .m-rules-guide{grid-template-columns:1fr;gap:13px}.m-rule-section{padding:17px 16px}.m-rules-dialog .m-rule-heading h3{font-size:17px}.m-rules-dialog .m-rule-section p{font-size:14px;line-height:1.85}}
+
+/* Status impacts sit at the victim's feet; captions retain victim and source names. */
+.m-status-impact{position:absolute;left:-50px;top:-36px;width:100px;height:90px;filter:drop-shadow(0 2px 2px #17171455)}
+.m-status-impact svg{width:100%;height:100%;overflow:visible}
+.m-trap-jaw{transform-box:view-box;transform-origin:50px 59px;animation:m-trap-snap .55s cubic-bezier(.2,.8,.25,1) both}
+.jaw-back{--jaw-open:-35deg}.jaw-front{--jaw-open:35deg}
+.m-trap-spark{animation:m-trap-flash .6s ease-out both}
+.m-toxic-pool{transform-origin:50% 70%;animation:m-toxic-pool 1.2s ease-out both}
+.m-toxic-bubble{animation:m-toxic-rise .95s ease-out var(--delay) both}
+.m-toxic-skull{animation:m-toxic-skull 1.2s ease-out both}
+.m-sleep-stars{transform-origin:50px 35px;animation:m-sleep-sway .8s ease-in-out 2 alternate}
+@keyframes m-trap-snap{0%{transform:rotate(var(--jaw-open)) scale(.7);opacity:0}30%{opacity:1}65%{transform:rotate(0deg) scale(1.12)}100%{transform:rotate(0deg) scale(1)}}
+@keyframes m-trap-flash{0%,40%{opacity:0;transform:scale(.6);transform-origin:50px 58px}55%{opacity:1}100%{opacity:0;transform:scale(1.5);transform-origin:50px 58px}}
+@keyframes m-toxic-pool{0%{opacity:0;transform:scale(.2)}25%,80%{opacity:.85;transform:scale(1)}100%{opacity:.4;transform:scale(1.1)}}
+@keyframes m-toxic-rise{0%{opacity:0;translate:0 0}20%{opacity:.9}100%{opacity:0;translate:0 -35px}}
+@keyframes m-toxic-skull{0%{opacity:0;translate:0 15px}30%,80%{opacity:1;translate:0 0}100%{opacity:0;translate:0 -8px}}
+@keyframes m-sleep-sway{from{transform:rotate(-12deg)}to{transform:rotate(12deg)}}
+@media(prefers-reduced-motion:reduce){.m-status-impact *{animation:none!important}.m-trap-spark{display:none}}

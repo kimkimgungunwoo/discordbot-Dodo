@@ -4,7 +4,7 @@ import { AUGMENT_CATALOG, AUGMENT_SELECTION_MS, removeRetiredAugments, publicAug
 import { randomInt } from "node:crypto";
 import { RelayRoom } from "./volleyball-room.js";
 import type { Definition, Peer } from "./protocol.js";
-import { drawTurnOrder,ORDER_DRAW_MS,actingSeat, automaticContinuation, preservesDeadline, applyAction, autoAction, createGame, TURN_MS, type View } from "../../shared/augment-marble.js";
+import { drawTurnOrder,ORDER_DRAW_MS,canAct,actingSeat, automaticContinuation, preservesDeadline, applyAction, autoAction, createGame, TURN_MS, type View } from "../../shared/augment-marble.js";
 
 export class AugmentMarbleRoom extends RelayRoom {
   readonly game;
@@ -64,8 +64,10 @@ export class AugmentMarbleRoom extends RelayRoom {
   handle(peer: Peer, message: any) {
     try {
       if(Date.now()<(this.game.orderDrawUntil??0))throw new Error("순서 추첨 중입니다.");
-      if (!this.started || this.result || this.seat(peer.id) !== actingSeat(this.game)) throw new Error("자신의 차례에만 조작할 수 있습니다.");
-      if (message.matchId !== this.matchId || message.turnId !== this.game.turnId || message.revision !== this.game.revision) throw new Error("최신 상태를 확인한 뒤 다시 시도해주세요.");
+      if (!this.started || this.result || !canAct(this.game,this.seat(peer.id))) throw new Error("자신의 차례에만 조작할 수 있습니다.");
+      const simultaneous=this.game.phase==="augment"&&this.game.augmentResume==="round30";
+      if(simultaneous&&(!["augment_select","augment_reroll"].includes(message.action)||message.offerId!==this.game.augments?.players[this.seat(peer.id)]?.offer?.id))throw new Error("자신의 증강만 선택할 수 있습니다.");
+      if (message.matchId !== this.matchId || message.turnId !== this.game.turnId || (!simultaneous&&message.revision !== this.game.revision)) throw new Error("최신 상태를 확인한 뒤 다시 시도해주세요.");
       if (Date.now() >= this.deadline) { this.timeout(); return; }
       const before = structuredClone(this.game);
       applyAction(this.game, message, () => randomInt(0, 2 ** 32) / 2 ** 32, this.catalog);
@@ -89,8 +91,8 @@ export class AugmentMarbleRoom extends RelayRoom {
     this.timer = setTimeout(() => this.timeout(), Math.max(0, this.deadline - Date.now())); this.timer.unref();
     const continuation=automaticContinuation(this.game);
     if(continuation){this.botTimer=setTimeout(()=>{if(this.result)return;applyAction(this.game,continuation,()=>randomInt(0,2**32)/2**32,this.catalog);this.schedule();this.presence()},700+drawDelay);this.botTimer.unref();}
-    else if (this.definition.seats![actingSeat(this.game)].bot) {
-      this.botTimer = setTimeout(() => { if (this.result) return; const before = structuredClone(this.game), action = autoAction(this.game, true); applyAction(this.game, action, () => randomInt(0, 2 ** 32) / 2 ** 32, this.catalog); this.schedule(preservesDeadline(before, this.game, action)); this.presence(); }, this.game.phase === "roll" ? 1400+drawDelay : 1000+drawDelay);
+    else if (this.definition.seats![actingSeat(this.game)].bot || this.game.augmentResume==="round30"&&this.game.roundPrism?.pending.some(i=>this.definition.seats![i].bot)) {
+      this.botTimer = setTimeout(() => { if (this.result) return; const before = structuredClone(this.game),snapshot=structuredClone(this.game);if(snapshot.augmentResume==="round30")snapshot.augmentSeat=snapshot.roundPrism!.pending.find(i=>this.definition.seats![i].bot)!;const action = autoAction(snapshot, true); applyAction(this.game, action, () => randomInt(0, 2 ** 32) / 2 ** 32, this.catalog); this.schedule(preservesDeadline(before, this.game, action)); this.presence(); }, this.game.phase === "roll" ? 1400+drawDelay : 1000+drawDelay);
       this.botTimer.unref();
     }
   }
