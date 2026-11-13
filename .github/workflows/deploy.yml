@@ -20,10 +20,14 @@ jobs:
           key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
           envs: ENV_FILE
           script: |
+            set -eu
+            : "${ENV_FILE:?ENV_FILE secret is required}"
             cd ~/discordbot
             git fetch origin main
             git reset --hard origin/main
-            [ -f .env ] && cp .env .env.bak
+            if [ -f .env ]; then
+              cp .env .env.bak
+            fi
             printf '%s\n' "$ENV_FILE" > .env
             docker compose -f docker-compose.prod.yml build
             docker compose -f docker-compose.prod.yml run --rm --no-deps bot python -m scripts.init_dynamodb
