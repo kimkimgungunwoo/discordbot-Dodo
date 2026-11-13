@@ -160,3 +160,17 @@ CREATE TABLE IF NOT EXISTS bomb_battle_match (
 );
 INSERT INTO dodo_game(game_code,name) VALUES ('bomb_battle','폭탄전') ON CONFLICT DO NOTHING;
 INSERT INTO dodo_ruleset(game_code,version) VALUES ('bomb_battle','bomb-battle-v1') ON CONFLICT DO NOTHING;
+
+-- 증강마블: retain the marble storage key for existing match history.
+CREATE TABLE IF NOT EXISTS marble_match (
+    match_id TEXT PRIMARY KEY REFERENCES dodo_match(match_id) ON DELETE CASCADE,
+    winner_seat smallint NOT NULL CHECK (winner_seat BETWEEN 0 AND 3),
+    win_reason text NOT NULL CHECK (win_reason IN ('triple','line','bankruptcy','assets'))
+);
+INSERT INTO dodo_game(game_code,name) VALUES ('marble','증강마블') ON CONFLICT (game_code) DO UPDATE SET name = EXCLUDED.name;
+INSERT INTO dodo_ruleset(game_code,version) VALUES ('marble','marble-base-v1') ON CONFLICT DO NOTHING;
+
+-- Upgrade existing marble installations without rewriting their historical results.
+ALTER TABLE marble_match DROP CONSTRAINT IF EXISTS marble_match_win_reason_check;
+ALTER TABLE marble_match ADD CONSTRAINT marble_match_win_reason_check CHECK (win_reason IN ('triple','line','bankruptcy','assets'));
+INSERT INTO dodo_ruleset(game_code,version) VALUES ('marble','marble-augments-v2') ON CONFLICT DO NOTHING;

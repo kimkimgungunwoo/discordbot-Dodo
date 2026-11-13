@@ -1,0 +1,142 @@
+{
+  "checked_on": "2026-11-11",
+  "automated_tests": 162,
+  "augment_event_pairs": 1980,
+  "browser_widths": [
+    390,
+    1440
+  ],
+  "simulation": {
+    "salary": 100,
+    "startCash": 300,
+    "samplesPerGroup": 60,
+    "rows": [
+      {
+        "augments": false,
+        "players": 2,
+        "samples": 60,
+        "unfinished": 0,
+        "medianMaxLaps": 19,
+        "medianTurns": 179,
+        "medianMinAcquired": 0,
+        "wins": {
+          "line": 14,
+          "bankruptcy": 26,
+          "triple": 13,
+          "assets": 7
+        },
+        "seatWins": [
+          28,
+          32
+        ],
+        "actions": 32564
+      },
+      {
+        "augments": false,
+        "players": 3,
+        "samples": 60,
+        "unfinished": 0,
+        "medianMaxLaps": 22,
+        "medianTurns": 266,
+        "medianMinAcquired": 0,
+        "wins": {
+          "triple": 6,
+          "bankruptcy": 19,
+          "assets": 20,
+          "line": 15
+        },
+        "seatWins": [
+          32,
+          19,
+          9
+        ],
+        "actions": 48519
+      },
+      {
+        "augments": false,
+        "players": 4,
+        "samples": 60,
+        "unfinished": 0,
+        "medianMaxLaps": 22,
+        "medianTurns": 313,
+        "medianMinAcquired": 0,
+        "wins": {
+          "assets": 22,
+          "bankruptcy": 16,
+          "triple": 3,
+          "line": 19
+        },
+        "seatWins": [
+          17,
+          12,
+          14,
+          17
+        ],
+        "actions": 58270
+      },
+      {
+        "augments": true,
+        "players": 2,
+        "samples": 60,
+        "unfinished": 0,
+        "medianMaxLaps": 17,
+        "medianTurns": 135,
+        "medianMinAcquired": 4,
+        "wins": {
+          "line": 12,
+          "bankruptcy": 26,
+          "assets": 13,
+          "triple": 9
+        },
+        "seatWins": [
+          35,
+          25
+        ],
+        "actions": 35864
+      },
+      {
+        "augments": true,
+        "players": 3,
+        "samples": 60,
+        "unfinished": 0,
+        "medianMaxLaps": 21,
+        "medianTurns": 224,
+        "medianMinAcquired": 4,
+        "wins": {
+          "line": 17,
+          "assets": 21,
+          "bankruptcy": 12,
+          "triple": 10
+        },
+        "seatWins": [
+          20,
+          23,
+          17
+        ],
+        "actions": 57149
+      },
+      {
+        "augments": true,
+        "players": 4,
+        "samples": 60,
+        "unfinished": 0,
+        "medianMaxLaps": 22,
+        "medianTurns": 292,
+        "medianMinAcquired": 4,
+        "wins": {
+          "line": 15,
+          "assets": 18,
+          "triple": 9,
+          "bankruptcy": 18
+        },
+        "seatWins": [
+          18,
+          18,
+          12,
+          12
+        ],
+        "actions": 69773
+      }
+    ]
+  }
+}

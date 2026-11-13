@@ -25,3 +25,16 @@ games/*/dist/
 /output/design/
 /docs/design/*.png
 /games/client/design-preview/
+
+# Runtime game checkpoints
+.state/
+games/server/.state/
+
+# Test code and local browser checks
+tests/
+__tests__/
+test_*.py
+*_test.py
+*.test.*
+*.spec.*
+/games/client/scripts/check-*.py

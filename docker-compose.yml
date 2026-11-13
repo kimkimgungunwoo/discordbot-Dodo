@@ -51,9 +51,11 @@ services:
       - .env
     environment:
       BOT_INTERNAL_URL: http://bot:3002
+      MARBLE_STATE_DIR: /marble-state
     volumes:
       - ./games/server:/app
       - ./games/shared:/shared
+      - marble_state:/marble-state
       - /app/node_modules
     ports:
       - "3001:3001"
@@ -91,3 +93,4 @@ services:
 
 volumes:
   dodo_postgres_data:
+  marble_state:

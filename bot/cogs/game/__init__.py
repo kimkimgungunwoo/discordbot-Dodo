@@ -166,10 +166,12 @@ class LobbyView(discord.ui.View):
                 await self.cog.action(self.room_id, "bot_remove", event)
             item.callback = remove_bot
             self.add_item(item)
-        if cog.rooms.get(room_id, {}).get("game") == "rummikub" and not playing:
+        if cog.rooms.get(room_id, {}).get("game") in ("rummikub", "marble") and not playing:
             for action, label in (("bot_normal", "중간 봇 추가"), ("bot_hard", "어려움 봇 추가"), ("bot_remove", "봇 제거")):
+                if cog.rooms[room_id]["game"] == "marble" and action == "bot_hard":
+                    continue
                 item = discord.ui.Button(label=label, style=discord.ButtonStyle.secondary, row=1,
-                                         custom_id=f"dodo:rummikub:{action}:{room_id}")
+                                         custom_id=f"dodo:{cog.rooms[room_id]['game']}:{action}:{room_id}")
                 async def configure(event, action=action):
                     await self.cog.action(self.room_id, action, event)
                 item.callback = configure
@@ -284,12 +286,12 @@ class Game(commands.Cog):
         if room.get("last_result"):
             description = room["last_result"] + "\n\n" + description
         embed = discord.Embed(title=f"도도새{game_name(room)}", description=description, color=discord.Color.green())
-        if room.get("game") in ("rummikub", "bomb_battle"):
+        if room.get("game") in ("rummikub", "bomb_battle", "marble"):
             for i, color in enumerate(("🔵", "🔴", "🟢", "🟠")):
                 seat = room["seats"][i] if i < len(room["seats"]) else None
                 value = (f'<@{seat["userId"]}>' if seat["userId"] else seat["name"]) if seat else "참가 대기"
                 embed.add_field(name=f"{color} {i + 1}P", value=value)
-            embed.set_footer(text="2~4인 · 방향키 이동 · Space 폭탄 · PC 전용" if room.get("game") == "bomb_battle" else "2~4인 · 턴 제한 60초")
+            embed.set_footer(text="2~4인 · 방향키 이동 · Space 폭탄 · PC 전용" if room.get("game") == "bomb_battle" else "2~4인 · 행동 제한 45초" if room.get("game") == "marble" else "2~4인 · 턴 제한 60초")
             return embed
         embed.add_field(name="플레이어" if solo else "1P · 방장", value=f'<@{room["hostId"]}>')
         if room.get("game") == "rock_run":
@@ -301,7 +303,7 @@ class Game(commands.Cog):
         return embed
 
     async def select_mode(self, ctx: commands.Context, game="volleyball"):
-        if game in ("rummikub", "bomb_battle"):
+        if game in ("rummikub", "bomb_battle", "marble"):
             return await self.create_room(ctx, game=game, mode="PVP")
         if not ctx.guild:
             await ctx.send("서버 채널에서 사용해주세요.")
@@ -365,7 +367,7 @@ class Game(commands.Cog):
                             hostId=ctx.author.id, p2Id=None, spectators=set(), status="WAITING", handoff=False, mode=mode, difficulty=difficulty,
                             runMode=run_mode, matchId=None, previousMatchId=None)
                 self.rooms[room_id] = room
-                if game in ("rummikub", "bomb_battle"):
+                if game in ("rummikub", "bomb_battle", "marble"):
                     room["seats"] = [{"userId": str(ctx.author.id), "name": ctx.author.display_name[:80]}]
                 if mode == "CPU":
                     try:
@@ -501,7 +503,7 @@ class Game(commands.Cog):
             if room["status"] != "WAITING":
                 await self._reply_action(interaction, "이미 시작한 경기에는 관전만 가능합니다.")
                 return
-            if room.get("game") in ("rummikub", "bomb_battle"):
+            if room.get("game") in ("rummikub", "bomb_battle", "marble"):
                 if action != "start":
                     handler = bomb_battle_lobby_action if room.get("game") == "bomb_battle" else rummikub_lobby_action
                     message = await handler(self, room, action, interaction.user)
@@ -557,7 +559,7 @@ class Game(commands.Cog):
         payload = {key: str(room[key]) for key in ("roomId", "guildId", "hostId", "matchId")}
         payload.update(p2Id=str(room["p2Id"]) if room["p2Id"] else None, mode=room["mode"])
         payload["game"] = room.get("game", "volleyball")
-        if payload["game"] in ("rummikub", "bomb_battle"):
+        if payload["game"] in ("rummikub", "bomb_battle", "marble"):
             payload["seats"] = room["seats"]
         if payload["game"] == "rock_run":
             payload["runMode"] = room.get("runMode", "normal")
@@ -599,7 +601,7 @@ class Game(commands.Cog):
                 return web.json_response({"error": "대기방이 닫혔습니다."}, status=404)
             if payload.get("hostId") != str(room["hostId"]) or payload.get("p2Id") != (str(room["p2Id"]) if room["p2Id"] else None):
                 return web.json_response({"error": "참가자가 변경되었습니다. 채팅에서 시작해주세요."}, status=409)
-            if room.get("game") in ("rummikub", "bomb_battle") and payload.get("seats") != room.get("seats"):
+            if room.get("game") in ("rummikub", "bomb_battle", "marble") and payload.get("seats") != room.get("seats"):
                 return web.json_response({"error": "참가자 또는 봇 구성이 변경되었습니다. 새 대기방에서 시작해주세요."}, status=409)
             retry = room["handoff"] and room.get("previousMatchId") == payload["matchId"]
             if retry and room["status"] == "PLAYING":

@@ -6,6 +6,7 @@ from .registry import GAMES
 
 
 FILTERS = {
+    "marble:PVP": ("marble", "PVP", "🎲 증강마블 · 포인트"),
     "bomb_battle:PVP": ("bomb_battle", "PVP", "💣 폭탄전 · 포인트"),
     "alkkagi:CPU": ("alkkagi", "CPU", "⚪ 알까기 · 봇전"),
     "alkkagi:PVP": ("alkkagi", "PVP", "⚫ 알까기 · 대결"),
@@ -97,6 +98,9 @@ class GameStatsView(discord.ui.View):
 
     @staticmethod
     def _record(stats: dict, game: str, mode: str, endless: bool = False) -> str:
+        if game == "marble":
+            return (f"플레이 **{stats['plays']}회**\n누적 포인트 **{stats['total_score']:+,}점**\n"
+                    f"{stats['wins']}승 {stats['losses']}패 · 승리 +10×상대 수 / 패배 -10")
         if game == "rummikub":
             return f"플레이 **{stats['plays']}회**\n누적 포인트 **{stats['total_score']:+,}점**\n봇 보정 포함 · 승패 레이팅 미사용"
         if game == "bomb_battle":
@@ -121,7 +125,7 @@ class GameStatsView(discord.ui.View):
         embed = self.filter_embed()
         embed.title = f"{label} · 내 전적"
         embed.description = self._record(stats, game, mode, self.filter_key == "rock_run:ENDLESS") if stats else "아직 기록된 경기가 없습니다."
-        if game in ("rummikub", "bomb_battle") and stats:
+        if game in ("rummikub", "bomb_battle", "marble") and stats:
             history = await self.store.rummikub_history(self.owner_id) if game == "rummikub" else await self.store.points_history(self.owner_id, game)
             if history:
                 embed.add_field(name="최근 10경기 · 획득/차감 포인트", value="\n".join(
@@ -138,7 +142,7 @@ class GameStatsView(discord.ui.View):
         medals = ["🥇", "🥈", "🥉"]
         for index, row in enumerate(rows, 1):
             prefix = medals[index - 1] if index <= 3 else f"`{index:>2}.`"
-            if game in ("rummikub", "bomb_battle"):
+            if game in ("rummikub", "bomb_battle", "marble"):
                 value = f"{row['total_score']:+,}점 · {row['plays']}회"
             elif game == "rock_run":
                 value = f"{(row['best_score'] or 0) / 1000:.2f}초" if self.filter_key == "rock_run:ENDLESS" else f"{row['best_score'] or 0:,}점"
