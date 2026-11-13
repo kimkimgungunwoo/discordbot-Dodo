@@ -1,7 +1,7 @@
-import {captureCashTransfers,type MoneyTransfer} from "./augment-marble-money.js";
+import {captureCashTransfers,bankCashChange,type MoneyTransfer} from "./augment-marble-money.js";
 import { strategicBotAction } from "./augment-marble-bot.js";
 import { createEventState, drawEvent, eventDefinition, type EventId, type EventState } from "./augment-marble-events.js";
-import { acquireEffect, capabilities, cashback, factor, incomeAmount, power, receiveIncome, spendCost, steal, reportDiscount, reportMoney, salaryAmount, receiveSalary, consumeLoss, lossAmount, immune, refreshGamble, revivePlayer, syncRevival, flushPendingAcquisitions } from "./augment-marble-effects.js";
+import { incomeWithoutGlass,glassIncome,lossWithoutGlass,transferMoney,stealMoney,acquireEffect, capabilities, cashback, factor, incomeAmount, power, receiveIncome, spendCost, steal, reportDiscount, reportMoney, salaryAmount, receiveSalary, consumeLoss, lossAmount, immune, refreshGamble, revivePlayer, syncRevival, flushPendingAcquisitions } from "./augment-marble-effects.js";
 import { createAbilityRuntime, createRoll, diceChoices, configureRoll, throwDice, rerollDice, chooseBlackDice, emitAbility, type ForceAbility, type RerollAbility, type AbilityRuntime } from "./augment-marble-runtime.js";
 import { START_CASH, SALARY, BONUS, LAND_TAX_RATE, BUILDINGS, GROUP_ECONOMY } from "./augment-marble-economy.js";
 export { START_CASH, SALARY, BONUS, LAND_TAX_RATE, BUILDINGS, GROUP_ECONOMY } from "./augment-marble-economy.js";
@@ -9,7 +9,8 @@ import { AUGMENT_CATALOG, createAugmentState, openAugmentOffer, rerollAugment, s
 // Money is expressed in 만원. Shared by the authoritative server and practice mode.
 export const COLORS = ["#547f9b", "#ba705e", "#6f8b63", "#b48a48"];
 export const GROUP_COLORS = ["#b73730", "#956000", "#24733e", "#007688", "#6940a6", "#ac2e69", "#315ab7"];
-export const MAX_ROUNDS = 120;
+export const MAX_ROUNDS = 80;
+export const COLOR_GROUPS_TO_WIN = 2;
 export const TURN_MS = 45_000;
 export type Tile = { index: number; name: string; kind: "city" | "start" | "rest" | "event" | "bonus" | "portal"; group: number; line: number; price: number };
 const labels = ["출발", "A1", "A2", "A3", "A4", "이벤트", "B1", "B2", "B3", "무인도", "B4", "C1", "C2", "C3", "이벤트", "C4", "D1", "D2", "이벤트", "D3", "D4", "E1", "E2", "보너스", "E3", "E4", "F1", "포탈", "F2", "F3", "F4", "G1", "이벤트", "G2", "G3", "G4"];
@@ -21,7 +22,7 @@ export interface Player { name: string; cash: number; position: number; bankrupt
 export interface Property { revisitBoost?:number; owner: number | null; buildings: number; landmark?: boolean; builtTurn?: number; purchasedTurn?:number; festival?: number; locust?: number }
 export type Phase = "portal" | "event" | "rent" | "augment" | "roll" | "dice" | "buy" | "build" | "takeover" | "debt" | "end" | "finished";
 export type WinReason = "bankruptcy" | "triple" | "line" | "assets";
-export interface Game { landmarkVisit?:{seat:number;tile:number;turnId:number}; teleport?:{id:number;seat:number;from:number;to:number}; destructionBatch?:{id:number;revision:number;kind:"quake"|"missile";items:{tile:number;before:Property}[]}; flightBatch?:{id:number;items:{seat:number;from:number;to:number}[]}; turnOrder?:number[];orderDrawUntil?:number; moneyTransfers?:MoneyTransfer[]; world: EventState; abilities: AbilityRuntime; players: Player[]; properties: Property[]; turn: number; turnId: number; round: number; roundPending: number[]; revision: number; phase: Phase; dice: number[]; doubles: number; extraTurn: boolean; winner: number | null; reason: WinReason | null; debt: { amount: number; creditor: number | null; reason: "rent" | "land_tax"; resume: "takeover" | "arrival" | "event" } | null; log: string[]; augments: AugmentState | null; augmentSeat: number | null; augmentResume: "start" | "arrive" | null }
+export interface Game { landmarkVisit?:{seat:number;tile:number;turnId:number}; teleport?:{id:number;seat:number;from:number;to:number}; destructionBatch?:{id:number;revision:number;kind:"quake"|"missile";items:{tile:number;before:Property}[]}; flightBatch?:{id:number;items:{seat:number;from:number;to:number}[]}; turnOrder?:number[];orderDrawUntil?:number; moneyTransfers?:MoneyTransfer[]; world: EventState; abilities: AbilityRuntime; players: Player[]; properties: Property[]; turn: number; turnId: number; round: number; roundPending: number[]; revision: number; phase: Phase; dice: number[]; doubles: number; extraTurn: boolean; winner: number | null; reason: WinReason | null; debt: { amount: number; creditor: number | null; reason: "rent" | "land_tax"; principal?:number;receipt?:number; resume: "takeover" | "arrival" | "event" } | null; log: string[]; augments: AugmentState | null; augmentSeat: number | null; augmentResume: "start" | "arrive" | null }
 export interface Seat { userId: string | null; name: string; bot?: string }
 export interface View { type: "MARBLE_STATE"; matchId: string; game: Game; seats: (Seat & { connected: boolean; ready?: boolean })[]; seat: number; started: boolean; deadline: number; serverNow: number; aborted?: string; rematch?: { matchId: string; votes: string[]; required: number; delivered: boolean } }
 export interface Action { action: "portal_move" | "roll" | "buy" | "build" | "takeover" | "skip" | "end" | "sell" | "bankrupt" | "augment_select" | "augment_reroll" | "dice_force" | "dice_double" | "dice_copy" | "dice_reroll" | "dice_choose" | "dice_confirm" | "subsidy" | "escape" | "landmark" | "ability_target" | "island_buy" | "event_resolve" | "rent_pay" | "coupon_pass" | "home_stone" | "extra_coupon"; eventSerial?: number; amount?: number; decline?: boolean; augmentId?: string; line?: number; steps?: number; target?: number; ability?: ForceAbility | RerollAbility; option?: number; die?: 0 | 1; useNew?: boolean; offerId?: string; slot?: number; buildings?:number[]; building?: number; tile?: number }
@@ -59,26 +60,33 @@ export function rent(g: Game, index: number, modifiers = true) {
 }
 export function value(g: Game, index: number) { return (g.properties[index].landmark ? BOARD[index].price : 0) + BOARD[index].price + BUILDINGS.reduce((sum, _, i) => sum + (g.properties[index].buildings & (1 << i) ? construction(index, i).cost : 0), 0); }
 export function assets(g: Game, owner: number) { return g.players[owner].cash + BOARD.reduce((sum, t) => sum + (g.properties[t.index].owner === owner && !g.properties[t.index].landmark ? incomeAmount(g, owner, Math.floor(value(g, t.index) / 2)) : 0), 0); }
-function win(g: Game, winner: number, reason: WinReason) { g.winner = winner; g.reason = reason; g.phase = "finished"; note(g, `${winner + 1}P ${reason === "triple" ? "트리플 독점" : reason === "line" ? "라인 독점" : reason === "assets" ? "라운드 제한 · 자산승리" : "파산승리"}!`); }
+function win(g: Game, winner: number, reason: WinReason) { g.winner = winner; g.reason = reason; g.phase = "finished"; note(g, `${winner + 1}P ${reason === "triple" ? "컬러독점" : reason === "line" ? "라인 독점" : reason === "assets" ? "라운드 제한 · 자산승리" : "파산승리"}!`); }
 function checkWin(g: Game) {
   const alive = g.players.map((p, i) => p.bankrupt ? -1 : i).filter(i => i >= 0);
   if (alive.length === 1) { win(g, alive[0], "bankruptcy"); return; }
   for (const owner of alive) {
-    if (groupCount(g, owner) >= 3) { win(g, owner, "triple"); return; }
+    if (groupCount(g, owner) >= COLOR_GROUPS_TO_WIN) { win(g, owner, "triple"); return; }
     if ([0, 1, 2, 3].some(line => BOARD.filter(t => t.kind === "city" && t.line === line).every(t => g.properties[t.index].owner === owner))) { win(g, owner, "line"); return; }
   }
 }
-function pay(g: Game, amount: number, creditor: number | null, resume: "takeover" | "arrival" | "event" = "takeover", reason: "rent" | "land_tax" = "rent") {
+interface PaymentSplit {principal?:number;receipt?:number}
+function settlePayment(g:Game,payer:number,amount:number,creditor:number|null,split:PaymentSplit={}){
+ consumeLoss(g,payer,amount);
+ if(creditor===null){bankCashChange(g,payer,-amount);return;}
+ const principal=Math.min(amount,split.principal??amount),receipt=split.receipt===undefined?principal:principal===split.principal?split.receipt:split.receipt>(split.principal??0)?glassIncome(g,creditor,principal):principal;
+ transferMoney(g,payer,creditor,amount,principal,receipt);
+ if(amount>principal)note(g,`${payer+1}P 유리대포 · 추가 지출 ${amount-principal}만원 소멸`);
+ if(receipt>principal)note(g,`${creditor+1}P 유리대포 · 추가 수입 ${receipt-principal}만원 은행 지급`);
+}
+function pay(g: Game, amount: number, creditor: number | null, resume: "takeover" | "arrival" | "event" = "takeover", reason: "rent" | "land_tax" = "rent",split:PaymentSplit={}) {
   const revive = g.abilities.statuses[g.turn].revival;
   if (g.players[g.turn].cash < amount && assets(g, g.turn) < amount && revive && !revive.consumed && definitionsActive(g,g.turn)) {
     for (let tile = 0; tile < g.properties.length; tile++) if (g.properties[tile].owner === g.turn && !g.properties[tile].landmark) g.properties[tile] = { owner: null, buildings: 0,locust:g.properties[tile].locust };
     revivePlayer(g,g.turn);
     return true;
   }
-  if (g.players[g.turn].cash < amount) { g.debt = { amount, creditor, resume, reason }; g.phase = "debt"; note(g, `${g.turn + 1}P 지급할 ${amount}만원이 부족합니다. 자산을 매각해주세요.`); return false; }
-  consumeLoss(g,g.turn,amount);
-  g.players[g.turn].cash -= amount;
-  if (creditor !== null) g.players[creditor].cash += amount;
+  if (g.players[g.turn].cash < amount) { g.debt = { amount, creditor, resume, reason,...split }; g.phase = "debt"; note(g, `${g.turn + 1}P 지급할 ${amount}만원이 부족합니다. 자산을 매각해주세요.`); return false; }
+  settlePayment(g,g.turn,amount,creditor,split);
   return true;
 }
 function continueArrival(g: Game, random: () => number, catalog: readonly AugmentDefinition[]) {
@@ -93,8 +101,8 @@ function afterPayment(g: Game, random: () => number, catalog: readonly AugmentDe
 }
 function rewardRevisit(g:Game,seat:number,tile:number){
  const p=g.properties[tile];if(BOARD[tile].kind!=="city"||p.owner!==seat||p.buildings!==7)return;
- const old=p.revisitBoost??0,before=incomeAmount(g,seat,rent(g,tile));p.revisitBoost=old+1;
- if(p.revisitBoost!==old){const after=incomeAmount(g,seat,rent(g,tile));note(g,`${seat+1}P ${BOARD[tile].name} 재방문 · 통행료 ${before} → ${after}만원 (누적 +${p.revisitBoost*30}%)`);emitAbility(g.abilities,{actor:seat,tile,ability:"revisit",caption:`${BOARD[tile].name} 통행료 ${before} → ${after}만원`,amount:after-before,rentChange:{before,after,level:p.revisitBoost},visual:"buff"});}
+ const old=p.revisitBoost??0,before=incomeWithoutGlass(g,seat,rent(g,tile));p.revisitBoost=old+1;
+ if(p.revisitBoost!==old){const after=incomeWithoutGlass(g,seat,rent(g,tile));note(g,`${seat+1}P ${BOARD[tile].name} 재방문 · 통행료 ${before} → ${after}만원 (누적 +${p.revisitBoost*30}%)`);emitAbility(g.abilities,{actor:seat,tile,ability:"revisit",caption:`${BOARD[tile].name} 통행료 ${before} → ${after}만원`,amount:after-before,rentChange:{before,after,level:p.revisitBoost},visual:"buff"});}
 }
 
 function arrive(g: Game, random: () => number = Math.random) {
@@ -107,11 +115,11 @@ function arrive(g: Game, random: () => number = Math.random) {
     if (property.owner === null) g.phase = "buy";
     else if (property.owner === g.turn) g.phase = property.purchasedTurn===g.turnId&&player.laps<2?"end":"build";
     else {
-      const toll = rentPayment(g,tile.index,g.turn);
+      const quote = rentQuote(g,tile.index,g.turn),toll=quote.amount;
       property.festival=0;
       if(toll>0 && g.world.players[g.turn].autoPass>0){g.world.players[g.turn].autoPass--;note(g,"하이패스 · 통행료 자동 면제");g.phase="takeover";}
-      else if(toll>0 && g.world.players[g.turn].passCoupons>0){g.world.rent={amount:toll,creditor:property.owner,tile:tile.index};g.phase="rent";}
-      else {note(g,`통행료 ${toll}만원 → ${property.owner+1}P`);if(pay(g,toll,property.owner))g.phase="takeover";}
+      else if(toll>0 && g.world.players[g.turn].passCoupons>0){g.world.rent={...quote,creditor:property.owner,tile:tile.index};g.phase="rent";}
+      else {note(g,`통행료 ${quote.principal}만원 → ${property.owner+1}P`);if(pay(g,toll,property.owner,"takeover","rent",quote))g.phase="takeover";}
 
     }
   } else {
@@ -156,7 +164,7 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
     if(g.phase!=="rent" || !g.world.rent)throw new Error("통행료를 선택하는 단계가 아닙니다.");
     const bill=g.world.rent;
     if(input.action==="coupon_pass"){if(g.world.players[g.turn].passCoupons<1)throw new Error("하이패스 쿠폰이 없습니다.");g.world.players[g.turn].passCoupons--;g.phase=g.world.noPurchase?"end":"takeover";note(g,"하이패스 쿠폰 · 통행료 면제");}
-    else if(pay(g,bill.amount,bill.creditor,g.world.noPurchase?"event":"takeover"))g.phase=g.world.noPurchase?"end":"takeover";
+    else if(pay(g,bill.amount,bill.creditor,g.world.noPurchase?"event":"takeover","rent",bill))g.phase=g.world.noPurchase?"end":"takeover";
     g.world.rent=null;g.revision++;return;
   }
   if(g.phase==="rent")throw new Error("통행료 지급 여부를 먼저 선택해주세요.");
@@ -260,21 +268,21 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
   } else if (input.action === "takeover") {
     requirePhase("takeover"); const cost = takeoverCost(g, index);
     if (property.landmark || property.owner === null || property.owner === g.turn || player.cash < cost) throw new Error("인수할 현금이 부족합니다.");
-    consumeLoss(g,g.turn,cost);player.cash -= cost;
+    const principal=power(g,g.turn,"glass_cannon")?cost/2:cost;
     reportDiscount(g,g.turn,"negotiator",takeoverBase(g,index),cost);
-    const receipt=incomeAmount(g,property.owner,cost);
-    if(receipt>cost)reportMoney(g,property.owner,power(g,property.owner,"investor")?"investor":"glass_cannon",`인수 수입 · ${cost} → ${receipt}만원`,receipt-cost);
-    g.players[property.owner].cash+=receipt; property.owner = g.turn;property.purchasedTurn=g.turnId;delete g.landmarkVisit;for(const gambles of g.abilities.gambles)delete gambles[index];refreshGamble(g,g.turn,index,random); cashback(g, g.turn, cost); g.phase = player.laps>=2?"build":"end"; note(g, `${g.turn + 1}P ${BOARD[index].name} 인수 · ${cost}만원`); checkWin(g);
+    const receipt=incomeAmount(g,property.owner,principal);
+    if(receipt>principal)reportMoney(g,property.owner,power(g,property.owner,"investor")?"investor":"glass_cannon",`인수 수입 · ${principal} → ${receipt}만원`,receipt-principal);
+    consumeLoss(g,g.turn,cost);transferMoney(g,g.turn,property.owner,cost,principal,receipt); property.owner = g.turn;property.purchasedTurn=g.turnId;delete g.landmarkVisit;for(const gambles of g.abilities.gambles)delete gambles[index];refreshGamble(g,g.turn,index,random); cashback(g, g.turn, cost); g.phase = player.laps>=2?"build":"end"; note(g, `${g.turn + 1}P ${BOARD[index].name} 인수 · ${cost}만원`); checkWin(g);
   } else if (input.action === "sell") {
     requirePhase("debt"); const tile = input.tile;
     if (!Number.isInteger(tile) || tile! < 0 || tile! >= BOARD.length || g.properties[tile!].owner !== g.turn || g.properties[tile!].landmark) throw new Error("내 지역만 매각할 수 있습니다.");
     const proceeds = Math.floor(value(g, tile!) / 2); g.properties[tile!] = { owner: null, buildings: 0,locust:g.properties[tile!].locust }; const paid = receiveIncome(g, g.turn, proceeds);
     note(g, `${BOARD[tile!].name} 매각 · ${paid}만원`);
-    const debt = g.debt!; if (pay(g, debt.amount, debt.creditor, debt.resume, debt.reason)) afterPayment(g, random, catalog);
+    const debt = g.debt!; if (pay(g, debt.amount, debt.creditor, debt.resume, debt.reason,debt)) afterPayment(g, random, catalog);
   } else if (input.action === "bankrupt") {
     requirePhase("debt");
     if (assets(g, g.turn) >= g.debt!.amount) throw new Error("자산 매각으로 지급할 수 있습니다.");
-    if (g.debt!.creditor !== null) g.players[g.debt!.creditor!].cash += assets(g, g.turn);
+    const liquidation=assets(g,g.turn);bankCashChange(g,g.turn,liquidation-player.cash);settlePayment(g,g.turn,liquidation,g.debt!.creditor,g.debt!);
     player.cash = 0; player.bankrupt = true; g.abilities.movement = null; g.abilities.marks = g.abilities.marks.filter(m => m.owner !== g.turn); g.extraTurn = false; g.debt = null;
     g.properties.forEach((p,i) => { if (p.owner === g.turn) g.properties[i]={owner:null,buildings:0,locust:p.locust}; });
     note(g, `${g.turn + 1}P 파산`); checkWin(g); if (g.winner === null) end(g,random,catalog);
@@ -333,17 +341,6 @@ function chooseAutoAction(g: Game, bot = false): Action {
       const copies = choices.copies.map(sum => ({ sum, score: tileUtility(g, sum) } )).sort((a, b) => b.score - a.score);
       if (copies[0]?.score > 40) return { action: "dice_copy", option: copies[0].sum };
       if (choices.workSubsidy && cash < 60) return { action: "subsidy" };
-      const ability = choices.forces.at(-1);
-      if (ability) {
-        const options = ability === "force_gold" ? Array.from({ length: 11 }, (_, i) => i + 2) : ability === "force_silver" ? [0, 1] : [0, 1, 2, 3];
-        const scores = options.map(option => {
-          const roll = createRoll(g.turn, g.abilities.ordinal); configureRoll(roll, capabilities(g), { ability, option });
-          let total = 0, count = 0;
-          for (let a = 1; a <= 6; a++) for (let b = 1; b <= 6; b++) if (a + b >= roll.min && a + b <= roll.max) { total += tileUtility(g, a + b); count++; }
-          return { option, score: total / count };
-        }).sort((a, b) => b.score - a.score);
-        return { action: "dice_force", ability, option: scores[0].option };
-      }
       if (choices.selectiveDouble && g.doubles < 2) return { action: "dice_double", useNew: true };
     }
     return { action: "roll" };
@@ -372,10 +369,14 @@ export function takeoverCost(g: Game, index: number, seat = g.turn) {
   const owner = g.properties[index].owner;
   return owner === null ? 0 : spendCost(g, seat, takeoverBase(g,index), "negotiator");
 }
-export function rentPayment(g: Game, index: number, seat: number) {
-  const owner = g.properties[index].owner;
-  return owner === null ? 0 : lossAmount(g, seat, (immune(g,seat) ? rent(g,index,false) : incomeAmount(g, owner, rent(g, index))) * ((g.world?.players[seat].overspendUntil ?? 0) >= g.abilities.ownerTurns[seat] && (g.world?.players[seat].overspendUntil ?? 0)>0 ? 1.5:1));
+export function rentQuote(g:Game,index:number,seat:number){
+ const owner=g.properties[index].owner;if(owner===null)return {amount:0,principal:0,receipt:0};
+ const protectedVisitor=immune(g,seat),base=(protectedVisitor?rent(g,index,false):incomeWithoutGlass(g,owner,rent(g,index)))*((g.world?.players[seat].overspendUntil??0)>=g.abilities.ownerTurns[seat]&&(g.world?.players[seat].overspendUntil??0)>0?1.5:1);
+ const amount=lossAmount(g,seat,base),principal=lossWithoutGlass(g,seat,base),receipt=glassIncome(g,owner,principal);
+ return {amount,principal,receipt};
 }
+export function rentPayment(g:Game,index:number,seat:number){return rentQuote(g,index,seat).amount;}
+
 export const ISLAND_COST = 300;
 export const ISLAND_FEE = 30;
 export function turnTargets(g: Game) {
@@ -551,27 +552,27 @@ function forcedArrival(g: Game, seat: number, random: () => number) {
   else if(tile.kind==="bonus") receiveIncome(g,seat,BONUS);
   else if(tile.kind==="rest" && !power(g,seat,"island_owner")) p.rest=3;
   else if(tile.kind==="city" && property.owner!==null && property.owner!==seat) {
-    const amount=rentPayment(g,tile.index,seat);property.festival=0;
+    const quote=rentQuote(g,tile.index,seat),amount=quote.amount;property.festival=0;
     if(amount>0&&g.world.players[seat].autoPass>0){g.world.players[seat].autoPass--;note(g,`${seat+1}P 하이패스 · 강제 이동 통행료 면제`);}
-    else if(amount>0&&g.world.players[seat].passCoupons>0){g.world.deferred??=[];g.world.deferred.push({seat,tile:tile.index,effects:false,noPurchase:true,rentAmount:amount,creditor:property.owner});note(g,`${seat+1}P 강제 이동 통행료 · 쿠폰 선택 대기`);}
-    else settleForcedPayment(g,seat,amount,property.owner);
+    else if(amount>0&&g.world.players[seat].passCoupons>0){g.world.deferred??=[];g.world.deferred.push({seat,tile:tile.index,effects:false,noPurchase:true,rentAmount:amount,principal:quote.principal,receipt:quote.receipt,creditor:property.owner});note(g,`${seat+1}P 강제 이동 통행료 · 쿠폰 선택 대기`);}
+    else settleForcedPayment(g,seat,amount,property.owner,quote);
   }
   else if(tile.kind==="start") { receiveSalary(g,seat);settleForcedPayment(g,seat,landTax(g,seat),null); }
 }
-function settleForcedPayment(g: Game, seat: number, amount: number, creditor: number | null) {
+function settleForcedPayment(g: Game, seat: number, amount: number, creditor: number | null,split:PaymentSplit={}) {
   const p=g.players[seat];
   // Forced displacement has no purchase phase. Liquidate assets only as needed for compulsory payments.
   for (const tile of BOARD.filter(t => g.properties[t.index].owner===seat && !g.properties[t.index].landmark).sort((a,b)=>salePriority(g,a.index)-salePriority(g,b.index))) {
     if(p.cash>=amount) break;
-    const proceeds=saleProceeds(g,tile.index,seat);g.properties[tile.index]={owner:null,buildings:0,locust:g.properties[tile.index].locust};p.cash+=proceeds;
+    const proceeds=saleProceeds(g,tile.index,seat);g.properties[tile.index]={owner:null,buildings:0,locust:g.properties[tile.index].locust};bankCashChange(g,seat,proceeds);
   }
   if(p.cash<amount) {
     const revival=g.abilities.statuses[seat].revival;
     if(revival&&!revival.consumed && revivePlayer(g,seat)) return;
-    if(creditor!==null)g.players[creditor].cash+=p.cash;
+    settlePayment(g,seat,p.cash,creditor,split);
     p.cash=0;p.bankrupt=true;g.properties.forEach(prop=>{if(prop.owner===seat){prop.owner=null;prop.buildings=0;prop.landmark=false;}});checkWin(g);return;
   }
-  consumeLoss(g,seat,amount);p.cash-=amount;if(creditor!==null)g.players[creditor].cash+=amount;
+  settlePayment(g,seat,amount,creditor,split);
 
 }
 function criticalProperty(g: Game, index: number, seat: number) {
@@ -642,7 +643,7 @@ function nextEventVisit(g:Game,random:()=>number=Math.random,catalog:readonly Au
   if(!visit.arrived&&previous!==visit.tile)g.abilities.lastMove={id:(g.abilities.lastMove?.id??0)+1,seat:g.turn,path:[previous,visit.tile],flight:visit.flight};
   g.phase="end";
   // Forced arrivals share Singed settlement. Ordinary event visits retain their destination rules.
-  if(visit.rentAmount!==undefined&&visit.creditor!==undefined){g.world.rent={amount:visit.rentAmount,creditor:visit.creditor,tile:visit.tile};g.phase="rent";}
+  if(visit.rentAmount!==undefined&&visit.creditor!==undefined){g.world.rent={amount:visit.rentAmount,principal:visit.principal,receipt:visit.receipt,creditor:visit.creditor,tile:visit.tile};g.phase="rent";}
   else if(visit.effects&&visit.settled){if(BOARD[visit.tile].kind==="event")openEvent(g,visit.seat,random);else if(BOARD[visit.tile].kind==="portal")g.phase="portal";}
   else if(visit.effects&&(visit.forced||visit.startEffects&&visit.tile===0))forcedArrival(g,visit.seat,random);
   else if(visit.effects && visit.tile!==0)arrive(g,random);
@@ -669,7 +670,7 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
   case "telekinesis":{const other=target();if(!Number.isInteger(input.steps)||input.steps!<1||input.steps!>3)throw new Error("밀어낼 칸 수는 1~3입니다.");beginEventVisits(g,[{seat:other,tile:(g.players[other].position-input.steps!+36)%36,effects:true,flight:true,forced:true}],random,catalog);break;}
   case "line_quake":{if(!Number.isInteger(input.line)||input.line!<0||input.line!>3)throw new Error("라인을 선택해주세요.");for(const t of BOARD.filter(t=>t.kind==="city"&&t.line===input.line))destroyTopBuilding(g,t.index);break;}
   case "pass_coupon":status.passCoupons++;break;
-  case "long_robbery":{const other=target();const amount=Math.min(g.players[other].cash,lossAmount(g,other,incomeAmount(g,seat,Math.floor(g.players[other].cash*.1))));consumeLoss(g,other,amount);g.players[other].cash-=amount;g.players[seat].cash+=amount;note(g,`초장거리 강도 · ${other+1}P에게서 ${amount}만원 강탈`);break;}
+  case "long_robbery":{const other=target();const {principal}=stealMoney(g,seat,other,Math.floor(g.players[other].cash*.1));note(g,`초장거리 강도 · ${other+1}P에게서 ${principal}만원 강탈`);break;}
   case "home_stone":status.homeStones++;break;
   case "wall":{const free=BOARD.map(t=>t.index).filter(i=>!g.world.walls.includes(i));if(!free.length)break;if(!Number.isInteger(input.tile)||!free.includes(input.tile!))throw new Error("벽이 없는 경계를 선택해주세요.");g.world.walls.push(input.tile!);break;}
   case "hero":{const other=target();beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true,startEffects:true}],random,catalog);break;}

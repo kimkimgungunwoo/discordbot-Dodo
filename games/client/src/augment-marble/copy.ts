@@ -1,6 +1,6 @@
+import { incomeWithoutGlass } from "../../../shared/augment-marble-effects";
 import { type AugmentDefinition, type EffectKind, TIER_LABELS } from "../../../shared/augment-marble-augments";
 import { BOARD, SALARY, BONUS, rent, rentPayment, type Game } from "../../../shared/augment-marble";
-import { incomeAmount } from "../../../shared/augment-marble-effects";
 
 const timing: Partial<Record<EffectKind, string>> = {
   force:"굴리기 전 선택", reroll:"굴린 뒤 · 이동 전", selective_double:"매 차례 첫 투척 전", double_lover:"투척 시 자동", mimic:"굴리기 대신 선택", subsidy:"이동 대신 월급 선택",
@@ -40,7 +40,7 @@ export function statusLabels(g: Game, seat: number) {
 export function displayedRent(g: Game, index: number, visitor?: number) {
   const owner = g.properties[index].owner;
   if (owner === null) return 0;
-  return visitor !== undefined && visitor !== owner ? rentPayment(g, index, visitor) : incomeAmount(g, owner, rent(g, index));
+  return visitor !== undefined && visitor !== owner ? rentPayment(g, index, visitor) : incomeWithoutGlass(g, owner, rent(g, index));
 }
 export function tileDescription(index: number) {
   const t = BOARD[index];

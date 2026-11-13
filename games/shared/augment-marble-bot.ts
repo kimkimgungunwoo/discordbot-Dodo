@@ -2,10 +2,10 @@
 import { AUGMENT_CATALOG, type AugmentDefinition } from './augment-marble-augments.js';
 import { capabilities, incomeAmount, lossAmount, power, salaryAmount } from './augment-marble-effects.js';
 import { createRoll, diceCandidates, type DicePair, type RollContext } from './augment-marble-runtime.js';
-import { applyAction, availableDice, turnTargets, purchaseCost, takeoverCost, landmarkCost, landmarkAvailable, groupCount, SALARY, ISLAND_COST, BONUS, BOARD, construction, eventOwnedTiles, eventTargets, netWorth, rent, rentPayment, type Action, type Game } from './augment-marble.js';
+import { applyAction, availableDice, turnTargets, purchaseCost, takeoverCost, landmarkCost, landmarkAvailable, groupCount, COLOR_GROUPS_TO_WIN, MAX_ROUNDS, SALARY, ISLAND_COST, BONUS, BOARD, construction, eventOwnedTiles, eventTargets, netWorth, rent, rentPayment, type Action, type Game } from './augment-marble.js';
 
 export function augmentValue(g:Game,seat:number,a:AugmentDefinition):number {
- const own=BOARD.filter(t=>g.properties[t.index].owner===seat),cash=g.players[seat].cash,late=g.round/120;
+ const own=BOARD.filter(t=>g.properties[t.index].owner===seat),cash=g.players[seat].cash,late=g.round/MAX_ROUNDS;
  const economic=own.length,has=(kind:string)=>AUGMENT_CATALOG.some(b=>g.augments?.players[seat].owned.includes(b.id)&&b.effect===kind);
  const n=a.power??1;
  switch(a.effect){
@@ -54,7 +54,7 @@ export function botCashPlan(g:Game,seat=g.turn){
 }
 function territoryPriority(g:Game,seat:number,tile:number){
  const group=BOARD.filter(t=>t.kind==='city'&&t.group===BOARD[tile].group&&t.index!==tile),line=BOARD.filter(t=>t.kind==='city'&&t.line===BOARD[tile].line&&t.index!==tile);
- const completes=(who:number)=>group.every(t=>g.properties[t.index].owner===who),wins=(who:number)=>line.every(t=>g.properties[t.index].owner===who)||completes(who)&&groupCount(g,who)>=2;
+ const completes=(who:number)=>group.every(t=>g.properties[t.index].owner===who),wins=(who:number)=>line.every(t=>g.properties[t.index].owner===who)||completes(who)&&groupCount(g,who)>=COLOR_GROUPS_TO_WIN-1;
  return {deny:g.players.some((p,i)=>i!==seat&&!p.bankrupt&&completes(i)),win:wins(seat),block:g.players.some((p,i)=>i!==seat&&!p.bankrupt&&wins(i)),complete:completes(seat),owned:group.filter(t=>g.properties[t.index].owner===seat).length};
 }
 function invest(g:Game):Action|null{
@@ -184,11 +184,6 @@ export function strategicBotAction(g:Game,fallback:Action):Action {
   const score=movementEvaluator(g),normal=createRoll(seat,g.abilities.ordinal,!!state.lostThisTurn||!!g.abilities.statuses[seat].restrictedRolls||!!g.abilities.statuses[seat].restrictWholeTurn);
   if(state.lostThisTurn)return {action:'roll'};
   let best:Action={action:'roll'},value=expected(normal,c.doubleLover,score);
-  for(const ability of choices.forces)for(const option of ability==='force_gold'?Array.from({length:11},(_,i)=>i+2):ability==='force_silver'?[0,1]:[0,1,2,3]){
-   const roll=createRoll(seat,g.abilities.ordinal);const ranges=ability==='force_silver'?[[2,6],[7,12]]:[[2,3],[4,6],[7,9],[10,12]];
-   if(ability==='force_gold'){roll.min=Math.max(2,option-2);roll.max=Math.min(12,option+2);}else [roll.min,roll.max]=ranges[option];
-   const next=expected(roll,c.doubleLover,score);if(next>value+1){value=next;best={action:'dice_force',ability,option};}
-  }
   if(choices.selectiveDouble)for(const useNew of [true,false]){const roll=createRoll(seat,g.abilities.ordinal);roll.forcedDouble=useNew;roll.avoidDouble=!useNew;const next=expected(roll,c.doubleLover,score);if(next>value+1){value=next;best={action:'dice_double',useNew};}}
   for(const sum of choices.copies){const next=score([Math.max(1,sum-6),Math.min(6,sum-1)],true);if(next>value+3){value=next;best={action:'dice_copy',option:sum};}}
   const lastTurn=g.abilities.lastOwnTurn[seat],stayedLastTurn=lastTurn>0&&!g.abilities.throws.some(t=>t.seat===seat&&t.turnId===lastTurn);
@@ -207,6 +202,6 @@ export function strategicBotAction(g:Game,fallback:Action):Action {
   }
   return best;
  }
- if(g.phase==='end'&&!g.world.interrupted&&!state.endLocked&&!g.extraTurn&&!p.rest&&!g.abilities.statuses[seat].skipTurns&&state.extraCoupons){const next=expected(createRoll(seat,g.abilities.ordinal+1),capabilities(g).doubleLover,movementEvaluator(g));if(next>10||g.round>110&&next>-10)return {action:'extra_coupon'};}
+ if(g.phase==='end'&&!g.world.interrupted&&!state.endLocked&&!g.extraTurn&&!p.rest&&!g.abilities.statuses[seat].skipTurns&&state.extraCoupons){const next=expected(createRoll(seat,g.abilities.ordinal+1),capabilities(g).doubleLover,movementEvaluator(g));if(next>10||g.round>MAX_ROUNDS-10&&next>-10)return {action:'extra_coupon'};}
  return fallback;
 }
