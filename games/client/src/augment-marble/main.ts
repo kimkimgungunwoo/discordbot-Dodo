@@ -15,7 +15,7 @@ import { showOrderDraw } from "./order-draw";
 import { drawTurnOrder,ORDER_DRAW_MS } from "../../../shared/augment-marble";
 import { flyToken } from "./flight";
 import { MoneyEffects } from "./money-effects";
-import { AbilityEffects } from "./ability-effects";
+import { groupAbilityEvents, AbilityEffects } from "./ability-effects";
 import { renderBoardB } from "./board";
 import { planPresentation, projectedLanding, movementContinuation } from "./presentation";
 import { abilityLabel, abilityNotes, abilityTiming, displayedRent, statusLabels, tileDescription } from "./copy";
@@ -144,7 +144,9 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
   const cues=previous?stateSounds(previous,next.game):[];
   const earlyCues=new Set(["buy","build","landmark","takeover","augment","reroll"]);
   for(const cue of cues)if(earlyCues.has(cue)&&cue!=="takeover")sound.play(cue);
-  const play = async (items: AbilityEvent[]) => { for (const event of items) { if (signal.aborted) return; presentationStage = "증강 발동"; shownEventId = Math.max(shownEventId, event.id); updateStage(); if(event.rentChange){const p=next.game.properties[event.tile];if(p.revisitBoost===event.rentChange.level)displayedProperties.delete(event.tile);else displayedProperties.set(event.tile,{...p,revisitBoost:event.rentChange.level});render();}if(event.remaining!==undefined){moveProgress.total=moveProgress.done+event.remaining;const direction=next.game.world.players[next.game.turn].reverseThisTurn?-1:1;landingTarget={seat:next.game.turn,tile:(event.tile+direction*event.remaining+360)%36};render();}const cue=abilitySound(event);if(cue)sound.play(cue);await abilityEffects.play(event, signal,next.game.players.map(p=>p.name)); if(event.flight&&!signal.aborted)await animateFlight(event.flight.seat,event.flight.to,signal); } };
+  const play = async (items: AbilityEvent[]) => { for (const group of groupAbilityEvents(items)) { if (signal.aborted) return;
+    if(group.length>1){presentationStage="착취 · 동시 흡수";shownEventId=Math.max(shownEventId,...group.map(e=>e.id));updateStage();const cue=abilitySound(group[0]);if(cue)sound.play(cue);await Promise.all(group.map((e,i)=>abilityEffects.play(e,signal,next.game.players.map(p=>p.name),false,i)));continue;}
+    const event=group[0]; presentationStage = "증강 발동"; shownEventId = Math.max(shownEventId, event.id); updateStage(); if(event.rentChange){const p=next.game.properties[event.tile];if(p.revisitBoost===event.rentChange.level)displayedProperties.delete(event.tile);else displayedProperties.set(event.tile,{...p,revisitBoost:event.rentChange.level});render();}if(event.remaining!==undefined){moveProgress.total=moveProgress.done+event.remaining;const direction=next.game.world.players[next.game.turn].reverseThisTurn?-1:1;landingTarget={seat:next.game.turn,tile:(event.tile+direction*event.remaining+360)%36};render();}const cue=abilitySound(event);if(cue)sound.play(cue);await abilityEffects.play(event, signal,next.game.players.map(p=>p.name)); if(event.flight&&!signal.aborted)await animateFlight(event.flight.seat,event.flight.to,signal); } };
   try {
     await play(plan.before.filter(e => e.ability !== "dice"));
     if (plan.dice && !signal.aborted) await animateDice(plan.dice.dice, signal, plan.dice.die);

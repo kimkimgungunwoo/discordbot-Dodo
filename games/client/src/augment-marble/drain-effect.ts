@@ -1,11 +1,12 @@
 /** Blood-like wisps flow from the victim into the caster; shared by draining abilities. */
-export function bloodDrain(from:()=>DOMRect|undefined,to:()=>DOMRect|undefined,duration:number,signal:AbortSignal){
- const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('m-blood-drain');svg.dataset.flow='target-to-caster';svg.setAttribute('aria-hidden','true');
+export function bloodDrain(from:()=>DOMRect|undefined,to:()=>DOMRect|undefined,duration:number,signal:AbortSignal,theme:"blood"|"green"="blood"){
+ const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('m-blood-drain');svg.dataset.flow='target-to-caster';svg.dataset.theme=theme;svg.setAttribute('aria-hidden','true');
  Object.assign(svg.style,{position:'fixed',inset:'0',width:'100vw',height:'100dvh',pointerEvents:'none',zIndex:'108',overflow:'visible'});
  const ns='http://www.w3.org/2000/svg',make=(tag:string,attributes:Record<string,string>)=>{const node=document.createElementNS(ns,tag);for(const [key,value]of Object.entries(attributes))node.setAttribute(key,value);svg.append(node);return node};
- const veil=make('path',{fill:'none',stroke:'#6b102b','stroke-width':'13',opacity:'.35','stroke-linecap':'round'}),thread=make('path',{fill:'none',stroke:'#b52547','stroke-width':'4','stroke-linecap':'round'});
- const sparks=Array.from({length:15},(_,i)=>make('ellipse',{rx:String(3+i%3),ry:String(2+i%2),fill:i%3?'#b71e40':'#ff8d9b'}));
- const impact=make('ellipse',{rx:'18',ry:'9',fill:'none',stroke:'#d14161','stroke-width':'3'}),heal=make('ellipse',{rx:'20',ry:'10',fill:'none',stroke:'#ff647e','stroke-width':'3'});
+ const green=theme==='green';
+ const veil=make('path',{fill:'none',stroke:green?'#064b16':'#6b102b','stroke-width':'13',opacity:'.35','stroke-linecap':'round'}),thread=make('path',{fill:'none',stroke:green?'#17d52f':'#b52547','stroke-width':'4','stroke-linecap':'round'});
+ const sparks=Array.from({length:15},(_,i)=>make('ellipse',{rx:String(3+i%3),ry:String(2+i%2),fill:i%3?(green?'#13d92c':'#b71e40'):(green?'#b4ff4a':'#ff8d9b')}));
+ const impact=make('ellipse',{rx:'18',ry:'9',fill:'none',stroke:green?'#39ed45':'#d14161','stroke-width':'3'}),heal=make('ellipse',{rx:'20',ry:'10',fill:'none',stroke:green?'#85ff34':'#ff647e','stroke-width':'3'});
  document.body.append(svg);let frame=0;const started=performance.now();
  const done=()=>{cancelAnimationFrame(frame);signal.removeEventListener('abort',done);svg.remove()};
  const draw=(now:number)=>{if(signal.aborted||!svg.isConnected){done();return}const t=Math.min(1,(now-started)/duration),a=from(),b=to();if(!a||!b){done();return}
