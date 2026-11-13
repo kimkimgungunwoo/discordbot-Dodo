@@ -12,7 +12,7 @@ def verify_result(payload, room):
     expected = [(len(seats) - 1) * 10 if i == winner else -10 for i in range(len(seats))]
     if not isinstance(scores, list) or any(type(s) is not int for s in scores) or scores != expected:
         return None
-    reasons = {"triple": "트리플 독점", "line": "라인 독점", "bankruptcy": "파산승리", "assets": "120라운드 자산승리"}
+    reasons = {"triple": "컬러독점 2개", "line": "라인 독점", "bankruptcy": "파산승리", "assets": "80라운드 자산승리"}
     reason = reasons.get(payload.get("reason"))
     if not reason:
         return None

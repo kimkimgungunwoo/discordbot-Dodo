@@ -1,6 +1,6 @@
 import { EVENT_MS,createEventState } from "../../shared/augment-marble-events.js";
 import { type MarbleStore, type MarbleSave } from "./augment-marble-store.js";
-import { AUGMENT_CATALOG, AUGMENT_SELECTION_MS, publicAugmentState, type AugmentDefinition } from "../../shared/augment-marble-augments.js";
+import { AUGMENT_CATALOG, AUGMENT_SELECTION_MS, removeRetiredAugments, publicAugmentState, type AugmentDefinition } from "../../shared/augment-marble-augments.js";
 import { randomInt } from "node:crypto";
 import { RelayRoom } from "./volleyball-room.js";
 import type { Definition, Peer } from "./protocol.js";
@@ -104,6 +104,7 @@ export class AugmentMarbleRoom extends RelayRoom {
     if (saved.game.abilities.schemaVersion !== 2) throw new Error("원본 능력 복원 전의 세이브는 이 규칙으로 이어갈 수 없습니다.");
     delete this.game.turnOrder;delete this.game.orderDrawUntil;
     Object.assign(this.game, saved.game); this.game.world ??= createEventState(this.game.players.length); Object.assign(this, { seed: saved.seed });
+    if(this.game.augments){const affected=removeRetiredAugments(this.game.augments,()=>randomInt(0,2**32)/2**32,this.catalog),roll=this.game.abilities.roll;if(roll&&!roll.result&&affected.includes(roll.seat)){roll.min=2;roll.max=roll.restricted?10:12;}}
     this.started = saved.started; this.deadline = saved.deadline; this.lastActivity = saved.lastActivity;
     this.result = saved.result; this.delivered = saved.delivered; this.finishedAt = saved.finishedAt;
     this.emptySince = saved.emptySince ?? Date.now();

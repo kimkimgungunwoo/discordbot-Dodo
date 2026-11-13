@@ -1,3 +1,4 @@
+import { bankCashChange } from "./augment-marble-money.js";
 import { SALARY } from "./augment-marble-economy.js";
 import { AUGMENT_CATALOG, AUGMENT_TIERS, type AugmentDefinition, type EffectKind } from "./augment-marble-augments.js";
 import { emitAbility, type DiceCapabilities } from "./augment-marble-runtime.js";
@@ -18,17 +19,28 @@ export function incomeAmount(g: Game, seat: number, amount: number) {
   const multiplier = (power(g, seat, "investor") ? 2 : 1) * (power(g, seat, "glass_cannon") ? 2.5 : 1);
   return Math.max(0, Math.ceil(amount * multiplier - 1e-9));
 }
+export function incomeWithoutGlass(g:Game,seat:number,amount:number){return Math.max(0,Math.ceil(amount*(power(g,seat,"investor")?2:1)-1e-9));}
+export function glassIncome(g:Game,seat:number,amount:number){return Math.max(0,Math.ceil(amount*(power(g,seat,"glass_cannon")?2.5:1)-1e-9));}
+export function lossWithoutGlass(g:Game,seat:number,amount:number){return Math.max(0,Math.ceil(amount*(g.world?.players[seat].vulnerable?2:1)));}
+export function transferMoney(g:Game,payer:number,receiver:number,paid:number,principal:number,received:number){
+ g.players[payer].cash-=principal;g.players[receiver].cash+=principal;
+ bankCashChange(g,payer,-(paid-principal));bankCashChange(g,receiver,received-principal);
+}
+export function stealMoney(g:Game,actor:number,target:number,amount:number){
+ const base=incomeWithoutGlass(g,actor,amount),paid=Math.min(g.players[target].cash,lossAmount(g,target,base)),principal=Math.min(paid,lossWithoutGlass(g,target,base)),received=glassIncome(g,actor,principal);
+ transferMoney(g,target,actor,paid,principal,received);consumeLoss(g,target,paid);return {paid,principal,received};
+}
 export function salaryAmount(g:Game,seat:number){
  const status=g.world?.players[seat];
  return status?.unpaidSalary ? 0 : Math.ceil((power(g,seat,"investor")?0:SALARY*(power(g,seat,"salary")?1.5:1)*(power(g,seat,"glass_cannon")?2.5:1))*((status?.halfSalary ?? 0)>0 ? .5:1));
 }
-export function receiveSalary(g:Game,seat:number){const amount=salaryAmount(g,seat),status=g.world?.players[seat];if(status){if(status.unpaidSalary>0)status.unpaidSalary--;if(status.halfSalary>0)status.halfSalary--;}g.players[seat].cash+=amount;return amount;}
+export function receiveSalary(g:Game,seat:number){const amount=salaryAmount(g,seat),status=g.world?.players[seat];if(status){if(status.unpaidSalary>0)status.unpaidSalary--;if(status.halfSalary>0)status.halfSalary--;}bankCashChange(g,seat,amount);return amount;}
 export function consumeLoss(g:Game,seat:number,amount:number){const status=g.world?.players[seat];if(amount>0&&status?.vulnerable)status.vulnerable--;}
 
 export function lossAmount(g: Game, seat: number, amount: number) { return Math.max(0, Math.ceil(amount * (power(g, seat, "glass_cannon") ? 2 : 1) * (g.world?.players[seat].vulnerable ? 2:1))); }
 export function immune(g: Game, seat: number) { return seat !== (g.world?.interrupted?.turn ?? g.turn) && !!power(g, seat, "stealth"); }
 export function receiveIncome(g: Game, seat: number, amount: number) {
-  const paid = incomeAmount(g, seat, amount); g.players[seat].cash += paid; return paid;
+  const paid = incomeAmount(g, seat, amount); bankCashChange(g,seat,paid); return paid;
 }
 export function spendCost(g: Game, seat: number, amount: number, kind: "builder" | "realtor" | "negotiator") {
   return lossAmount(g, seat, Math.max(0, Math.ceil(amount * factor(g, seat, kind, true) - 1e-9)));
@@ -37,11 +49,10 @@ export function spendCost(g: Game, seat: number, amount: number, kind: "builder"
 export function cashback(_g: Game, _seat: number, _amount: number) {}
 export function steal(g: Game, actor: number, target: number, amount: number, ability: string) {
   if (immune(g, target) || g.players[target].bankrupt) return;
-  const paid = Math.min(g.players[target].cash, lossAmount(g, target, incomeAmount(g, actor, amount)));
-  consumeLoss(g,target,paid);g.players[target].cash -= paid; g.players[actor].cash += paid;
+  const {paid,principal,received}=stealMoney(g,actor,target,amount);
   if (power(g, target, "cashback")) receiveIncome(g, target, Math.floor(paid / 2));
   const card = definitions(g,actor).find(a => a.id === ability || a.effect === ability);
-  if (paid) emitAbility(g.abilities, { actor, target, tile: g.players[target].position, ability:card?.id ?? ability, ...( ["mosquito","vladimir","exploit"].includes(ability) ? {stage:"before_move" as const} : {}), caption: `${actor + 1}P가 ${target + 1}P에게서 ${paid}만원 강탈`, amount: paid, visual: "steal" });
+  if (paid) emitAbility(g.abilities, { actor, target, tile: g.players[target].position, ability:card?.id ?? ability, ...( ["mosquito","vladimir","exploit"].includes(ability) ? {stage:"before_move" as const} : {}), caption: `${actor + 1}P가 ${target + 1}P에게서 ${principal}만원 강탈${paid!==principal?` · 추가 지출 ${paid-principal}만원 소멸`:""}${received!==principal?` · 추가 수입 ${received-principal}만원 은행 지급`:""}`, amount: received, visual: "steal" });
 }
 export function refreshGamble(g: Game, seat: number, index: number, random: () => number) {
   const owned=g.augments?.players[seat].owned ?? [];
