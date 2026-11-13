@@ -1,3 +1,4 @@
+import { MarbleStore } from "./augment-marble-store.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
@@ -8,6 +9,7 @@ import { OmokRoom } from "./omok-room.js";
 import { RockRunRoom } from "./rock-run-room.js";
 import { ArrowDodgeRoom } from "./arrow-dodge-room.js";
 import { BombBattleRoom } from "./bomb-battle-room.js";
+import { AugmentMarbleRoom } from "./augment-marble-room.js";
 import { RummikubRoom } from "./rummikub-room.js";
 
 import { OthelloRoom } from "./othello-room.js";
@@ -17,6 +19,12 @@ import { AlkkagiRoom } from "./alkkagi-room.js";
 const secret = process.env.ACTIVITY_INTERNAL_SECRET ?? "";
 const clientId = process.env.DISCORD_CLIENT_ID ?? "";
 const rooms = new Map<string, RelayRoom>();
+const marbleStore = new MarbleStore(process.env.MARBLE_STATE_DIR ?? ".state/augment-marble");
+for (const saved of marbleStore.load()) {
+  if (rooms.size >= 200) break;
+  const room = new AugmentMarbleRoom(saved.definition, undefined, marbleStore);
+  room.restore(saved); rooms.set(saved.definition.roomId, room);
+}
 const rematches = new Map<string, Promise<any>>();
 function internal(req: IncomingMessage) {
   const supplied = Buffer.from(req.headers.authorization ?? "");
@@ -46,9 +54,10 @@ export const server = createServer(async (req, res) => {
       if (typeof value.roomId !== "string") return json(res, 400, { error: "Invalid room" });
       rooms.get(value.roomId)?.broadcast({ type: "ROOM_CLOSED", message: "방장이 방을 닫았습니다." });
       const closing = rooms.get(value.roomId);
-      if (closing instanceof RummikubRoom || closing instanceof BombBattleRoom) closing.abort("방장이 방을 닫았습니다.");
-      if (closing instanceof OmokRoom || closing instanceof OthelloRoom || closing instanceof AlkkagiRoom || closing instanceof RummikubRoom || closing instanceof BombBattleRoom) closing.dispose();
-      rooms.delete(value.roomId);
+      if (closing instanceof AugmentMarbleRoom || closing instanceof RummikubRoom || closing instanceof BombBattleRoom) closing.abort("방장이 방을 닫았습니다.");
+      if (closing instanceof OmokRoom || closing instanceof OthelloRoom || closing instanceof AlkkagiRoom || closing instanceof AugmentMarbleRoom || closing instanceof RummikubRoom || closing instanceof BombBattleRoom) closing.dispose();
+      if (closing instanceof AugmentMarbleRoom) closing.forget();
+      rooms.delete(value.roomId); marbleStore.remove(value.roomId);
       return json(res, 200, { ok: true });
     }
     if (req.method === "POST" && url.pathname === "/internal/game-sessions") {
@@ -59,16 +68,18 @@ export const server = createServer(async (req, res) => {
       const stale = rooms.get(definition.roomId);
       if (stale?.result && definition.matchId !== stale.matchId) {
         if (!stale.delivered) return json(res, 409, { error: "결과 전송이 완료되지 않았습니다." });
-        if (stale instanceof BombBattleRoom) stale.dispose();
-        rooms.delete(definition.roomId);
+        if (stale instanceof AugmentMarbleRoom || stale instanceof BombBattleRoom) stale.dispose();
+        if (stale instanceof AugmentMarbleRoom) stale.forget();
+        rooms.delete(definition.roomId); marbleStore.remove(definition.roomId);
       }
       const existing = rooms.get(definition.roomId);
       if (existing && ((Object.keys(existing.definition) as Array<keyof typeof definition>).some(key => key !== "matchId" && JSON.stringify(existing.definition[key]) !== JSON.stringify(definition[key])))) return json(res, 409, { error: "Room conflict" });
       if (!existing && rooms.size >= 200) return json(res, 503, { error: "Room capacity reached" });
       if (existing && definition.matchId && existing.matchId !== definition.matchId) return json(res, 409, { error: "다른 경기가 진행 중입니다." });
       const room = existing ?? (definition.game === "bomb_battle" ? new BombBattleRoom(definition) : definition.game === "rock_run" ? new RockRunRoom(definition) : definition.game === "alkkagi" ? new AlkkagiRoom(definition) : definition.game === "othello" ? new OthelloRoom(definition) : definition.game === "omok" ? new OmokRoom(definition)
-        : definition.game === "arrow_dodge" ? new ArrowDodgeRoom(definition) : definition.game === "rummikub" ? new RummikubRoom(definition) : new RelayRoom(definition));
+        : definition.game === "arrow_dodge" ? new ArrowDodgeRoom(definition) : definition.game === "marble" ? new AugmentMarbleRoom(definition, undefined, marbleStore) : definition.game === "rummikub" ? new RummikubRoom(definition) : new RelayRoom(definition));
       rooms.set(definition.roomId, room);
+      if (room instanceof AugmentMarbleRoom) room.persist();
       if (stale && stale !== room) stale.broadcast({ type: "MATCH_REPLACED" });
       return json(res, existing ? 200 : 201, { roomId: definition.roomId, matchId: room.matchId, seed: room.seed, tickRate: 60 });
     }
@@ -103,7 +114,7 @@ export const server = createServer(async (req, res) => {
       const room = rooms.get(value.roomId);
       if (!room) return json(res, 404, { error: "방이 만료되었습니다. 디스코드 채팅의 [게임 시작] 버튼으로 새로 시작해주세요." });
       if (value.matchId !== room.matchId) return json(res, 409, { error: "경기가 변경되었습니다. 다시 연결해주세요." });
-      const multi = room instanceof RummikubRoom || room instanceof BombBattleRoom;
+      const multi = room instanceof AugmentMarbleRoom || room instanceof RummikubRoom || room instanceof BombBattleRoom;
       if (!room.result || (!multi && !room.delivered)) return json(res, 409, { error: "경기 결과 전송을 기다려주세요." });
       const { hostId, p2Id, mode } = room.definition;
       const humans = multi ? room.definition.seats!.filter(s => s.userId !== null).map(s => s.userId!) : [hostId, ...(mode === "PVP" && p2Id ? [p2Id] : [])];
@@ -112,6 +123,7 @@ export const server = createServer(async (req, res) => {
       if (rooms.get(value.roomId) !== room) return json(res, 409, { error: "경기가 변경되었습니다." });
       if (mode === "PVP") {
         room.rematchVotes.add(user.id);
+        if (room instanceof AugmentMarbleRoom) room.persist();
         room.broadcast({ type: "REMATCH_STATUS", ...room.rematchStatus() });
         if (!humans.every(id => room.rematchVotes.has(id)) || !room.delivered)
           return json(res, 202, { waiting: true, votes: room.rematchVotes.size, voters: room.rematchStatus().votes, required: humans.length, waitingForResult: !room.delivered });
@@ -188,6 +200,8 @@ wss.on("connection", socket => {
         return;
       }
       if (message.type === "SHOT" && room instanceof AlkkagiRoom) room.fire(peer, message);
+      else if (message.type === "MARBLE_READY" && room instanceof AugmentMarbleRoom) room.setReady(peer, message);
+      else if (message.type === "MARBLE_ACTION" && room instanceof AugmentMarbleRoom) room.handle(peer, message);
       else if (message.type === "RUMMI_ACTION" && room instanceof RummikubRoom) room.handle(peer, message);
       else if (message.type === "MOVE" && (room instanceof OmokRoom || room instanceof OthelloRoom)) room.move(peer, message);
       else if (message.type === "INPUT") room!.input(peer, message);
@@ -206,7 +220,7 @@ const REMATCH_GRACE_MS = 6 * 60_000;
 const callbacks = setInterval(() => {
   for (const [roomId, room] of rooms) {
     if (!room.result && Date.now() - room.lastActivity > 5 * 60_000) room.abort("대기 또는 경기 제한 시간이 지났습니다.");
-    if (room.result && room.finishedAt && Date.now() - room.finishedAt > REMATCH_GRACE_MS) { room.broadcast({ type: "ROOM_CLOSED", message: "재경기 대기 시간이 만료되었습니다." }); if (room instanceof BombBattleRoom) room.dispose(); rooms.delete(roomId); continue; }
+    if (room.result && room.finishedAt && Date.now() - room.finishedAt > REMATCH_GRACE_MS) { room.broadcast({ type: "ROOM_CLOSED", message: "재경기 대기 시간이 만료되었습니다." }); if (room instanceof AugmentMarbleRoom || room instanceof BombBattleRoom) room.dispose(); if (room instanceof AugmentMarbleRoom) room.forget(); rooms.delete(roomId); marbleStore.remove(roomId); continue; }
     room.connectionStatus();
     if (!room.result || room.delivered || room.delivering || !process.env.BOT_INTERNAL_URL) continue;
     room.broadcast({ type: "RESULT_PENDING", result: room.result, message: "경기 결과 저장 중..." });
@@ -217,15 +231,16 @@ const callbacks = setInterval(() => {
     }).then(response => {
       if (!response.ok) return;
       room.delivered = true;
+      if (room instanceof AugmentMarbleRoom) room.persist();
       room.broadcast({ type: "FINISHED", result: room.result });
-      if (room instanceof BombBattleRoom || room instanceof RummikubRoom) room.broadcast({ type: "REMATCH_STATUS", ...room.rematchStatus() });
+      if (room instanceof BombBattleRoom || room instanceof AugmentMarbleRoom || room instanceof RummikubRoom) room.broadcast({ type: "REMATCH_STATUS", ...room.rematchStatus() });
     }).catch(() => {}).finally(() => { room.delivering = false; });
   }
 }, 5000);
 server.listen(Number(process.env.PORT ?? 3001), "0.0.0.0", () => console.log("[activity-server] ready"));
 export function shutdown() {
   clearInterval(callbacks);
-  for (const room of rooms.values()) if (room instanceof OmokRoom || room instanceof OthelloRoom || room instanceof AlkkagiRoom || room instanceof RummikubRoom || room instanceof BombBattleRoom) room.dispose();
+  for (const room of rooms.values()) if (room instanceof OmokRoom || room instanceof OthelloRoom || room instanceof AlkkagiRoom || room instanceof AugmentMarbleRoom || room instanceof RummikubRoom || room instanceof BombBattleRoom) room.dispose();
   for (const client of wss.clients) client.terminate();
   wss.close(); server.close();
 }

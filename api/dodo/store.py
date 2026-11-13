@@ -83,7 +83,7 @@ class DodoGameStore:
         users = [("LEFT" if mode != "SOLO" else "SOLO", int(room["hostId"]))]
         if room.get("p2Id"):
             users.append(("RIGHT", int(room["p2Id"])))
-        if game in ("rummikub", "bomb_battle"):
+        if game in ("rummikub", "bomb_battle", "marble"):
             users = [(f"P{i + 1}", int(seat["userId"])) for i, seat in enumerate(room["seats"]) if not seat.get("bot")]
 
         try:
@@ -112,7 +112,7 @@ class DodoGameStore:
                            VALUES($1,$2,'USER',$3,$4,$5) RETURNING participant_id""",
                         inserted, player_id, seat, outcome, score,
                     )
-                if game in ("rummikub", "bomb_battle"):
+                if game in ("rummikub", "bomb_battle", "marble"):
                     for i, seat in enumerate(room["seats"]):
                         if not seat.get("bot"):
                             continue
@@ -142,7 +142,7 @@ class DodoGameStore:
 
     @staticmethod
     def _score_for(game: str, seat: str, payload: dict) -> int | None:
-        if game in ("rummikub", "bomb_battle"):
+        if game in ("rummikub", "bomb_battle", "marble"):
             scores = payload.get("seatScores")
             return scores[int(seat[1:]) - 1] if scores else None
         if game == "arrow_dodge":
@@ -151,7 +151,9 @@ class DodoGameStore:
         return score.get("left" if seat in ("LEFT", "SOLO") else "right")
 
     async def _insert_detail(self, connection, game: str, match_id: str, payload: dict):
-        if game == "bomb_battle":
+        if game == "marble":
+            await connection.execute("INSERT INTO marble_match(match_id,winner_seat,win_reason) VALUES($1,$2,$3)", match_id, payload["winnerSeat"], payload["reason"])
+        elif game == "bomb_battle":
             await connection.execute("INSERT INTO bomb_battle_match(match_id,winner_seat,elapsed_ms) VALUES($1,$2,$3)", match_id, payload.get("winnerSeat"), payload["elapsedMs"])
         elif game == "rummikub":
             await connection.execute("INSERT INTO rummikub_match(match_id,winner_seat) VALUES($1,$2)", match_id, payload.get("winnerSeat"))
@@ -198,7 +200,7 @@ class DodoGameStore:
         scopes = [("GLOBAL", 0), ("GUILD", int(room["guildId"]))]
         for scope_type, scope_id in scopes:
             deltas = {uid: 0 for uid in player_ids}
-            if game not in ("rummikub", "bomb_battle") and mode == "PVP" and len(player_ids) == 2:
+            if game not in ("rummikub", "bomb_battle", "marble") and mode == "PVP" and len(player_ids) == 2:
                 left_uid, right_uid = int(room["hostId"]), int(room["p2Id"])
                 left_rating = await self._rating(connection, player_ids[left_uid], ruleset_id, mode, difficulty, scope_type, scope_id)
                 right_rating = await self._rating(connection, player_ids[right_uid], ruleset_id, mode, difficulty, scope_type, scope_id)
@@ -209,7 +211,7 @@ class DodoGameStore:
             for user_id, player_id in player_ids.items():
                 outcome = self._outcome(user_id, winner_id, draw, game in ("arrow_dodge", "rock_run", "rummikub"))
                 seat = "LEFT" if user_id == int(room["hostId"]) else "RIGHT"
-                if game in ("rummikub", "bomb_battle"):
+                if game in ("rummikub", "bomb_battle", "marble"):
                     seat = next(f"P{i + 1}" for i, s in enumerate(room["seats"]) if str(s.get("userId")) == str(user_id))
                 score = self._score_for(game, seat, payload)
                 await connection.execute(
@@ -252,7 +254,7 @@ class DodoGameStore:
                           difficulty: str = "", limit: int = 10) -> list[dict]:
         if not self.pool:
             return []
-        order = "total_score DESC, p.discord_user_id ASC" if game in ("rummikub", "bomb_battle") else "best_score DESC NULLS LAST, plays ASC" if game in ("arrow_dodge", "rock_run") else \
+        order = "total_score DESC, p.discord_user_id ASC" if game in ("rummikub", "bomb_battle", "marble") else "best_score DESC NULLS LAST, plays ASC" if game in ("arrow_dodge", "rock_run") else \
             "rating DESC, wins DESC" if mode == "PVP" else "wins DESC, losses ASC"
         query = f"""SELECT p.discord_user_id,s.plays,s.wins,s.losses,s.draws,s.best_score,s.rating,s.total_score
                     FROM dodo_player_stat s JOIN dodo_player p USING(player_id)

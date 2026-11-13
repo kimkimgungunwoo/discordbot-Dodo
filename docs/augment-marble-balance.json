@@ -1,0 +1,133 @@
+{
+  "salary": 100,
+  "startCash": 300,
+  "samplesPerGroup": 400,
+  "rows": [
+    {
+      "augments": false,
+      "players": 2,
+      "samples": 400,
+      "unfinished": 0,
+      "medianMaxLaps": 17,
+      "medianTurns": 154,
+      "medianMinAcquired": 0,
+      "wins": {
+        "assets": 34,
+        "bankruptcy": 328,
+        "line": 29,
+        "triple": 9
+      },
+      "seatWins": [
+        219,
+        181
+      ],
+      "actions": 188427
+    },
+    {
+      "augments": false,
+      "players": 3,
+      "samples": 400,
+      "unfinished": 0,
+      "medianMaxLaps": 17,
+      "medianTurns": 209,
+      "medianMinAcquired": 0,
+      "wins": {
+        "bankruptcy": 334,
+        "line": 33,
+        "assets": 26,
+        "triple": 7
+      },
+      "seatWins": [
+        151,
+        132,
+        117
+      ],
+      "actions": 254334
+    },
+    {
+      "augments": false,
+      "players": 4,
+      "samples": 400,
+      "unfinished": 0,
+      "medianMaxLaps": 17,
+      "medianTurns": 250,
+      "medianMinAcquired": 0,
+      "wins": {
+        "line": 23,
+        "bankruptcy": 332,
+        "assets": 32,
+        "triple": 13
+      },
+      "seatWins": [
+        134,
+        108,
+        89,
+        69
+      ],
+      "actions": 304958
+    },
+    {
+      "augments": true,
+      "players": 2,
+      "samples": 400,
+      "unfinished": 0,
+      "medianMaxLaps": 18,
+      "medianTurns": 145,
+      "medianMinAcquired": 4,
+      "wins": {
+        "assets": 43,
+        "bankruptcy": 240,
+        "line": 79,
+        "triple": 38
+      },
+      "seatWins": [
+        208,
+        192
+      ],
+      "actions": 245818
+    },
+    {
+      "augments": true,
+      "players": 3,
+      "samples": 400,
+      "unfinished": 0,
+      "medianMaxLaps": 19,
+      "medianTurns": 215,
+      "medianMinAcquired": 4,
+      "wins": {
+        "bankruptcy": 231,
+        "line": 61,
+        "assets": 68,
+        "triple": 40
+      },
+      "seatWins": [
+        150,
+        145,
+        105
+      ],
+      "actions": 363394
+    },
+    {
+      "augments": true,
+      "players": 4,
+      "samples": 400,
+      "unfinished": 0,
+      "medianMaxLaps": 20,
+      "medianTurns": 253,
+      "medianMinAcquired": 4,
+      "wins": {
+        "assets": 78,
+        "line": 45,
+        "bankruptcy": 243,
+        "triple": 34
+      },
+      "seatWins": [
+        130,
+        100,
+        96,
+        74
+      ],
+      "actions": 438370
+    }
+  ]
+}
