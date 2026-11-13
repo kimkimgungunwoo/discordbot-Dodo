@@ -1,3 +1,4 @@
+import { showLocustSwarm } from "./locust-effect";
 import { rulesGuide } from "./rules-guide";
 import { showTakeover } from "./takeover-effect";
 import { AugmentTooltip } from "./augment-tooltip";
@@ -26,7 +27,7 @@ import "./style.css";
 import { dodoProfile } from "../common/sprites";
 import { authenticate } from "../discord-session";
 import { RematchVoting } from "../common/rematch-voting";
-import { BOARD, BUILDINGS, MAX_ROUNDS, COLOR_GROUPS_TO_WIN, netWorth, saleProceeds, preservesDeadline, availableDice, purchaseCost, buildCost, takeoverCost, takeoverBase, playerDisplayOrder, landmarkCost, landmarkAvailable, landmarkBase, START_CASH, SALARY, BONUS, construction, baseRent, landTax, COLORS, GROUP_COLORS, TURN_MS, actingSeat, applyAction, assets, autoAction, createGame, automaticContinuation, groupCount, rent, rentPayment, value, type Property, type Action, type View } from "../../../shared/augment-marble";
+import { BOARD, BUILDINGS, REVISIT_BONUS_PERCENT, canAct, MAX_ROUNDS, COLOR_GROUPS_TO_WIN, netWorth, saleProceeds, preservesDeadline, availableDice, purchaseCost, buildCost, takeoverCost, takeoverBase, playerDisplayOrder, landmarkCost, landmarkAvailable, landmarkBase, START_CASH, SALARY, BONUS, construction, baseRent, landTax, COLORS, GROUP_COLORS, TURN_MS, actingSeat, applyAction, assets, autoAction, createGame, automaticContinuation, groupCount, rent, rentPayment, value, type Property, type Action, type View } from "../../../shared/augment-marble";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const turnPointer=new TurnPointer(root);
@@ -115,8 +116,10 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
   if(previous?.turnId!==next.game.turnId || next.game.phase==="roll"&&previous?.abilities.ordinal!==next.game.abilities.ordinal)landingTarget=null;
   const teleport=next.game.teleport?.id!==previous?.teleport?.id?next.game.teleport:undefined;
   const takeovers=previous?next.game.properties.flatMap((p,tile)=>p.owner!==null&&previous.properties[tile].owner!==null&&p.owner!==previous.properties[tile].owner?[{tile,from:previous.properties[tile].owner!,to:p.owner}]:[]):[];
+  const locust=previous&&next.game.locustBatch?.id!==previous.locustBatch?.id?next.game.locustBatch:undefined;
   const destruction=next.game.destructionBatch?.id!==previous?.destructionBatch?.id?next.game.destructionBatch:undefined;
   displayedProperties.clear();for(const item of destruction?.items??[])displayedProperties.set(item.tile,item.before);
+  for(const tile of locust?.path.slice(1)??[])displayedProperties.set(tile,previous!.properties[tile]);
   for(const item of takeovers)displayedProperties.set(item.tile,previous!.properties[item.tile]);
   for(const event of events)if(event.rentChange&&!displayedProperties.has(event.tile))displayedProperties.set(event.tile,{...next.game.properties[event.tile],revisitBoost:event.rentChange.level-1});
   const batch=next.game.flightBatch?.id!==previous?.flightBatch?.id?next.game.flightBatch?.items:undefined;
@@ -133,7 +136,7 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
   heldWall=next.game.abilities.lastMove?.wall&&(next.game.abilities.lastMove.id!==previous?.abilities.lastMove?.id||!previous?.abilities.lastMove?.wall)?next.game.abilities.lastMove.wall.boundary:undefined;
   displayedCash.clear();if(previous&&transfers.length)previous.players.forEach((p,i)=>{if(p.cash!==next.game.players[i].cash)displayedCash.set(i,p.cash)});
   view = next; pending = false; retries = 0; syncRematch(next); clearTimeout(timer);
-  animating = !!(plan.dice || plan.steps.some(s => s.path.length > 1) || events.length || transfers.length || heldWall!==undefined || batch?.length || destruction?.items.length || teleport || takeovers.length);
+  animating = !!(plan.dice || plan.steps.some(s => s.path.length > 1) || events.length || transfers.length || heldWall!==undefined || batch?.length || destruction?.items.length || teleport || takeovers.length || locust);
   presentationStage = animating ? "발동 효과를 확인하고 있습니다" : "";
   if (["augment","event","rent","debt"].includes(next.game.phase) && actingSeat(next.game) === next.seat && (previous?.phase !== next.game.phase || next.game.world.current?.serial !== previous?.world.current?.serial)) info = null;
   displayedLog = animating ? previous?.log : undefined;
@@ -162,6 +165,7 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
     }
     if(heldWall!==undefined&&!signal.aborted)await animateWall(next.game.abilities.lastMove!.seat,next.game.abilities.lastMove!.wall!,signal);
     if(destruction?.items.length&&!signal.aborted){presentationStage=destruction.kind==="quake"?"지진 · 건물 붕괴":"미사일 · 건물 붕괴";updateStage();sound.play("quake");await destroyBuildings(root,destruction.items.map(i=>i.tile),signal);displayedProperties.clear();render();}
+    if(locust&&!signal.aborted){presentationStage="메뚜기떼";updateStage();await showLocustSwarm(root,locust.path,tile=>{displayedProperties.delete(tile);render();},signal);}
     await play(plan.after);
     for(const item of takeovers){if(signal.aborted)return;sound.play("takeover");await showTakeover(root,item.tile,BOARD[item.tile].name,item.from,item.to,next.game.players.map(p=>p.name),()=>{displayedProperties.delete(item.tile);render();},signal);}
     if(!signal.aborted&&transfers.length){presentationStage="금액 정산";updateStage();sound.play(next.game.players.some((p,i)=>p.laps>(previous?.players[i].laps??p.laps))?"salary":transfers.some(t=>t.from!==null&&t.to!==null)?"transfer":transfers.some(t=>t.to!==null)?"income":"payment");await moneyEffects.play(transfers,signal);}
@@ -239,7 +243,7 @@ async function animateMovement(seat:number,path:number[],signal:AbortSignal){
  root.querySelectorAll(".m-step-active").forEach(el=>el.classList.remove("m-step-active"));
 }
 function coordinates(index: number) { return index <= 9 ? [10, 10 - index] : index <= 18 ? [19 - index, 1] : index <= 27 ? [1, index - 17] : [index - 26, 10]; }
-function editable() { return !drawingOrder && !!view && connected && !pending && !animating && !queue.length && view.started && !view.aborted && view.game.phase !== "finished" && view.seat === actingSeat(view.game); }
+function editable() { return !drawingOrder && !!view && connected && !pending && !animating && !queue.length && view.started && !view.aborted && view.game.phase !== "finished" && canAct(view.game,view.seat); }
 function localAction(action: Action) {
   if (!view || !view.started || animating) return;
   const next = structuredClone(view); applyAction(next.game, action); next.serverNow = Date.now();
@@ -249,8 +253,9 @@ function localAction(action: Action) {
 }
 function scheduleLocal() {
   clearTimeout(timer); if (!view || !view.started || animating || drawingOrder || view.game.phase === "finished" || terminal) return;
-  const automatic=automaticContinuation(view.game),bot = !!view.seats[actingSeat(view.game)].bot, remaining = Math.max(0, view.deadline - Date.now());
-  timer = setTimeout(() => { if (!view || terminal) return; localAction(automatic??autoAction(view.game, bot)); }, automatic?250:bot ? Math.min(remaining, view.game.phase === "roll" ? 1100 : 700) : remaining);
+  const snapshot=structuredClone(view.game);if(snapshot.augmentResume==="round30"){snapshot.augmentSeat=snapshot.roundPrism!.pending.find(i=>view!.seats[i].bot)??snapshot.augmentSeat;}
+  const automatic=automaticContinuation(snapshot),bot = !!view.seats[actingSeat(snapshot)].bot, remaining = Math.max(0, view.deadline - Date.now());
+  timer = setTimeout(() => { if (!view || terminal) return; localAction(automatic??autoAction(snapshot, bot)); }, automatic?250:bot ? Math.min(remaining, view.game.phase === "roll" ? 1100 : 700) : remaining);
 }
 function send(action: Action) {
   if (!view || !editable()) return; error = "";
@@ -289,7 +294,7 @@ function lobbyMarkup(){
   return `<section class="m-lobby" aria-labelledby="m-lobby-title"><header class="m-lobby-heading"><h2 id="m-lobby-title">게임 대기실</h2><span data-ready-count aria-live="polite">준비 ${readyCount} / ${humans.length}</span></header>
     <div class="m-lobby-players">${v.seats.map((s,i)=>`<article class="m-lobby-player ${s.ready?"is-ready":""}" style="--seat:${COLORS[i]}" data-lobby-seat="${i}"><img src="${boardBirds[i]}" alt=""><div><strong>${i+1}P ${escape(s.name)}${i===v.seat?" · 나":""}</strong><span>${s.bot?"도도봇":s.connected?"접속 중":"접속 대기"}</span></div><b class="m-ready-status">${s.bot?"자동 준비":s.ready&&s.connected?"준비 완료":"준비 대기"}</b></article>`).join("")}</div>
     <div class="m-lobby-start">${me&&!me.bot?`<button class="m-primary" data-ready data-focus="ready" aria-pressed="${!!me.ready}" ${!connected||pending?"disabled":""}>${pending?"확인 중…":me.ready?"준비 취소":"준비 완료"}</button><p>봇을 제외한 모두가 준비하면 순서 추첨 후 시작합니다.</p>`:`<p>관전 중 · 참가자들이 준비하면 시작합니다.</p>`}<p class="m-error" role="status">${escape(error)}</p></div>
-    <section class="m-lobby-guide"><div><h3>게임 설명</h3><button data-rules data-focus="lobby-rules">전체 규칙 보기</button></div><div class="m-lobby-rules"><section><b>승리 조건</b><p>색상 그룹 ${COLOR_GROUPS_TO_WIN}개 독점 · 한 변 독점 · 최후 생존</p></section><section><b>진행 순서</b><p>순서 추첨 → 첫 증강 선택 → 주사위와 이동</p></section><section><b>땅과 건물</b><p>처음에는 땅을 매입하고 재방문해 건설합니다. 세 번째 바퀴부터 매입·인수 직후 건설할 수 있습니다.</p></section><section><b>돈과 증강</b><p>기본 월급 ${SALARY}만원 · 보유 현금 세금 10%. 증강은 시작 전과 출발선 1·3·5회 통과 때 선택합니다.</p></section></div></section>
+    <section class="m-lobby-guide"><div><h3>게임 설명</h3><button data-rules data-focus="lobby-rules">전체 규칙 보기</button></div><div class="m-lobby-rules"><section><b>승리 조건</b><p>색상 그룹 ${COLOR_GROUPS_TO_WIN}개 독점 · 한 변 독점 · 최후 생존</p></section><section><b>진행 순서</b><p>순서 추첨 → 첫 증강 선택 → 주사위와 이동</p></section><section><b>땅과 건물</b><p>처음에는 땅을 매입하고 재방문해 건설합니다. 세 번째 바퀴부터 매입·인수 직후 건설할 수 있습니다.</p></section><section><b>돈과 증강</b><p>기본 월급 ${SALARY}만원 · 보유 현금 세금 10%. 증강은 시작 전과 출발선 1·3·5회 통과 때 선택합니다. 30라운드에는 생존자 모두 프리즘 증강을 동시에 추가 선택합니다.</p></section></div></section>
   </section>`;
 }
 root.addEventListener("input",event=>{
@@ -368,11 +373,11 @@ function controls() {
 }
 function augmentMarkup() {
   const v = view!, g = v.game;
-  if (drawingOrder || animating || !v.started || g.phase !== "augment" || v.aborted || v.seat !== actingSeat(g)) return "";
+  if (drawingOrder || animating || !v.started || g.phase !== "augment" || v.aborted || !canAct(g,v.seat)) return "";
   const offer = g.augments?.players[v.seat].offer; if (!offer) return "";
   const tierIcon=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${offer.tier==='silver'?'M4 3h16v10l-8 8-8-8z':offer.tier==='gold'?'M2 6l5 5 5-8 5 8 5-5-3 14H5z':'M6 3h12l5 8-11 12L1 11z'}"/></svg>`;
   return `<div class="m-overlay"><section class="m-augment-dialog tier-${offer.tier}" data-tier="${offer.tier}" role="dialog" aria-modal="true" aria-labelledby="m-augment-title" aria-describedby="m-augment-help" tabindex="-1" data-dialog-key="offer-${v.matchId}-${offer.id}">
-    <header><div><span class="m-eyebrow">증강 ${offer.round + 1}/4</span><h2 id="m-augment-title">${tierIcon}<span>${TIER_LABELS[offer.tier]} 증강 선택</span></h2></div><div class="m-choice-clock"><small>남은 시간</small><b class="m-augment-clock"></b></div></header>
+    <header><div><span class="m-eyebrow">${offer.bonus?"30라운드 · 전원 동시 선택":`증강 ${offer.round + 1}/4`}</span><h2 id="m-augment-title">${tierIcon}<span>${TIER_LABELS[offer.tier]} 증강 선택</span></h2></div><div class="m-choice-clock"><small>남은 시간</small><b class="m-augment-clock"></b></div></header>
     <p id="m-augment-help">${offer.cards.length}장 중1장을 획득합니다. 각 카드 위치는1회씩 리롤할 수 있습니다. 리롤해도 남은 시간은 늘어나지 않습니다.</p>
     <div class="m-augment-cards">${offer.cards.map((id, slot) => {
       const a = definition(id)!;
@@ -406,7 +411,7 @@ function inspectorMarkup() {
   if (selected === null) return "";
   const v = view!, g = v.game, t = BOARD[selected], p = g.properties[selected], visitor = v.seat >= 0 ? v.seat : undefined;
   const receipt = p.owner !== null ? displayedRent(g, t.index) : baseRent(t.index), personal = visitor !== undefined && p.owner !== visitor && p.owner !== null ? rentPayment(g, t.index, visitor) : null;
-  return `<section class="m-inspector"><span class="m-eyebrow">선택한 칸 · ${t.index + 1}/36</span><h2>${t.name}${p.landmark ? " · 랜드마크" : ""}</h2>${t.kind === "city" ? `<dl><div><dt>토지 정가</dt><dd>${t.price}만원</dd></div><div><dt>소유자</dt><dd>${p.owner === null ? "주인 없음" : `${p.owner + 1}P`}</dd></div><div><dt>${p.owner === null ? "토지 기본 통행료" : "감면 전 청구액"}</dt><dd>${receipt}만원</dd></div>${personal !== null ? `<div><dt>내 방문 시 통행료</dt><dd>${personal}만원</dd></div>` : ""}${p.owner === null && visitor !== undefined ? `<div><dt>내 매입가</dt><dd>${purchaseCost(g, t.index, visitor)}만원</dd></div>` : ""}${p.owner !== null && p.owner !== visitor ? `<div><dt>${visitor === undefined ? "인수 기본액" : "내 최종 인수가"}</dt><dd>${p.landmark ? "인수 불가" : `${visitor === undefined ? takeoverBase(g,t.index) : takeoverCost(g, t.index, visitor)}만원`}</dd></div>` : ""}${p.owner === visitor ? `<div><dt>채무 시 매각 대금</dt><dd>${p.landmark ? "매각 불가" : `${saleProceeds(g, t.index, visitor)}만원`}</dd></div>` : ""}</dl><p>${p.revisitBoost?`재방문 통행료 +${p.revisitBoost*30}% / `:""}${p.festival?`축제 ${p.festival}회 · 다음 상대 방문까지 / `:""}${p.locust?`메뚜기떼 ${p.locust}회 적용 / `:""}${String.fromCharCode(65 + t.group)} 그룹 · ${t.line + 1}번 변. 통행료와 인수가는 현재 보유 증강을 반영합니다. 유리대포의 추가 수입·지출은 은행 지급·소멸로 별도 정산합니다.</p>` : `<p>${tileDescription(t.index)}</p>`}<div class="m-tile-occupants">${g.players.flatMap((player,i)=>!player.bankrupt&&player.position===t.index?[`<span style="--seat:${COLORS[i]}"><img src="${boardBirds[i]}" alt=""><b>${i+1}P ${escape(player.name)}</b></span>`]:[]).join('')}</div>${g.abilities.marks.filter(m => m.tile === t.index).map(m => `<p class="m-current-status">${m.owner + 1}P의 ${m.kind === "gas" ? "방귀" : m.kind === "trap" ? "덫" : "독"} · ${(m.expiresRound ?? g.round) - g.round}라운드 뒤 만료</p>`).join("")}</section>`;
+  return `<section class="m-inspector"><span class="m-eyebrow">선택한 칸 · ${t.index + 1}/36</span><h2>${t.name}${p.landmark ? " · 랜드마크" : ""}</h2>${t.kind === "city" ? `<dl><div><dt>토지 정가</dt><dd>${t.price}만원</dd></div><div><dt>소유자</dt><dd>${p.owner === null ? "주인 없음" : `${p.owner + 1}P`}</dd></div><div><dt>${p.owner === null ? "토지 기본 통행료" : "감면 전 청구액"}</dt><dd>${receipt}만원</dd></div>${personal !== null ? `<div><dt>내 방문 시 통행료</dt><dd>${personal}만원</dd></div>` : ""}${p.owner === null && visitor !== undefined ? `<div><dt>내 매입가</dt><dd>${purchaseCost(g, t.index, visitor)}만원</dd></div>` : ""}${p.owner !== null && p.owner !== visitor ? `<div><dt>${visitor === undefined ? "인수 기본액" : "내 최종 인수가"}</dt><dd>${p.landmark ? "인수 불가" : `${visitor === undefined ? takeoverBase(g,t.index) : takeoverCost(g, t.index, visitor)}만원`}</dd></div>` : ""}${p.owner === visitor ? `<div><dt>채무 시 매각 대금</dt><dd>${p.landmark ? "매각 불가" : `${saleProceeds(g, t.index, visitor)}만원`}</dd></div>` : ""}</dl><p>${p.revisitBoost?`재방문 통행료 +${p.revisitBoost*REVISIT_BONUS_PERCENT}% / `:""}${p.festival?`축제 ${p.festival}회 · 다음 상대 방문까지 / `:""}${p.locust?`메뚜기떼 ${p.locust}회 적용 / `:""}${String.fromCharCode(65 + t.group)} 그룹 · ${t.line + 1}번 변. 통행료와 인수가는 현재 보유 증강을 반영합니다. 유리대포의 추가 수입·지출은 은행 지급·소멸로 별도 정산합니다.</p>` : `<p>${tileDescription(t.index)}</p>`}<div class="m-tile-occupants">${g.players.flatMap((player,i)=>!player.bankrupt&&player.position===t.index?[`<span style="--seat:${COLORS[i]}"><img src="${boardBirds[i]}" alt=""><b>${i+1}P ${escape(player.name)}</b></span>`]:[]).join('')}</div>${g.abilities.marks.filter(m => m.tile === t.index).map(m => `<p class="m-current-status">${m.owner + 1}P의 ${m.kind === "gas" ? "방귀" : m.kind === "trap" ? "덫" : "독"} · ${(m.expiresRound ?? g.round) - g.round}라운드 뒤 만료</p>`).join("")}</section>`;
 }
 function resultMarkup() {
   const v = view!, g = v.game;
@@ -428,7 +433,7 @@ function render() {
   turnPointer.set(!v.started||finished||drawingOrder?null:actor);
   sound.setActive(!finished);
   root.innerHTML = `<main class="m-shell"><header class="heading"><div><h1>증강마블</h1></div><div class="m-header-tools"><span class="m-mode">${online ? v.seat < 0 ? "온라인 · 관전" : "온라인 대전" : "도도봇과 연습"}</span>${soundMarkup()}<button data-rules data-focus="rules">규칙 보기</button></div></header>
-  ${!v.started&&!finished?lobbyMarkup():`<div class="m-layout"><section class="m-play"><div class="m-turnbar" style="--seat:${COLORS[actor]}"><span class="m-live"></span><strong>${finished ? "경기 종료" : !connected ? "연결 복구 중" : !v.started ? "접속 대기" : `${actor + 1}P ${escape(g.players[actor].name)}${actor === v.seat ? " · 내 차례" : "의 차례"}`}</strong><span class="m-turn-number">${g.round}라운드 · ${g.turnId}턴</span><b class="m-clock" aria-label="남은 행동 시간">--</b></div>${boardMarkup()}<p class="m-board-caption">지역을 누르면 내 증강을 반영한 가격과 설치물을 확인할 수 있습니다.</p>
+  ${!v.started&&!finished?lobbyMarkup():`<div class="m-layout"><section class="m-play"><div class="m-turnbar" style="--seat:${COLORS[actor]}"><span class="m-live"></span><strong>${finished ? "경기 종료" : !connected ? "연결 복구 중" : !v.started ? "접속 대기" : `${g.augmentResume==="round30"?`30라운드 · 프리즘 선택 (${g.roundPrism?.pending.length??0}명 남음)`:`${actor + 1}P ${escape(g.players[actor].name)}${actor === v.seat ? " · 내 차례" : "의 차례"}`}`}</strong><span class="m-turn-number">${g.round}라운드 · ${g.turnId}턴</span><b class="m-clock" aria-label="남은 행동 시간">--</b></div>${boardMarkup()}<p class="m-board-caption">지역을 누르면 내 증강을 반영한 가격과 설치물을 확인할 수 있습니다.</p>
   <section class="m-history"><div><h2>진행 기록</h2><span>최근5개</span></div><ol>${(displayedLog ?? g.log).slice(-5).reverse().map((text, i) => `<li class="${i ? "" : "latest"}"><span>${i ? "·" : "최근"}</span>${escape(text)}</li>`).join("")}</ol></section></section>
   <aside class="m-sidebar">${!finished&&(actor!==v.seat||boardDiceControls()||animating||["augment","event"].includes(g.phase)&&!directPickKind())?"":`<section class="m-action-panel" aria-live="polite" aria-busy="${animating}">${g.world.interrupted ? `<p class="m-small-note">이벤트 이동 처리 · ${actor+1}P 선택 후 원래 차례로 돌아갑니다.</p>`:""}${controls()}${couponControls()}<p class="m-error" role="status">${escape(error)}</p></section>`}${playersMarkup()}${inspectorMarkup()}<section class="m-ability-history"><div class="m-section-title"><h2>능력 발동 기록</h2><span>최근6개</span></div>${g.abilities.events.some(e => e.id <= shownEventId&&e.ability!=="dice") ? `<ol>${g.abilities.events.filter(e => e.id <= shownEventId&&e.ability!=="dice").slice(-6).reverse().map(e => `<li><span>${e.actor + 1}P</span><p>${escape(e.caption)}</p></li>`).join("")}</ol>` : '<p class="m-small-note">증강을 획득하거나 효과가 적용되면 여기에 표시됩니다.</p>'}</section></aside></div>`}</main>${augmentMarkup() || eventMarkup() || infoMarkup() || resultMarkup()}`;
   root.querySelectorAll<HTMLCanvasElement>("canvas[data-profile], canvas[data-mascot], canvas[data-winner]").forEach(canvas => { const i = Number(canvas.dataset.profile ?? canvas.dataset.token ?? canvas.dataset.mascot ?? canvas.dataset.winner ?? 0), ctx = canvas.getContext("2d")!; ctx.imageSmoothingEnabled = false; ctx.drawImage(profiles[i], 0, 0, canvas.width, canvas.height); });

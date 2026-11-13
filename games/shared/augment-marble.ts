@@ -5,11 +5,12 @@ import { incomeWithoutGlass,glassIncome,lossWithoutGlass,transferMoney,stealMone
 import { createAbilityRuntime, createRoll, diceChoices, configureRoll, throwDice, rerollDice, chooseBlackDice, emitAbility, type ForceAbility, type RerollAbility, type AbilityRuntime } from "./augment-marble-runtime.js";
 import { START_CASH, SALARY, BONUS, LAND_TAX_RATE, BUILDINGS, GROUP_ECONOMY } from "./augment-marble-economy.js";
 export { START_CASH, SALARY, BONUS, LAND_TAX_RATE, BUILDINGS, GROUP_ECONOMY } from "./augment-marble-economy.js";
-import { AUGMENT_CATALOG, createAugmentState, openAugmentOffer, rerollAugment, selectAugment, type AugmentDefinition, type AugmentState, type AugmentTier } from "./augment-marble-augments.js";
+import { AUGMENT_CATALOG, createAugmentState, openRoundPrismOffer, openAugmentOffer, rerollAugment, selectAugment, type AugmentDefinition, type AugmentState, type AugmentTier } from "./augment-marble-augments.js";
 // Money is expressed in 만원. Shared by the authoritative server and practice mode.
 export const COLORS = ["#547f9b", "#ba705e", "#6f8b63", "#b48a48"];
 export const GROUP_COLORS = ["#b73730", "#956000", "#24733e", "#007688", "#6940a6", "#ac2e69", "#315ab7"];
-export const MAX_ROUNDS = 80;
+export const MAX_ROUNDS = 60;
+export const REVISIT_BONUS_PERCENT = 40;
 export const COLOR_GROUPS_TO_WIN = 2;
 export const TURN_MS = 45_000;
 export type Tile = { index: number; name: string; kind: "city" | "start" | "rest" | "event" | "bonus" | "portal"; group: number; line: number; price: number };
@@ -22,11 +23,12 @@ export interface Player { name: string; cash: number; position: number; bankrupt
 export interface Property { revisitBoost?:number; owner: number | null; buildings: number; landmark?: boolean; builtTurn?: number; purchasedTurn?:number; festival?: number; locust?: number }
 export type Phase = "portal" | "event" | "rent" | "augment" | "roll" | "dice" | "buy" | "build" | "takeover" | "debt" | "end" | "finished";
 export type WinReason = "bankruptcy" | "triple" | "line" | "assets";
-export interface Game { landmarkVisit?:{seat:number;tile:number;turnId:number}; teleport?:{id:number;seat:number;from:number;to:number}; destructionBatch?:{id:number;revision:number;kind:"quake"|"missile";items:{tile:number;before:Property}[]}; flightBatch?:{id:number;items:{seat:number;from:number;to:number}[]}; turnOrder?:number[];orderDrawUntil?:number; moneyTransfers?:MoneyTransfer[]; world: EventState; abilities: AbilityRuntime; players: Player[]; properties: Property[]; turn: number; turnId: number; round: number; roundPending: number[]; revision: number; phase: Phase; dice: number[]; doubles: number; extraTurn: boolean; winner: number | null; reason: WinReason | null; debt: { amount: number; creditor: number | null; reason: "rent" | "land_tax"; principal?:number;receipt?:number; resume: "takeover" | "arrival" | "event" } | null; log: string[]; augments: AugmentState | null; augmentSeat: number | null; augmentResume: "start" | "arrive" | null }
+export interface Game { roundPrism?:{given:boolean;pending:number[]}; locustBatch?:{id:number;path:number[]}; landmarkVisit?:{seat:number;tile:number;turnId:number}; teleport?:{id:number;seat:number;from:number;to:number}; destructionBatch?:{id:number;revision:number;kind:"quake"|"missile";items:{tile:number;before:Property}[]}; flightBatch?:{id:number;items:{seat:number;from:number;to:number}[]}; turnOrder?:number[];orderDrawUntil?:number; moneyTransfers?:MoneyTransfer[]; world: EventState; abilities: AbilityRuntime; players: Player[]; properties: Property[]; turn: number; turnId: number; round: number; roundPending: number[]; revision: number; phase: Phase; dice: number[]; doubles: number; extraTurn: boolean; winner: number | null; reason: WinReason | null; debt: { amount: number; creditor: number | null; reason: "rent" | "land_tax"; principal?:number;receipt?:number; resume: "takeover" | "arrival" | "event" } | null; log: string[]; augments: AugmentState | null; augmentSeat: number | null; augmentResume: "start" | "arrive" | "round30" | null }
 export interface Seat { userId: string | null; name: string; bot?: string }
 export interface View { type: "MARBLE_STATE"; matchId: string; game: Game; seats: (Seat & { connected: boolean; ready?: boolean })[]; seat: number; started: boolean; deadline: number; serverNow: number; aborted?: string; rematch?: { matchId: string; votes: string[]; required: number; delivered: boolean } }
 export interface Action { action: "portal_move" | "roll" | "buy" | "build" | "takeover" | "skip" | "end" | "sell" | "bankrupt" | "augment_select" | "augment_reroll" | "dice_force" | "dice_double" | "dice_copy" | "dice_reroll" | "dice_choose" | "dice_confirm" | "subsidy" | "escape" | "landmark" | "ability_target" | "island_buy" | "event_resolve" | "rent_pay" | "coupon_pass" | "home_stone" | "extra_coupon"; eventSerial?: number; amount?: number; decline?: boolean; augmentId?: string; line?: number; steps?: number; target?: number; ability?: ForceAbility | RerollAbility; option?: number; die?: 0 | 1; useNew?: boolean; offerId?: string; slot?: number; buildings?:number[]; building?: number; tile?: number }
 export interface AugmentOptions { catalog?: readonly AugmentDefinition[]; tierSequence?: readonly AugmentTier[]; random?: () => number }
+export function canAct(g:Game,seat:number){return g.phase==="augment"&&g.augmentResume==="round30"?!!g.roundPrism?.pending.includes(seat):seat===actingSeat(g);}
 export function actingSeat(g: Game) { return g.augmentSeat ?? g.turn; }
 export function createGame(names: string[], options?: AugmentOptions): Game {
   if (names.length < 2 || names.length > 4) throw new Error("2~4명이 필요합니다.");
@@ -56,7 +58,7 @@ export function rent(g: Game, index: number, modifiers = true) {
   const t = BOARD[index], p = g.properties[index];
   if (t.kind !== "city" || p.owner === null) return 0;
   const monopoly = BOARD.filter(x => x.group === t.group).every(x => g.properties[x.index].owner === p.owner);
-  return Math.max(0, Math.ceil((baseRent(index) + BUILDINGS.reduce((sum, _, i) => sum + (p.buildings & (1 << i) ? construction(index, i).rent : 0), 0)) * (1+Math.max(0,p.revisitBoost??0)*.30) * (monopoly ? 2 : 1) * (p.landmark ? 2 : 1) * (g.abilities.gambles[p.owner]?.[index] !== undefined && modifiers && definitionsActive(g,p.owner) ? g.abilities.gambles[p.owner][index] : 1) * Math.pow(2,p.festival ?? 0) * Math.pow(.7,p.locust ?? 0) * (g.world?.famineUntil > g.round ? .5 : 1) - 1e-9));
+  return Math.max(0, Math.ceil((baseRent(index) + BUILDINGS.reduce((sum, _, i) => sum + (p.buildings & (1 << i) ? construction(index, i).rent : 0), 0)) * (1+Math.max(0,p.revisitBoost??0)*REVISIT_BONUS_PERCENT/100) * (monopoly ? 2 : 1) * (p.landmark ? 2 : 1) * (g.abilities.gambles[p.owner]?.[index] !== undefined && modifiers && definitionsActive(g,p.owner) ? g.abilities.gambles[p.owner][index] : 1) * Math.pow(2,p.festival ?? 0) * Math.pow(.7,p.locust ?? 0) * (g.world?.famineUntil > g.round ? .5 : 1) - 1e-9));
 }
 export function value(g: Game, index: number) { return (g.properties[index].landmark ? BOARD[index].price : 0) + BOARD[index].price + BUILDINGS.reduce((sum, _, i) => sum + (g.properties[index].buildings & (1 << i) ? construction(index, i).cost : 0), 0); }
 export function assets(g: Game, owner: number) { return g.players[owner].cash + BOARD.reduce((sum, t) => sum + (g.properties[t.index].owner === owner && !g.properties[t.index].landmark ? incomeAmount(g, owner, Math.floor(value(g, t.index) / 2)) : 0), 0); }
@@ -102,7 +104,7 @@ function afterPayment(g: Game, random: () => number, catalog: readonly AugmentDe
 function rewardRevisit(g:Game,seat:number,tile:number){
  const p=g.properties[tile];if(BOARD[tile].kind!=="city"||p.owner!==seat||p.buildings!==7)return;
  const old=p.revisitBoost??0,before=incomeWithoutGlass(g,seat,rent(g,tile));p.revisitBoost=old+1;
- if(p.revisitBoost!==old){const after=incomeWithoutGlass(g,seat,rent(g,tile));note(g,`${seat+1}P ${BOARD[tile].name} 재방문 · 통행료 ${before} → ${after}만원 (누적 +${p.revisitBoost*30}%)`);emitAbility(g.abilities,{actor:seat,tile,ability:"revisit",caption:`${BOARD[tile].name} 통행료 ${before} → ${after}만원`,amount:after-before,rentChange:{before,after,level:p.revisitBoost},visual:"buff"});}
+ if(p.revisitBoost!==old){const after=incomeWithoutGlass(g,seat,rent(g,tile));note(g,`${seat+1}P ${BOARD[tile].name} 재방문 · 통행료 ${before} → ${after}만원 (누적 +${p.revisitBoost*REVISIT_BONUS_PERCENT}%)`);emitAbility(g.abilities,{actor:seat,tile,ability:"revisit",caption:`${BOARD[tile].name} 통행료 ${before} → ${after}만원`,amount:after-before,rentChange:{before,after,level:p.revisitBoost},visual:"buff"});}
 }
 
 function arrive(g: Game, random: () => number = Math.random) {
@@ -152,7 +154,13 @@ function end(g: Game,random:()=>number=Math.random,catalog:readonly AugmentDefin
   }
   const order=g.turnOrder??g.players.map((_,i)=>i);
   do { g.turn = order[(order.indexOf(g.turn)+(g.world?.direction??1)+order.length)%order.length]; } while (g.players[g.turn].bankrupt);
-  g.doubles = 0; g.turnId++; g.abilities.ordinal = 0; g.abilities.roll = null; g.phase = "roll"; startTurn(g);
+  g.doubles = 0; g.turnId++; g.abilities.ordinal = 0; g.abilities.roll = null; g.phase = "roll";
+  if(g.round===30&&!g.roundPrism?.given&&g.augments){
+   const pending=g.players.flatMap((p,i)=>!p.bankrupt&&openRoundPrismOffer(g.augments!,i,random,catalog)?[i]:[]);
+   g.roundPrism={given:true,pending};
+   if(pending.length){g.phase="augment";g.augmentResume="round30";g.augmentSeat=pending[0];note(g,"30라운드 · 생존자 모두 프리즘 증강 선택");return;}
+  }
+  startTurn(g);
 }
 function mutateAction(g: Game, input: Action, random: () => number = Math.random, catalog: readonly AugmentDefinition[] = AUGMENT_CATALOG): void {
   g.world ??= createEventState(g.players.length);
@@ -185,7 +193,8 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
   }
   if (input.action === "augment_select" || input.action === "augment_reroll") {
     if (g.phase !== "augment" || !g.augments || g.augmentSeat === null || typeof input.offerId !== "string") throw new Error("증강을 선택하는 단계가 아닙니다.");
-    const seat = g.augmentSeat;
+    const seat = g.augmentResume==="round30"?g.roundPrism!.pending.find(i=>g.augments!.players[i].offer?.id===input.offerId)??-1:g.augmentSeat;
+    if(seat<0)throw new Error("이미 선택을 완료한 증강입니다.");
     if (input.action === "augment_reroll") rerollAugment(g.augments, seat, input.offerId, input.slot!, random, catalog);
     else {
       const id = selectAugment(g.augments, seat, input.offerId, input.slot!);
@@ -194,7 +203,11 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
       for (const event of g.abilities.events) if (event.id >= firstEffect) { event.stage = "before_move"; delete event.move; }
       note(g, `${seat + 1}P 증강 선택 · ${catalog.find(a => a.id === id)?.name ?? id}`);
       emitAbility(g.abilities, { actor: seat, tile: g.players[seat].position, ability: id, stage: "before_move", caption: `${catalog.find(a => a.id === id)?.name ?? id}${catalog.find(a => a.id === id)?.effect === "conversion" ? " 사용 완료" : " 획득"}`, visual: "buff" });
-      if (g.augmentResume === "start") {
+      if(g.augmentResume==="round30"){
+        g.roundPrism!.pending=g.roundPrism!.pending.filter(i=>i!==seat);
+        g.augmentSeat=g.roundPrism!.pending[0]??null;
+        if(g.augmentSeat===null){g.augmentResume=null;g.phase="roll";startTurn(g);}
+      } else if (g.augmentResume === "start") {
         const next = (g.turnOrder??g.players.map((_,i)=>i)).find(i=>g.augments!.players[i].offer!==null)??-1;
         g.augmentSeat = next < 0 ? null : next;
         if (next < 0) { g.phase = "roll"; g.augmentResume = null; startTurn(g); }
@@ -394,7 +407,7 @@ function startTurn(g: Game) {
   const position = g.players[g.turn].position;
   if (power(g, g.turn, "steal") && g.abilities.ownerTurns[g.turn] > 1) g.players.forEach((p, i) => { if (i !== g.turn && !p.bankrupt && p.position === position) steal(g, g.turn, i, Math.floor(p.cash * .1), "mosquito"); });
   if (power(g, g.turn, "jujitsu") && position !== 0) g.players.forEach((p, i) => { if (i !== g.turn && !p.bankrupt && !immune(g, i) && p.position === position) { g.abilities.statuses[i].skipTurns = Math.max(1, g.abilities.statuses[i].skipTurns); g.abilities.statuses[i].skipBy = "주짓수"; emitAbility(g.abilities, { actor:g.turn,target:i,tile:position,ability:"jujitsu",caption:"주짓수 · 다음 차례 기절",visual:"trap",stage:"before_move" }); } });
-  if (power(g, g.turn, "exploit")) for (const target of turnTargets(g)) steal(g, g.turn, target, Math.floor(targetWealth(g, target) * .05), "exploit");
+  if (power(g, g.turn, "exploit")) {const targets=turnTargets(g);for(const target of targets)steal(g,g.turn,target,Math.floor(targetWealth(g,target)*.15/targets.length),"exploit");}
   g.abilities.pendingTarget = !!power(g, g.turn, "vladimir") && turnTargets(g).length > 0;
 }
 export function mimicHistory(g: Game) { return g.abilities.throws.filter(t => t.seat !== g.turn && t.turnId > g.abilities.lastOwnTurn[g.turn]).map(t => t.sum); }
@@ -592,7 +605,7 @@ export function applyAction(g: Game, input: Action, random: () => number = Math.
 }
 
 export function preservesDeadline(before: Game, after: Game, action: Action) {
-  return action.action === "augment_reroll" || (before.turnId === after.turnId && before.abilities.ordinal === after.abilities.ordinal && ["roll", "dice"].includes(before.phase) && ["roll", "dice"].includes(after.phase));
+  return (before.augmentResume==="round30" && after.augmentResume==="round30") || action.action === "augment_reroll" || (before.turnId === after.turnId && before.abilities.ordinal === after.abilities.ordinal && ["roll", "dice"].includes(before.phase) && ["roll", "dice"].includes(after.phase));
 }
 
 function tileUtility(g: Game, sum: number) {
@@ -681,7 +694,7 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
    g.flightBatch={id:(g.flightBatch?.id??0)+1,items};for(const item of items)g.players[item.seat].position=item.to;
    beginEventVisits(g,items.map(item=>({seat:item.seat,tile:item.to,effects:true,arrived:true,forced:true})),random,catalog);break;
   }
-  case "locust":{const start=Math.min(35,Math.floor(random()*36));for(let step=1;step<=5;step++){const tile=(start+step)%36;if(BOARD[tile].kind==="city")g.properties[tile].locust=(g.properties[tile].locust??0)+1;}note(g,`메뚜기떼 · ${BOARD[start].name}에서 5칸 이동`);break;}
+  case "locust":{const start=Math.min(35,Math.floor(random()*36));g.locustBatch={id:(g.locustBatch?.id??0)+1,path:Array.from({length:6},(_,i)=>(start+i)%36)};for(let step=1;step<=5;step++){const tile=(start+step)%36;if(BOARD[tile].kind==="city")g.properties[tile].locust=(g.properties[tile].locust??0)+1;}note(g,`메뚜기떼 · ${BOARD[start].name}에서 5칸 이동`);break;}
   case "change_augment":{
    const owned=g.augments?.players[seat].owned??[];if(!owned.length){note(g,"보유 증강이 없어 교체 종료");break;}
    const old=catalog.find(a=>a.id===input.augmentId&&owned.includes(a.id));if(!old)throw new Error("교체할 증강을 선택해주세요.");

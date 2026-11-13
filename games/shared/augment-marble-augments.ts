@@ -62,7 +62,7 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "drop_kick", "name": "드롭킥", "tier": "prism", "effect": "drop_kick", "power": 3, "description": "자신을 통과하는 상대의 남은 이동 칸 수를 3칸 줄입니다. 부족하면 자신의 위치에서 멈춥니다. 상대의 다음 주사위는 합계 10 이하로 제한되며 주사위 능력을 무시합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "black_dice", "name": "블랙다이스", "tier": "prism", "effect": "reroll", "power": 3, "description": "매 주사위마다 다시 던진 뒤 기존 결과와 새 결과 중 하나를 선택할 수 있습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "trap", "name": "덫", "tier": "prism", "effect": "trap", "power": 1, "description": "자신이 한 차례 동안 밟은 칸에 덫을 남깁니다. 2라운드 안에 도착한 상대는 현재 더블 추가 투척이 취소되고 다음 자기 차례가 마비됩니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "exploit", "name": "착취", "tier": "prism", "effect": "exploit", "power": 5, "description": "매 차례 시작 시 같은 라인에 있는 모든 상대의 보유 현금을 5%씩 흡수합니다. 모서리는 인접한 두 라인 모두에 포함됩니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "exploit", "name": "착취", "tier": "prism", "effect": "exploit", "power": 15, "description": "매 차례 시작 시 같은 라인의 생존 상대 수로 15%를 나눈 비율만큼 각 상대의 보유 현금을 흡수합니다. 1명은 15%, 2명은 각각 7.5%, 3명은 각각 5%입니다. 모서리는 인접한 두 라인에 포함하며, 같은 상대는 한 번만 계산합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "gambler_prism", "name": "도박사2", "tier": "prism", "effect": "gambler", "power": 4, "description": "내 지역마다 각각 50% 확률로 통행료가 0배 또는 4배가 됩니다. 앞으로 얻는 지역에도 적용됩니다.", "hooks": ["acquire"]},
   {"id": "alcohol", "name": "술팔기", "tier": "prism", "effect": "vendor", "power": 63, "description": "자신을 통과하는 상대에게 술을 팔아 63만원을 받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "grant_prism", "name": "지급3", "tier": "prism", "effect": "grant", "power": 1000, "description": "획득 즉시 1000만원을 받습니다.", "hooks": ["acquire"]},
@@ -80,6 +80,7 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "great_luck", "name": "운수대통", "tier": "prism", "effect": "luck", "power": 100, "description": "이벤트 칸에서 부정적 이벤트가 발생하지 않습니다.", "hooks": ["before_move", "arrive"]},
 ];
 export interface AugmentOffer {
+  bonus?: boolean;
   id: string;
   round: number;
   tier: AugmentTier;
@@ -161,11 +162,20 @@ export function rerollAugment(state: AugmentState, seat: number, offerId: string
 }
 export function selectAugment(state: AugmentState, seat: number, offerId: string, slot: number) {
   const offer = requireOffer(state, seat, offerId, slot), player = state.players[seat], chosen = offer.cards[slot];
-  if (player.owned.includes(chosen) || player.acquired >= AUGMENT_MILESTONES.length) throw new Error("이미 보유했거나 획득할 수 없는 증강입니다.");
-  player.owned.push(chosen); player.acquired++; player.offer = null;
+  if (player.owned.includes(chosen) || !offer.bonus && player.acquired >= AUGMENT_MILESTONES.length) throw new Error("이미 보유했거나 획득할 수 없는 증강입니다.");
+  player.owned.push(chosen); if(!offer.bonus)player.acquired++; player.offer = null;
   return chosen;
 }
 /** Only acquired augments are public; future tiers and other players' offers stay private. */
 export function publicAugmentState(state: AugmentState, seat: number): AugmentState {
   return { tierSequence: [], players: state.players.map((p, i) => ({ acquired: p.acquired, laps: p.laps, owned: [...p.owned], offer: i === seat && p.offer ? { ...p.offer, cards: [...p.offer.cards], rerolled: [...p.offer.rerolled], seen: [] } : null })) };
+}
+
+/** Separate from personal lap milestones; every survivor receives an offer at once. */
+export function openRoundPrismOffer(state:AugmentState,seat:number,random:()=>number,catalog:readonly AugmentDefinition[]=AUGMENT_CATALOG){
+ const p=state.players[seat];if(p.offer)return false;
+ const pool=catalog.filter(a=>a.tier==='prism'&&!p.owned.includes(a.id)).map(a=>a.id),cards:string[]=[];
+ for(let i=0;i<Math.min(3,pool.length);i++)cards.push(sample(pool.filter(id=>!cards.includes(id)),random));
+ if(!cards.length)return false;
+ p.offer={id:`round30:${seat}`,round:30,tier:'prism',bonus:true,cards,rerolled:cards.map(()=>pool.length<=cards.length),seen:[...cards]};return true;
 }

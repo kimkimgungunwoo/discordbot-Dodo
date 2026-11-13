@@ -1,3 +1,4 @@
+import { statusEffect } from "./status-effect";
 import { bloodDrain } from "./drain-effect";
 import { AUGMENT_CATALOG } from "../../../shared/augment-marble-augments";
 import type { AbilityEvent } from "../../../shared/augment-marble-runtime";
@@ -27,7 +28,7 @@ export class AbilityEffects {
     caption.append(description);layer.append(caption);
     const targets=[{node:layer,seat}];
     const addParticles=(node:HTMLElement)=>{const ring=document.createElement('b');ring.className='m-ability-ring';node.append(ring);for(let i=0;i<8;i++){const dot=document.createElement('i'),angle=i*Math.PI/4;dot.style.setProperty('--dx',`${Math.round(Math.cos(angle)*32)}px`);dot.style.setProperty('--dy',`${Math.round(Math.sin(angle)*24)}px`);node.append(dot)}};
-    addParticles(layer);
+    const status=statusEffect(event);if(status)layer.append(status);else addParticles(layer);
     if(event.target!==undefined&&event.target!==seat){const hit=document.createElement('div');hit.className=`m-ability-fx m-ability-hit fx-${event.visual}`;hit.dataset.anchorSeat=String(event.target);addParticles(hit);targets.push({node:hit,seat:event.target})}
     for(const target of targets){document.body.append(target.node);this.layers.add(target.node)}
     const cards=[...this.root.querySelectorAll<HTMLElement>(`[data-owned-seat="${event.actor}"]`)].filter(el=>el.dataset.ability===event.ability||el.dataset.effect===definition?.effect||el.dataset.effect===event.ability);for(const card of cards)card.classList.add('ability-active');

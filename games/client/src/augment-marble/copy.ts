@@ -5,7 +5,7 @@ import { BOARD, SALARY, BONUS, rent, rentPayment, type Game } from "../../../sha
 const timing: Partial<Record<EffectKind, string>> = {
   force:"굴리기 전 선택", reroll:"굴린 뒤 · 이동 전", selective_double:"매 차례 첫 투척 전", double_lover:"투척 시 자동", mimic:"굴리기 대신 선택", subsidy:"이동 대신 월급 선택",
   builder:"건설 시", realtor:"매입 시", negotiator:"인수 시", salary:"월급 수령 시", tax:"세금 정산 시", investor:"수입 발생 시", glass_cannon:"수입·지출 발생 시",
-  steal:"첫 차례 이후 · 같은 칸", vladimir:"차례 시작 · 대상 선택", exploit:"차례 시작 · 같은 라인", jujitsu:"차례 시작 · 같은 칸",
+  steal:"첫 차례 이후 · 같은 칸", vladimir:"차례 시작 · 대상 선택", exploit:"차례 시작 · 같은 라인 · 15% ÷ 상대 수", jujitsu:"차례 시작 · 같은 칸",
   low_kick:"상대가 나를 통과할 때", calf_kick:"상대가 나를 통과할 때", drop_kick:"상대가 나를 통과할 때", trip:"상대가 나를 통과할 때", vendor:"상대가 나를 통과할 때", pickpocket:"상대를 통과할 때", robber:"상대를 통과할 때", singed:"이동 중 상대 통과 · 도착 시 독 설치",
   gas:"도착 시 설치 · 2라운드", trap:"이동 경로 설치 · 2라운드", revival:"파산 위기 · 1회", gambler:"지역별 통행료 추첨", conversion:"획득 즉시 · 카드 소비", grant:"획득 즉시", luck:"이벤트 도착 시", no_island:"3연속 더블 시", stealth:"자기 차례 대기 중", island_owner:"무인도 매수 · 갇힌 상대의 휴식 시", landmark:"건물 3개 완공 후 재방문",
 };
