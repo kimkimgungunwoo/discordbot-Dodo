@@ -1,3 +1,4 @@
+import { effectStart } from "./presentation-clock";
 import { BOARD } from '../../../shared/augment-marble';
 
 /** Follow the board on every frame, including while the page scrolls. */
@@ -8,11 +9,11 @@ export async function showLocustSwarm(root:HTMLElement,path:number[],arrive:(til
  const ctx=canvas.getContext('2d')!;document.body.append(canvas);
  const point=(tile:number)=>{const r=root.querySelector<SVGElement>(`.m-board-svg .m-tile[data-inspect="${tile}"]`)?.getBoundingClientRect();return r?{x:r.x+r.width/2,y:r.y+r.height/2,size:Math.min(r.width,r.height)}:null;};
  await new Promise<void>(resolve=>{
-  let frame=0,last=0;const start=performance.now(),hop=420,duration=hop*5+650;
+  let frame=0,last=0;const start=effectStart(2750),hop=420,duration=hop*5+650;
   const done=()=>{cancelAnimationFrame(frame);signal.removeEventListener('abort',done);canvas.remove();resolve();};
   const draw=(now:number)=>{
    if(signal.aborted){done();return;}
-   const elapsed=now-start,progress=Math.min(5,elapsed/hop),step=Math.min(4,Math.floor(progress)),fraction=progress-step;
+   const elapsed=Math.max(0,now-start),progress=Math.min(5,elapsed/hop),step=Math.min(4,Math.floor(progress)),fraction=progress-step;
    while(last<Math.floor(progress)){last++;arrive(path[last]);}
    const dpr=Math.min(devicePixelRatio||1,2);if(canvas.width!==Math.round(innerWidth*dpr)||canvas.height!==Math.round(innerHeight*dpr)){canvas.width=Math.round(innerWidth*dpr);canvas.height=Math.round(innerHeight*dpr);}
    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,innerWidth,innerHeight);
@@ -37,6 +38,6 @@ export async function showLocustSwarm(root:HTMLElement,path:number[],arrive:(til
    }
    if(elapsed<duration)frame=requestAnimationFrame(draw);else done();
   };
-  signal.addEventListener('abort',done,{once:true});draw(start);
+  signal.addEventListener('abort',done,{once:true});draw(performance.now());
  });
 }

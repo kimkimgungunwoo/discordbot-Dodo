@@ -1,3 +1,4 @@
+import { beginPresentationClock, resetPresentationClock, effectStart, effectRemaining } from "./presentation-clock";
 import { showLocustSwarm } from "./locust-effect";
 import { rulesGuide } from "./rules-guide";
 import { showTakeover } from "./takeover-effect";
@@ -52,8 +53,13 @@ let heldWall:number|undefined;
 let controller = new AbortController(), movingSprite: HTMLCanvasElement | undefined, movingShadow: HTMLDivElement | undefined;
 let queue: { next: View; keepDeadline: boolean }[] = [];
 let info: { kind: "ability"; id: string; seat: number } | { kind: "rules" } | null = null;
+let latestSnapshot:View|undefined;
+let clockOffset:number|undefined;
 let dismissedResult = "", returnFocus = "", shownEventId = 0;
 let displayedLog: string[] | undefined;
+const hiddenMarks=new Set<string>();
+let consumedMarks:View["game"]["abilities"]["marks"]=[];
+const markKey=(m:{owner:number;tile:number;kind:string})=>`${m.owner}:${m.kind}:${m.tile}`;
 let landingTarget:{seat:number;tile:number}|null=null;
 let displayedPositions=new Map<number,number>();
 let moveProgress={done:0,total:0};
@@ -67,12 +73,12 @@ function dieMarkup(value: number) {
 }
 function cleanupMovement() { root.querySelectorAll(".m-step-active").forEach(el=>el.classList.remove("m-step-active"));movingSprite?.remove(); movingSprite = undefined; movingShadow?.remove();movingShadow=undefined; root.querySelectorAll<HTMLElement>("[data-token],[data-token-part]").forEach(t => t.style.visibility = ""); }
 function resetPresentation() {
-  sound.stop();generation++; controller.abort(); controller = new AbortController(); queue = []; draining = false;
+  resetPresentationClock();sound.stop();generation++; controller.abort(); controller = new AbortController(); queue = []; draining = false;
   cleanupMovement(); landingTarget=null;displayedPositions.clear();moveProgress={done:0,total:0};displayedCash.clear();displayedProperties.clear();moneyEffects.clear();abilityEffects.clear();drawingOrder=false; animating = false; presentationStage = ""; clearTimeout(timer);
 }
 function pause(ms: number, signal: AbortSignal) {
   if (signal.aborted) return Promise.resolve();
-  return new Promise<void>(resolve => { const done = () => { clearTimeout(handle); signal.removeEventListener("abort", done); resolve(); }; const handle = setTimeout(done, ms); signal.addEventListener("abort", done, { once: true }); });
+  return new Promise<void>(resolve => { const done = () => { clearTimeout(handle); signal.removeEventListener("abort", done); resolve(); }; const handle = setTimeout(done, effectRemaining(effectStart(ms),ms)); signal.addEventListener("abort", done, { once: true }); });
 }
 function syncRematch(next: View) {
   rematch?.configure(next.matchId, next.seat < 0 ? null : next.seats[next.seat].userId, next.seats.filter(s => s.userId !== null).length, next.game.phase === "finished" || !!next.aborted, next.rematch?.delivered ?? false);
@@ -83,8 +89,9 @@ function beginOrderDraw(next:View){
  drawnMatch=next.matchId;drawingOrder=true;clearTimeout(timer);render();const signal=controller.signal;void showOrderDraw(next,next.game.orderDrawUntil!-Date.now()-offset,signal).finally(()=>{if(signal.aborted)return;drawingOrder=false;render();if(!online)scheduleLocal();void drain();});
 }
 function receive(next: View, keepDeadline = false) {
-  offset = online ? next.serverNow - Date.now() : 0;
-  if (needsBaseline || view?.matchId !== next.matchId || next.aborted || (!!view&&!view.started&&next.started)) {
+  latestSnapshot=next;
+  if(online){const sample=next.serverNow-Date.now();clockOffset=clockOffset===undefined||view?.matchId!==next.matchId?sample:Math.max(clockOffset,sample);offset=clockOffset;}else offset=0;
+  if (needsBaseline || online&&document.hidden || view?.matchId !== next.matchId || next.aborted || (!!view&&!view.started&&next.started)) {
     const starting=!!view&&!view.started&&next.started&&view.matchId===next.matchId;
     resetPresentation(); needsBaseline = false; info = null; selected = null;
     moneyEffects.baseline(next.game.moneyTransfers??[]);
@@ -112,7 +119,12 @@ async function drain() {
   }
 }
 async function present(next: View, _keepDeadline = false, signal = controller.signal) {
+  beginPresentationClock(online&&next.presentationAt!==undefined?performance.now()+next.presentationAt-Date.now()-offset:undefined);
+  await pause(0,signal);if(signal.aborted)return;
+  hiddenMarks.clear();consumedMarks=[];
   const previous = view?.game, transfers=moneyEffects.take(next.game.moneyTransfers??[]),events = abilityEffects.take(next.matchId, next.game.abilities.events), plan = planPresentation(previous, next.game, events);
+  if(previous&&next.game.abilities.lastMove?.id!==previous.abilities.lastMove?.id){const prior=new Set(previous.abilities.marks.map(markKey));for(const m of next.game.abilities.marks)if(!prior.has(markKey(m)))hiddenMarks.add(markKey(m));}
+  if(previous)consumedMarks=previous.abilities.marks.filter(m=>!next.game.abilities.marks.some(n=>markKey(n)===markKey(m))&&events.some(e=>e.actor===m.owner&&e.tile===m.tile&&e.target!==undefined&&e.ability===(m.kind==='poison'?'singed':m.kind)));
   if(previous?.turnId!==next.game.turnId || next.game.phase==="roll"&&previous?.abilities.ordinal!==next.game.abilities.ordinal)landingTarget=null;
   const teleport=next.game.teleport?.id!==previous?.teleport?.id?next.game.teleport:undefined;
   const takeovers=previous?next.game.properties.flatMap((p,tile)=>p.owner!==null&&previous.properties[tile].owner!==null&&p.owner!==previous.properties[tile].owner?[{tile,from:previous.properties[tile].owner!,to:p.owner}]:[]):[];
@@ -145,15 +157,15 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
   const earlyCues=new Set(["buy","build","landmark","takeover","augment","reroll"]);
   for(const cue of cues)if(earlyCues.has(cue)&&cue!=="takeover")sound.play(cue);
   const play = async (items: AbilityEvent[]) => { for (const group of groupAbilityEvents(items)) { if (signal.aborted) return;
-    if(group.length>1){presentationStage="착취 · 동시 흡수";shownEventId=Math.max(shownEventId,...group.map(e=>e.id));updateStage();const cue=abilitySound(group[0]);if(cue)sound.play(cue);await Promise.all(group.map((e,i)=>abilityEffects.play(e,signal,next.game.players.map(p=>p.name),false,i)));continue;}
-    const event=group[0]; presentationStage = "증강 발동"; shownEventId = Math.max(shownEventId, event.id); updateStage(); if(event.rentChange){const p=next.game.properties[event.tile];if(p.revisitBoost===event.rentChange.level)displayedProperties.delete(event.tile);else displayedProperties.set(event.tile,{...p,revisitBoost:event.rentChange.level});render();}if(event.remaining!==undefined){moveProgress.total=moveProgress.done+event.remaining;const direction=next.game.world.players[next.game.turn].reverseThisTurn?-1:1;landingTarget={seat:next.game.turn,tile:(event.tile+direction*event.remaining+360)%36};render();}const cue=abilitySound(event);if(cue)sound.play(cue);await abilityEffects.play(event, signal,next.game.players.map(p=>p.name)); if(event.flight&&!signal.aborted)await animateFlight(event.flight.seat,event.flight.to,signal); } };
+    if(group.length>1){presentationStage="착취 · 동시 흡수";shownEventId=Math.max(shownEventId,...group.map(e=>e.id));updateStage();const cue=abilitySound(group[0]);if(cue)sound.play(cue);const sharedStart=effectStart(1500);await Promise.all(group.map((e,i)=>abilityEffects.play(e,signal,next.game.players.map(p=>p.name),false,i,sharedStart)));continue;}
+    const event=group[0];if(event.target!==undefined){const before=consumedMarks.length;consumedMarks=consumedMarks.filter(m=>!(m.owner===event.actor&&m.tile===event.tile&&(m.kind==='poison'?'singed':m.kind)===event.ability));if(before!==consumedMarks.length)render();} presentationStage = "증강 발동"; shownEventId = Math.max(shownEventId, event.id); updateStage(); if(event.rentChange){const p=next.game.properties[event.tile];if(p.revisitBoost===event.rentChange.level)displayedProperties.delete(event.tile);else displayedProperties.set(event.tile,{...p,revisitBoost:event.rentChange.level});render();}if(event.remaining!==undefined){moveProgress.total=moveProgress.done+event.remaining;const direction=next.game.world.players[next.game.turn].reverseThisTurn?-1:1;landingTarget={seat:next.game.turn,tile:(event.tile+direction*event.remaining+360)%36};render();}const cue=abilitySound(event);if(cue)sound.play(cue);await abilityEffects.play(event, signal,next.game.players.map(p=>p.name)); if(event.flight&&!signal.aborted)await animateFlight(event.flight.seat,event.flight.to,signal); } };
   try {
     await play(plan.before.filter(e => e.ability !== "dice"));
     if (plan.dice && !signal.aborted) await animateDice(plan.dice.dice, signal, plan.dice.die);
     if(!signal.aborted){
       landingTarget=teleport?{seat:teleport.seat,tile:teleport.to}:(previous?.phase==="dice"?projectedLanding(previous):null) ?? projectedLanding(next.game) ?? continuation?.target ?? (route.length>1&&next.game.abilities.lastMove?{seat:next.game.abilities.lastMove.seat,tile:next.game.abilities.lastMove.flight?route.at(-1)!:(route[0]+(next.game.world.players[next.game.abilities.lastMove.seat].reverseThisTurn?-1:1)*moveProgress.total+360)%36}:landingTarget);
       render();
-      if(!teleport&&landingTarget&&(plan.dice||route.length>1))await pause(reducedMotion.matches?100:520,signal);
+      if(!teleport&&(plan.dice||landingTarget&&route.length>1))await pause(520,signal);
     }
     await play(plan.before.filter(e => e.ability === "dice"));
     if(batch?.length&&!signal.aborted){presentationStage="태풍";updateStage();await animateFlights(batch.map(item=>({seat:item.seat,tile:item.to})),signal);}
@@ -170,9 +182,9 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
     if(locust&&!signal.aborted){presentationStage="메뚜기떼";updateStage();await showLocustSwarm(root,locust.path,tile=>{displayedProperties.delete(tile);render();},signal);}
     await play(plan.after);
     for(const item of takeovers){if(signal.aborted)return;sound.play("takeover");await showTakeover(root,item.tile,BOARD[item.tile].name,item.from,item.to,next.game.players.map(p=>p.name),()=>{displayedProperties.delete(item.tile);render();},signal);}
-    if(!signal.aborted&&transfers.length){presentationStage="금액 정산";updateStage();sound.play(next.game.players.some((p,i)=>p.laps>(previous?.players[i].laps??p.laps))?"salary":transfers.some(t=>t.from!==null&&t.to!==null)?"transfer":transfers.some(t=>t.to!==null)?"income":"payment");await moneyEffects.play(transfers,signal);}
+    if(!signal.aborted&&transfers.length){presentationStage="금액 정산";updateStage();sound.play(next.game.players.some((p,i)=>p.laps>(previous?.players[i].laps??p.laps))?"salary":transfers.some(t=>t.from!==null&&t.to!==null)?"transfer":transfers.some(t=>t.to!==null)?"income":"payment");await moneyEffects.play(transfers,signal,next.game.players.map(p=>p.name));}
   } finally {
-    if (!signal.aborted) { cleanupMovement();heldWall=undefined; displayedPositions.clear();displayedCash.clear();displayedProperties.clear();animating = false; presentationStage = ""; shownEventId = next.game.abilities.events.at(-1)?.id ?? shownEventId; displayedLog = undefined; render(); }
+    if (!signal.aborted) { cleanupMovement();hiddenMarks.clear();consumedMarks=[];heldWall=undefined; displayedPositions.clear();displayedCash.clear();displayedProperties.clear();animating = false; presentationStage = ""; shownEventId = next.game.abilities.events.at(-1)?.id ?? shownEventId; displayedLog = undefined; render(); }
   }
   if(!signal.aborted&&previous){for(const cue of cues)if(!earlyCues.has(cue))sound.play(cue);if(next.game.phase==="event"&&next.game.world.current?.serial!==previous.world.current?.serial){sound.play(`event-${eventDefinition(next.game.world.current!.id).category}`);await pause(1000,signal);}}
 }
@@ -184,7 +196,7 @@ async function animateDice(result: number[], signal: AbortSignal, die?: 0 | 1) {
   let frame = 0;
   const shuffle = () => root.querySelectorAll<HTMLElement>(".m-die").forEach((el, i) => { if (die === undefined || i === die) el.innerHTML = dieMarkup(1 + (frame * (i ? 5 : 1) + i * 3) % 6); });
   const interval = !reducedMotion.matches ? setInterval(() => { frame++; shuffle(); }, 70) : undefined;
-  await pause(reducedMotion.matches ? 60 : 620, signal); clearInterval(interval); dice?.classList.remove("rolling");
+  await pause(620, signal); clearInterval(interval); dice?.classList.remove("rolling");
   if (!signal.aborted) { root.querySelectorAll<HTMLElement>(".m-die").forEach((el, i) => el.innerHTML = dieMarkup(result[i])); dice?.classList.add("landed");sound.play(result.length===2&&result[0]===result[1]?"double":"dice"); }
 }
 function revealBoardTile(index:number){const stage=root.querySelector<HTMLElement>(".m-board-stage"),anchor=root.querySelector(`[data-landing-anchor="${index}"]`);if(!stage||!anchor)return 0;const r=anchor.getBoundingClientRect(),box=stage.getBoundingClientRect(),before=stage.scrollLeft;if(r.left<box.left+32||r.right>box.right-32)stage.scrollLeft+=r.left-(box.left+box.width/2);return stage.scrollLeft-before;}
@@ -193,7 +205,7 @@ async function animateWall(seat:number,wall:{boundary:number;tile:number;next:nu
  cleanupMovement();render();const token=root.querySelector<SVGImageElement>(`[data-token="${seat}"]`),bar=root.querySelector<SVGGElement>(`[data-wall="${wall.boundary}"]`);if(!token||!bar)return;
  const a=token.getBoundingClientRect(),b=bar.getBoundingClientRect(),dx=b.x+b.width/2-(a.x+a.width/2),dy=b.y+b.height/2-(a.y+a.height/2),length=Math.hypot(dx,dy)||1,travel=Math.max(0,length-a.width*.3)/(root.querySelector(".m-board-svg")!.getBoundingClientRect().width/908);
  const animation=token.animate([{transform:'translate(0,0)'},{transform:`translate(${dx/length*travel}px,${dy/length*travel}px)`,offset:.5},{transform:'translate(0,0)'}],{duration:520,easing:'ease-in-out'});
- signal.addEventListener('abort',()=>animation.cancel(),{once:true});await animation.finished.catch(()=>{});heldWall=undefined;moveProgress.total=moveProgress.done;landingTarget={seat,tile:wall.tile};render();
+ animation.currentTime=Math.max(0,performance.now()-effectStart(520));signal.addEventListener('abort',()=>animation.cancel(),{once:true});await animation.finished.catch(()=>{});heldWall=undefined;moveProgress.total=moveProgress.done;landingTarget={seat,tile:wall.tile};render();
 }
 async function animatePortal(seat:number,tile:number,signal:AbortSignal){
  sound.play("portal");
@@ -211,13 +223,13 @@ async function animateFlights(items:{seat:number;tile:number}[],signal:AbortSign
  
  const positions=new Map(displayedPositions);for(const item of items)positions.set(item.seat,item.tile);
  const template=document.createElement("template");template.innerHTML=renderBoardB(view.game,{seat:view.seat,selected,positions,target:null,birds:boardBirds,stealth:view.game.players.map((_,i)=>immune(view!.game,i)),center:""});
- const r=board.getBoundingClientRect(),scale=r.width/908,started=performance.now();
+ const r=board.getBoundingClientRect(),scale=r.width/908,started=effectStart(780);
  await Promise.all(items.map(({seat})=>{const token=template.content.querySelector<SVGImageElement>(`[data-token="${seat}"]`);if(!token)return Promise.resolve();return flyToken(root,seat,new DOMRect(r.left+(Number(token.getAttribute("x"))+4)*scale,r.top+(Number(token.getAttribute("y"))+4)*scale,Number(token.getAttribute("width"))*scale,Number(token.getAttribute("height"))*scale),signal,started);}));
  for(const item of items)displayedPositions.set(item.seat,item.tile);render();
 }
 async function animateMovement(seat:number,path:number[],signal:AbortSignal){
  if(path.length<2||signal.aborted)return;
- if(reducedMotion.matches){displayedPositions.set(seat,path.at(-1)!);return;}
+
  const token=root.querySelector<SVGImageElement>(`[data-token="${seat}"]`),board=root.querySelector<SVGSVGElement>(".m-board-svg");if(!token||!board)return;
  movingSprite?.remove();movingShadow?.remove();revealBoardTile(path[0]);
  const start=token.getBoundingClientRect(),sprite=document.createElement("canvas"),shadow=document.createElement("div");movingSprite=sprite;movingShadow=shadow;
@@ -227,20 +239,23 @@ async function animateMovement(seat:number,path:number[],signal:AbortSignal){
  const space=boardSpace(root);let position=space.local(start);
  const destination=(tile:number)=>{const v=view!,positions=new Map(displayedPositions);positions.set(seat,tile);const template=document.createElement("template");template.innerHTML=renderBoardB(v.game,{seat:v.seat,selected,positions,target:null,birds:boardBirds,stealth:v.game.players.map((_,i)=>immune(v.game,i)),center:""});const image=template.content.querySelector<SVGImageElement>(`[data-token="${seat}"]`)!;return{x:Number(image.getAttribute("x"))+4,y:Number(image.getAttribute("y"))+4,w:Number(image.getAttribute("width")),h:Number(image.getAttribute("height"))}};
  for(let step=1;step<path.length&&!signal.aborted;step++){
-  sound.play("hop");revealBoardTile(path[step]);const target=destination(path[step]),lift=Math.max(14,position.h*.85);
+  sound.play("hop");revealBoardTile(path[step]);const target=destination(path[step]),lift=reducedMotion.matches?0:Math.max(14,position.h*.85);
   sprite.dataset.step=String(moveProgress.done+1);sprite.dataset.tile=String(path[step]);root.querySelectorAll(".m-step-active").forEach(el=>el.classList.remove("m-step-active"));root.querySelector(`[data-inspect="${path[step]}"]`)?.classList.add("m-step-active");
   await new Promise<void>(resolve=>{
-   let handle=0;const started=performance.now(),duration=300;
+   let handle=0;const duration=300,started=effectStart(duration);
    const done=()=>{cancelAnimationFrame(handle);signal.removeEventListener("abort",done);resolve()};
-   const frame=(now:number)=>{if(signal.aborted){done();return}const t=Math.min(1,(now-started)/duration),x=position.x+(target.x-position.x)*t,y=position.y+(target.y-position.y)*t,jump=Math.sin(Math.PI*t)*lift,w=position.w+(target.w-position.w)*t,h=position.h+(target.h-position.h)*t;
+   const frame=(now:number)=>{if(signal.aborted){done();return}const t=Math.max(0,Math.min(1,(now-started)/duration)),x=position.x+(target.x-position.x)*t,y=position.y+(target.y-position.y)*t,jump=Math.sin(Math.PI*t)*lift,w=position.w+(target.w-position.w)*t,h=position.h+(target.h-position.h)*t;
     const point=space.viewport({x,y:y-jump,w,h}),ground=space.viewport({x,y,w,h});
     sprite.dataset.progress=String(t);sprite.dataset.jump=String(jump*point.w/w);sprite.style.transform=`translate(${point.x}px,${point.y}px)`;sprite.style.width=`${point.w}px`;sprite.style.height=`${point.h}px`;
     shadow.style.width=`${point.w*.55}px`;shadow.style.transform=`translate(${ground.x+ground.w*.225}px,${ground.y+ground.h-2}px) scale(${1-.3*Math.sin(Math.PI*t)})`;
     if(t<1)handle=requestAnimationFrame(frame);else done();
-   };signal.addEventListener("abort",done,{once:true});frame(started);
+   };signal.addEventListener("abort",done,{once:true});frame(performance.now());
   });if(signal.aborted)return;
   await pause(TILE_STEP_MS-300,signal);if(signal.aborted)return;
-  if(step===path.length-1)sound.play("land");position=target;displayedPositions.set(seat,path[step]);moveProgress.done++;presentationStage=`${seat+1}P · ${moveProgress.done} / ${moveProgress.total}칸 · ${BOARD[path[step]].name}`;updateStage();const progress=root.querySelector(".m-move-progress");if(progress)progress.textContent=`${moveProgress.done} / ${moveProgress.total}칸`;
+  if(step===path.length-1)sound.play("land");position=target;displayedPositions.set(seat,path[step]);
+  let changed=false;for(const m of view!.game.abilities.marks)if(m.owner===seat&&m.tile===path[step])changed=hiddenMarks.delete(markKey(m))||changed;
+  if(changed){const temp=document.createElement('template');const g=view!.game;temp.innerHTML=renderBoardB({...g,abilities:{...g.abilities,marks:[...g.abilities.marks.filter(m=>!hiddenMarks.has(markKey(m))),...consumedMarks]}},{seat:view!.seat,selected,positions:displayedPositions,target:null,birds:boardBirds,stealth:g.players.map((_,i)=>immune(g,i)),center:''});const fresh=temp.content.querySelectorAll('.m-installations');root.querySelectorAll('.m-installations').forEach((el,i)=>el.replaceWith(fresh[i]));}
+  moveProgress.done++;presentationStage=`${seat+1}P · ${moveProgress.done} / ${moveProgress.total}칸 · ${BOARD[path[step]].name}`;updateStage();const progress=root.querySelector(".m-move-progress");if(progress)progress.textContent=`${moveProgress.done} / ${moveProgress.total}칸`;
  }
  root.querySelectorAll(".m-step-active").forEach(el=>el.classList.remove("m-step-active"));
 }
@@ -296,7 +311,7 @@ function lobbyMarkup(){
   return `<section class="m-lobby" aria-labelledby="m-lobby-title"><header class="m-lobby-heading"><h2 id="m-lobby-title">게임 대기실</h2><span data-ready-count aria-live="polite">준비 ${readyCount} / ${humans.length}</span></header>
     <div class="m-lobby-players">${v.seats.map((s,i)=>`<article class="m-lobby-player ${s.ready?"is-ready":""}" style="--seat:${COLORS[i]}" data-lobby-seat="${i}"><img src="${boardBirds[i]}" alt=""><div><strong>${i+1}P ${escape(s.name)}${i===v.seat?" · 나":""}</strong><span>${s.bot?"도도봇":s.connected?"접속 중":"접속 대기"}</span></div><b class="m-ready-status">${s.bot?"자동 준비":s.ready&&s.connected?"준비 완료":"준비 대기"}</b></article>`).join("")}</div>
     <div class="m-lobby-start">${me&&!me.bot?`<button class="m-primary" data-ready data-focus="ready" aria-pressed="${!!me.ready}" ${!connected||pending?"disabled":""}>${pending?"확인 중…":me.ready?"준비 취소":"준비 완료"}</button><p>봇을 제외한 모두가 준비하면 순서 추첨 후 시작합니다.</p>`:`<p>관전 중 · 참가자들이 준비하면 시작합니다.</p>`}<p class="m-error" role="status">${escape(error)}</p></div>
-    <section class="m-lobby-guide"><div><h3>게임 설명</h3><button data-rules data-focus="lobby-rules">전체 규칙 보기</button></div><div class="m-lobby-rules"><section><b>승리 조건</b><p>색상 그룹 ${COLOR_GROUPS_TO_WIN}개 독점 · 한 변 독점 · 최후 생존</p></section><section><b>진행 순서</b><p>순서 추첨 → 첫 증강 선택 → 주사위와 이동</p></section><section><b>땅과 건물</b><p>처음에는 땅을 매입하고 재방문해 건설합니다. 세 번째 바퀴부터 매입·인수 직후 건설할 수 있습니다.</p></section><section><b>돈과 증강</b><p>기본 월급 ${SALARY}만원 · 보유 현금 세금 10%. 증강은 시작 전과 출발선 1·3·5회 통과 때 선택합니다. 30라운드에는 생존자 모두 프리즘 증강을 동시에 추가 선택합니다.</p></section></div></section>
+    <section class="m-lobby-guide"><div><h3>게임 설명</h3><button data-rules data-focus="lobby-rules">전체 규칙 보기</button></div><div class="m-lobby-rules"><section><b>승리 조건</b><p>색상 그룹 ${COLOR_GROUPS_TO_WIN}개 독점 · 한 변 독점 · 최후 생존</p></section><section><b>진행 순서</b><p>순서 추첨 → 첫 증강 선택 → 주사위와 이동</p></section><section><b>땅과 건물</b><p>처음에는 땅을 매입하고 재방문해 건설합니다. 세 번째 바퀴부터 매입·인수 직후 건설할 수 있습니다.</p></section><section><b>돈과 증강</b><p>기본 월급 ${SALARY}만원 · 보유 현금 세금 10%. 증강은 시작 전과 출발선 1·3·5회 통과 때 선택합니다. 20라운드에는 생존자 모두 프리즘 증강을 동시에 추가 선택합니다.</p></section></div></section>
   </section>`;
 }
 root.addEventListener("input",event=>{
@@ -323,7 +338,7 @@ function eventPickKind():"player"|"line"|"tile"|"boundary"|null{const g=view?.ga
 function directPickKind():ReturnType<typeof eventPickKind>{if(!view||!editable())return null;const g=view.game;if(g.phase==="roll"&&g.abilities.pendingTarget)return "player";return directPickingKey===`${view.matchId}:${g.world.current?.serial}`?eventPickKind():null;}
 function directPlayerTargets(){if(directPickKind()!=="player")return [];return view!.game.phase==="event"?eventTargets(view!.game):turnTargets(view!.game);}
 function pickPlayer(seat:number){if(!directPlayerTargets().includes(seat))return;const g=view!.game;if(g.phase==="roll")send({action:"ability_target",target:seat});else if(g.world.current!.id==="telekinesis"){eventPlayerChoice={key:`${view!.matchId}:${g.world.current!.serial}`,seat};directPickingKey="";render();}else send({action:"event_resolve",eventSerial:g.world.current!.serial,target:seat});}
-function saleTiles(){if(!view||view.game.phase!=="debt"||!editable())return [];return BOARD.filter(t=>view!.game.properties[t.index].owner===view!.game.turn&&!view!.game.properties[t.index].landmark).map(t=>({tile:t.index,amount:saleProceeds(view!.game,t.index,view!.game.turn)}));}
+function saleTiles(){if(!view||view.game.phase!=="debt"||!editable())return [];return BOARD.filter(t=>view!.game.properties[t.index].owner===view!.game.turn).map(t=>({tile:t.index,amount:saleProceeds(view!.game,t.index,view!.game.turn)}));}
 function pickSale(tile:number){if(!saleTiles().some(t=>t.tile===tile))return;send({action:"sell",tile});}
 function pickEventTile(tile:number){if(directPickKind()!=="tile"||!eventOwnedTiles(view!.game).includes(tile))return;send({action:"event_resolve",eventSerial:view!.game.world.current!.serial,tile});}
 function pickBoundary(tile:number){if(directPickKind()!=="boundary"||view!.game.world.walls.includes(tile))return;send({action:"event_resolve",eventSerial:view!.game.world.current!.serial,tile});}
@@ -354,23 +369,23 @@ function controls() {
   if (g.phase === "dice") {
     const roll = g.abilities.roll!, choices = availableDice(g);
     if (roll.comparison) return `<span class="m-eyebrow">블랙다이스</span><h2>사용할 결과를 고르세요</h2><div class="m-dice-comparison"><article><small>기존 결과</small><strong>${roll.result!.join(" + ")}</strong><span>${roll.result![0] + roll.result![1]}칸</span>${button("기존 결과 유지", "dice_choose", false, 'data-use-new="false"')}</article><article><small>새 결과</small><strong>${roll.comparison.join(" + ")}</strong><span>${roll.comparison[0] + roll.comparison[1]}칸</span>${button("새 결과 사용", "dice_choose", false, 'data-use-new="true"')}</article></div><p>아직 이동하지 않았습니다. 시간이 끝나면 기존 결과를 유지하고 이동합니다.</p>`;
-    return `<span class="m-eyebrow">이동 전 · 결과 확인</span><h2>${g.dice.filter(n=>n>0).join(" + ")} = ${g.dice[0] + g.dice[1]}칸</h2><p>${choices.rerolls.length ? "남은 리롤을 사용하거나 이 결과로 이동하세요." : "사용할 수 있는 리롤을 모두 썼습니다. 결과를 확정하면 이동합니다."} 리롤해도 제한 시간은 늘어나지 않습니다.</p>${choices.rerolls.map(ability => ability === "suspicious_dice" ? [0, 1].map(die => button(`${die + 1}번 주사위(${g.dice[die]}) 다시 굴리기`, "dice_reroll", false, `data-ability="${ability}" data-die="${die}"`)).join("") : button(ability === "red_dice" ? "레드다이스 · 다시 굴리기" : "블랙다이스 · 다시 굴려 비교하기", "dice_reroll", false, `data-ability="${ability}"`)).join("")}${button(`${g.dice[0] + g.dice[1]}칸 이동 확정`, "dice_confirm", false, "", true)}`;
+    return `<span class="m-eyebrow">이동 전 · 결과 확인</span><h2>${g.dice.filter(n=>n>0).join(" + ")} = ${g.dice.reduce((sum,n)=>sum+n,0)}칸</h2><p>${choices.rerolls.length ? "주사위 능력을 사용하거나 현재 결과로 이동하세요." : "사용할 수 있는 리롤을 모두 썼습니다. 결과를 확정하면 이동합니다."} 리롤해도 제한 시간은 늘어나지 않습니다.</p>${choices.rerolls.map(ability => ability === "suspicious_dice" ? button("에디셔널 다이스 · 1~3 추가 투척", "dice_reroll", false, `data-ability="${ability}"`) : button(ability === "red_dice" ? "레드다이스 · 다시 굴리기" : "블랙다이스 · 다시 굴려 비교하기", "dice_reroll", false, `data-ability="${ability}"`)).join("")}${button(`${g.dice.reduce((sum,n)=>sum+n,0)}칸 이동 확정`, "dice_confirm", false, "", true)}`;
   }
-  if (g.phase === "buy") return `<span class="m-eyebrow">주인 없는 지역</span><h2>${t.name} 매입</h2><p>이번 방문에는 땅을 매입하고 깃발만 세웁니다. 다음 차례 이후 다시 방문하면 건설할 수 있습니다.</p>${quote(t.price, purchaseCost(g, t.index))}${button(`${purchaseCost(g, t.index)}만원에 매입`, "buy", player.cash < purchaseCost(g, t.index), "", true)}${button("매입하지 않고 진행", "skip")}`;
+  if (g.phase === "buy") return `<span class="m-eyebrow">주인 없는 지역</span><h2>${t.name} 매입</h2><p>${player.laps>=2?"매입 후 바로 건설할 수 있습니다.":"매입 후 재방문하면 건설할 수 있습니다."}</p>${quote(t.price, purchaseCost(g, t.index))}${button(`${purchaseCost(g, t.index)}만원에 매입`, "buy", player.cash < purchaseCost(g, t.index), "", true)}${button("매입하지 않고 진행", "skip")}`;
   if (g.phase === "build") {
     const landmark = landmarkAvailable(g,t.index);
-    return `<span class="m-eyebrow">내 지역</span><h2>${t.name} ${p.landmark ? "랜드마크" : "건설"}</h2><p>감면 전 청구 통행료 ${money(displayedRent(g, t.index))}. 상대의 유리대포 등 보유 증강에 따라 최종 지출이 달라질 수 있습니다.</p><div class="m-build-options" data-build-key="${g.turnId}-${t.index}">${BUILDINGS.map((_, i) => {
+    return `<span class="m-eyebrow">내 지역</span><h2>${t.name} ${p.landmark ? "랜드마크" : "건설"}</h2><p>감면 전 청구 통행료 ${money(displayedRent(g, t.index))}. </p><div class="m-build-options" data-build-key="${g.turnId}-${t.index}">${BUILDINGS.map((_, i) => {
       const b = construction(t.index, i), cost = buildCost(g, t.index, i), built = !!(p.buildings & (1 << i));
       const preview = structuredClone(g); preview.properties[t.index].buildings |= 1 << i;
       const increase = displayedRent(preview, t.index) - displayedRent(g, t.index), refund = cashbackAmount(g, seat, cost);
       return `<label class="m-build-choice"><input type="checkbox" data-build-choice value="${i}" ${built||player.cash<cost||!editable()?"disabled":""} ${built?"checked":""}><span>${b.name}<small>${built?"건설 완료":`${cost}만원 · 청구액 +${increase}만${refund?` · 환급${refund}만`:""}`}</small></span></label>`;
-    }).join("")}</div>${button("선택한 건물 건설", "build",false,'data-build-selected="true"',true)}${landmark ? `${quote(landmarkBase(t.index), landmarkCost(g, t.index))}${button("랜드마크로 승격 · 통행료2배", "landmark", player.cash < landmarkCost(g, t.index))}<p>승격 후에는 인수·은행 매각이 불가능합니다.</p>` : p.buildings === 7 && !p.landmark ? power(g,g.turn,"landmark")?"<p>세 건물이 완공된 이 땅에 다시 도착하면 랜드마크를 건설할 수 있습니다.</p>":"<p>랜드마크 건설 증강을 보유해야 승격할 수 있습니다.</p>" : ""}${button("건설 마치고 차례 진행", "end", false, "", true)}`;
+    }).join("")}</div>${button("선택한 건물 건설", "build",false,'data-build-selected="true"',true)}${landmark ? `${quote(landmarkBase(t.index), landmarkCost(g, t.index))}${button("랜드마크로 승격 · 통행료2배", "landmark", player.cash < landmarkCost(g, t.index))}<p>승격 후에는 인수할 수 없으며, 채무 정산 시 은행 매각은 가능합니다.</p>` : p.buildings === 7 && !p.landmark ? "<p>세 건물이 완공된 이 땅에 다시 도착하면 랜드마크를 건설할 수 있습니다.</p>" : ""}${button("건설 마치고 차례 진행", "end", false, "", true)}`;
   }
   if (g.phase === "takeover") {
     if (p.landmark) return `<h2>${t.name} 랜드마크</h2><p>도착 처리가 끝났습니다. 랜드마크는 인수할 수 없습니다.</p>${button("차례 진행", "skip", false, "", true)}`;
-    return `<span class="m-eyebrow">상대 지역 · 도착 처리 완료</span><h2>${t.name} 인수</h2><p>${p.owner! + 1}P에게 아래 금액을 내고 건물을 그대로 인수합니다. ${player.laps>=2?"인수 후 남은 건물을 바로 건설할 수 있습니다.":"세 번째 바퀴 전에는 인수 후 재방문해야 건설할 수 있습니다."}</p>${quote(takeoverBase(g,t.index), takeoverCost(g, t.index))}${button(`${takeoverCost(g, t.index)}만원에 인수`, "takeover", player.cash < takeoverCost(g, t.index), "", true)}${button("인수하지 않고 차례 진행", "skip")}`;
+    return `<span class="m-eyebrow">상대 지역 · 도착 처리 완료</span><h2>${t.name} 인수</h2><p>${p.owner! + 1}P 소유 · 건물 유지. ${player.laps>=2?"인수 후 남은 건물을 바로 건설할 수 있습니다.":"세 번째 바퀴 전에는 인수 후 재방문해야 건설할 수 있습니다."}</p>${quote(takeoverBase(g,t.index), takeoverCost(g, t.index))}${button(`${takeoverCost(g, t.index)}만원에 인수`, "takeover", player.cash < takeoverCost(g, t.index), "", true)}${button("인수하지 않고 차례 진행", "skip")}`;
   }
-  if (g.phase === "debt") return `<span class="m-eyebrow">${g.debt!.reason === "land_tax" ? "세금" : "통행료"} 미정산</span><h2>${money(g.debt!.amount)}이 필요합니다</h2><p>현재 현금 ${player.cash}만원 · 부족액 ${Math.max(0, g.debt!.amount - player.cash)}만원. 매각 가능한 지역을 선택하세요. 정가의50%에 수입 증강을 적용한 금액을 받습니다. 랜드마크는 매각할 수 없습니다.</p><p class="m-pick-instruction">보드에서 빛나는 내 땅을 직접 눌러 매각하세요. 땅에 표시된 +금액이 매각 대금입니다.</p><p>모두 매각했을 때 사용할 수 있는 돈 ${assets(g, g.turn)}만원.${g.debt!.reason === "land_tax" ? " 이번 세금은 매각해도 줄어들지 않습니다." : ""}</p>${button("파산 정산", "bankrupt", assets(g, g.turn) >= g.debt!.amount)}`;
+  if (g.phase === "debt") return `<span class="m-eyebrow">${g.debt!.reason === "land_tax" ? "세금" : "통행료"} 미정산</span><h2>${money(g.debt!.amount)}이 필요합니다</h2><p>현재 현금 ${player.cash}만원 · 부족액 ${Math.max(0, g.debt!.amount - player.cash)}만원. 매각 가능한 지역을 선택하세요. 정가의50%에 수입 증강을 적용한 금액을 받습니다. 랜드마크도 매각할 수 있습니다.</p><p class="m-pick-instruction">보드에서 빛나는 내 땅을 직접 눌러 매각하세요. 땅에 표시된 +금액이 매각 대금입니다.</p><p>모두 매각했을 때 사용할 수 있는 돈 ${assets(g, g.turn)}만원.${g.debt!.reason === "land_tax" ? " 이번 세금은 매각해도 줄어들지 않습니다." : ""}</p>${button("파산 정산", "bankrupt", assets(g, g.turn) >= g.debt!.amount)}`;
   return `<span class="m-eyebrow">${escape(t.name)} 도착</span><h2>${g.extraTurn ? "더블 · 한 번 더!" : "이번 이동 완료"}</h2><p>${t.kind === "event" ? "이벤트 결과가 반영되었습니다. 발동 기록을 확인하세요." : t.kind === "rest" ? "최대 3턴 구금됩니다. 더블이면 무료 탈출합니다. 더블 추가 투척은 취소됩니다." : t.kind === "bonus" ? "보너스를 받았습니다. 적용된 증강은 아래 발동 기록에서 확인하세요." : "도착지 처리가 끝났습니다."}</p>${t.kind === "rest" && power(g,seat,"island_owner") && g.abilities.islandOwner===null ? button(`무인도 매수 · ${lossAmount(g,seat,ISLAND_COST)}만원`,"island_buy",player.cash<lossAmount(g,seat,ISLAND_COST)) : ""}${automaticContinuation(g)?'<p class="m-small-note">자동으로 진행합니다.</p>':button("추가 행동 없이 마치기", "end", false, "", true)}`;
 }
 function augmentMarkup() {
@@ -379,7 +394,7 @@ function augmentMarkup() {
   const offer = g.augments?.players[v.seat].offer; if (!offer) return "";
   const tierIcon=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${offer.tier==='silver'?'M4 3h16v10l-8 8-8-8z':offer.tier==='gold'?'M2 6l5 5 5-8 5 8 5-5-3 14H5z':'M6 3h12l5 8-11 12L1 11z'}"/></svg>`;
   return `<div class="m-overlay"><section class="m-augment-dialog tier-${offer.tier}" data-tier="${offer.tier}" role="dialog" aria-modal="true" aria-labelledby="m-augment-title" aria-describedby="m-augment-help" tabindex="-1" data-dialog-key="offer-${v.matchId}-${offer.id}">
-    <header><div><span class="m-eyebrow">${offer.bonus?"30라운드 · 전원 동시 선택":`증강 ${offer.round + 1}/4`}</span><h2 id="m-augment-title">${tierIcon}<span>${TIER_LABELS[offer.tier]} 증강 선택</span></h2></div><div class="m-choice-clock"><small>남은 시간</small><b class="m-augment-clock"></b></div></header>
+    <header><div><span class="m-eyebrow">${offer.bonus?"20라운드 · 전원 동시 선택":`증강 ${offer.round + 1}/4`}</span><h2 id="m-augment-title">${tierIcon}<span>${TIER_LABELS[offer.tier]} 증강 선택</span></h2></div><div class="m-choice-clock"><small>남은 시간</small><b class="m-augment-clock"></b></div></header>
     <p id="m-augment-help">${offer.cards.length}장 중1장을 획득합니다. 각 카드 위치는1회씩 리롤할 수 있습니다. 리롤해도 남은 시간은 늘어나지 않습니다.</p>
     <div class="m-augment-cards">${offer.cards.map((id, slot) => {
       const a = definition(id)!;
@@ -398,11 +413,11 @@ function infoMarkup() {
   return `<div class="m-overlay"><section class="m-info-dialog m-ability-dialog tier-${a.tier}" role="dialog" aria-modal="true" aria-labelledby="m-info-title" tabindex="-1" data-dialog-key="ability-${info.seat}-${a.id}"><header><div><span class="m-eyebrow">${info.seat + 1}P 보유 · ${TIER_LABELS[a.tier]}</span><h2 id="m-info-title">${escape(abilityLabel(a))}</h2></div><button data-close-info data-focus="close-info" aria-label="능력 설명 닫기">닫기</button></header><span class="m-trigger">${abilityTiming(a)}</span><p class="m-ability-description">${escape(a.description)}</p><h3>발동과 중첩</h3><ul>${abilityNotes(a).map(n => `<li>${escape(n)}</li>`).join("")}</ul>${a.effect === "revival" ? `<p class="m-current-status">${escape(labels.find(l => l.startsWith("부활")) ?? "획득 효과 확인 중")}</p>` : ""}<p class="m-small-note">이름 옆의 증강 버튼을 눌러 언제든 이 설명을 다시 볼 수 있습니다.</p></section></div>`;
 }
 function boardDiceControls(){return !!view&&["roll","dice"].includes(view.game.phase);}
-function ownDiceControls(){return boardDiceControls()&&view!.started&&view!.seat===actingSeat(view!.game)&&!view!.aborted&&!animating&&!drawingOrder;}
+function ownDiceControls(){return !!view&&!view.aborted&&view.game.phase!=="augment"&&(view.game.phase!=="event"||!!directPickKind())&&view!.started&&view!.seat===actingSeat(view!.game)&&!view!.aborted&&!animating&&!drawingOrder;}
 function boardMarkup() {
  const v=view!,g=v.game,centerSeat=g.winner??actingSeat(g),target=g.phase==="dice"&&!animating?projectedLanding(g):landingTarget;
  const center=`<div class="m-center" style="--seat:${COLORS[centerSeat]}" data-center-seat="${centerSeat}"><div class="m-dice" role="img" aria-label="${g.dice.length?`주사위 ${g.dice.join(', ')}`:'주사위 대기'}">${(g.world.players[g.turn].lostThisTurn?[0]:[0,1]).map(i=>`<span class="m-die">${dieMarkup(g.dice[i]??0)}</span>`).join('')}</div><p class="m-center-hint">${target?`${target.seat+1}P · ${BOARD[target.tile].name} 도착${animating||g.phase==="dice"?" 예정":""}`:`${g.round}/${MAX_ROUNDS}라운드`}</p><span class="m-move-progress" aria-live="off">${animating&&moveProgress.total?`${moveProgress.done} / ${moveProgress.total}칸`:''}</span><div class="m-board-action-slot">${ownDiceControls()?`<section class="m-board-actions" aria-label="주사위 조작">${controls()}${couponControls()}<p class="m-error" role="status">${escape(error)}</p></section>`:""}</div></div>`;
- const boardGame={...g,properties:g.properties.map((p,i)=>displayedProperties.get(i)??p),world:heldWall===undefined?g.world:{...g.world,walls:[...g.world.walls,heldWall]}};
+ const boardGame={...g,abilities:{...g.abilities,marks:[...g.abilities.marks.filter(m=>!hiddenMarks.has(markKey(m))),...consumedMarks]},properties:g.properties.map((p,i)=>displayedProperties.get(i)??p),world:heldWall===undefined?g.world:{...g.world,walls:[...g.world.walls,heldWall]}};
  return renderBoardB(boardGame,{seat:v.seat,selected,positions:displayedPositions,target,birds:boardBirds,stealth:g.players.map((p,i)=>g.phase!=="finished"&&!v.aborted&&!p.bankrupt&&immune(g,i)),center,salePick:saleTiles(),eventTilePick:directPickKind()==="tile"?eventOwnedTiles(g):[],boundaryPick:directPickKind()==="boundary"?BOARD.filter(t=>!g.world.walls.includes(t.index)).map(t=>t.index):[],portalPick:g.phase==="portal"&&editable(),linePick:directPickKind()==="line"});
 }
 function playersMarkup() {
@@ -413,7 +428,7 @@ function inspectorMarkup() {
   if (selected === null) return "";
   const v = view!, g = v.game, t = BOARD[selected], p = g.properties[selected], visitor = v.seat >= 0 ? v.seat : undefined;
   const receipt = p.owner !== null ? displayedRent(g, t.index) : baseRent(t.index), personal = visitor !== undefined && p.owner !== visitor && p.owner !== null ? rentPayment(g, t.index, visitor) : null;
-  return `<section class="m-inspector"><span class="m-eyebrow">선택한 칸 · ${t.index + 1}/36</span><h2>${t.name}${p.landmark ? " · 랜드마크" : ""}</h2>${t.kind === "city" ? `<dl><div><dt>토지 정가</dt><dd>${t.price}만원</dd></div><div><dt>소유자</dt><dd>${p.owner === null ? "주인 없음" : `${p.owner + 1}P`}</dd></div><div><dt>${p.owner === null ? "토지 기본 통행료" : "감면 전 청구액"}</dt><dd>${receipt}만원</dd></div>${personal !== null ? `<div><dt>내 방문 시 통행료</dt><dd>${personal}만원</dd></div>` : ""}${p.owner === null && visitor !== undefined ? `<div><dt>내 매입가</dt><dd>${purchaseCost(g, t.index, visitor)}만원</dd></div>` : ""}${p.owner !== null && p.owner !== visitor ? `<div><dt>${visitor === undefined ? "인수 기본액" : "내 최종 인수가"}</dt><dd>${p.landmark ? "인수 불가" : `${visitor === undefined ? takeoverBase(g,t.index) : takeoverCost(g, t.index, visitor)}만원`}</dd></div>` : ""}${p.owner === visitor ? `<div><dt>채무 시 매각 대금</dt><dd>${p.landmark ? "매각 불가" : `${saleProceeds(g, t.index, visitor)}만원`}</dd></div>` : ""}</dl><p>${p.revisitBoost?`재방문 통행료 +${p.revisitBoost*REVISIT_BONUS_PERCENT}% / `:""}${p.festival?`축제 ${p.festival}회 · 다음 상대 방문까지 / `:""}${p.locust?`메뚜기떼 ${p.locust}회 적용 / `:""}${String.fromCharCode(65 + t.group)} 그룹 · ${t.line + 1}번 변. 통행료와 인수가는 현재 보유 증강을 반영합니다. 유리대포의 추가 수입·지출은 은행 지급·소멸로 별도 정산합니다.</p>` : `<p>${tileDescription(t.index)}</p>`}<div class="m-tile-occupants">${g.players.flatMap((player,i)=>!player.bankrupt&&player.position===t.index?[`<span style="--seat:${COLORS[i]}"><img src="${boardBirds[i]}" alt=""><b>${i+1}P ${escape(player.name)}</b></span>`]:[]).join('')}</div>${g.abilities.marks.filter(m => m.tile === t.index).map(m => `<p class="m-current-status">${m.owner + 1}P의 ${m.kind === "gas" ? "방귀" : m.kind === "trap" ? "덫" : "독"} · ${(m.expiresRound ?? g.round) - g.round}라운드 뒤 만료</p>`).join("")}</section>`;
+  return `<section class="m-inspector"><span class="m-eyebrow">선택한 칸 · ${t.index + 1}/36</span><h2>${t.name}${p.landmark ? " · 랜드마크" : ""}</h2>${t.kind === "city" ? `<dl><div><dt>토지 정가</dt><dd>${t.price}만원</dd></div><div><dt>소유자</dt><dd>${p.owner === null ? "주인 없음" : `${p.owner + 1}P`}</dd></div><div><dt>${p.owner === null ? "토지 기본 통행료" : "감면 전 청구액"}</dt><dd>${receipt}만원</dd></div>${personal !== null ? `<div><dt>내 방문 시 통행료</dt><dd>${personal}만원</dd></div>` : ""}${p.owner === null && visitor !== undefined ? `<div><dt>내 매입가</dt><dd>${purchaseCost(g, t.index, visitor)}만원</dd></div>` : ""}${p.owner !== null && p.owner !== visitor ? `<div><dt>${visitor === undefined ? "인수 기본액" : "내 최종 인수가"}</dt><dd>${p.landmark ? "인수 불가" : `${visitor === undefined ? takeoverBase(g,t.index) : takeoverCost(g, t.index, visitor)}만원`}</dd></div>` : ""}${p.owner === visitor ? `<div><dt>채무 시 매각 대금</dt><dd>${`${saleProceeds(g, t.index, visitor)}만원`}</dd></div>` : ""}</dl><p>${p.revisitBoost?`재방문 통행료 +${p.revisitBoost*REVISIT_BONUS_PERCENT}% / `:""}${p.festival?`축제 ${p.festival}회 · 다음 상대 방문까지 / `:""}${p.locust?`메뚜기떼 ${p.locust}회 적용 / `:""}${String.fromCharCode(65 + t.group)} 그룹 · ${t.line + 1}번 변. 통행료와 인수가는 현재 보유 증강을 반영합니다. 유리대포의 추가 수입·지출은 은행 지급·소멸로 별도 정산합니다.</p>` : `<p>${tileDescription(t.index)}</p>`}<div class="m-tile-occupants">${g.players.flatMap((player,i)=>!player.bankrupt&&player.position===t.index?[`<span style="--seat:${COLORS[i]}"><img src="${boardBirds[i]}" alt=""><b>${i+1}P ${escape(player.name)}</b></span>`]:[]).join('')}</div>${g.abilities.marks.filter(m => m.tile === t.index).map(m => `<p class="m-current-status">${m.owner + 1}P의 ${m.kind === "gas" ? "방귀" : m.kind === "trap" ? "덫" : "독"} · ${(m.expiresRound ?? g.round) - g.round}라운드 뒤 만료</p>`).join("")}</section>`;
 }
 function resultMarkup() {
   const v = view!, g = v.game;
@@ -435,9 +450,9 @@ function render() {
   turnPointer.set(!v.started||finished||drawingOrder?null:actor);
   sound.setActive(!finished);
   root.innerHTML = `<main class="m-shell"><header class="heading"><div><h1>증강마블</h1></div><div class="m-header-tools"><span class="m-mode">${online ? v.seat < 0 ? "온라인 · 관전" : "온라인 대전" : "도도봇과 연습"}</span>${soundMarkup()}<button data-rules data-focus="rules">규칙 보기</button></div></header>
-  ${!v.started&&!finished?lobbyMarkup():`<div class="m-layout"><section class="m-play"><div class="m-turnbar" style="--seat:${COLORS[actor]}"><span class="m-live"></span><strong>${finished ? "경기 종료" : !connected ? "연결 복구 중" : !v.started ? "접속 대기" : `${g.augmentResume==="round30"?`30라운드 · 프리즘 선택 (${g.roundPrism?.pending.length??0}명 남음)`:`${actor + 1}P ${escape(g.players[actor].name)}${actor === v.seat ? " · 내 차례" : "의 차례"}`}`}</strong><span class="m-turn-number">${g.round}라운드 · ${g.turnId}턴</span><b class="m-clock" aria-label="남은 행동 시간">--</b></div>${boardMarkup()}<p class="m-board-caption">지역을 누르면 내 증강을 반영한 가격과 설치물을 확인할 수 있습니다.</p>
+  ${!v.started&&!finished?lobbyMarkup():`<div class="m-layout"><section class="m-play"><div class="m-turnbar" style="--seat:${COLORS[actor]}"><span class="m-live"></span><strong>${finished ? "경기 종료" : !connected ? "연결 복구 중" : !v.started ? "접속 대기" : `${g.augmentResume==="round30"?`20라운드 · 프리즘 선택 (${g.roundPrism?.pending.length??0}명 남음)`:`${actor + 1}P ${escape(g.players[actor].name)}${actor === v.seat ? " · 내 차례" : "의 차례"}`}`}</strong><span class="m-turn-number">${g.round}라운드 · ${g.turnId}턴</span><b class="m-clock" aria-label="남은 행동 시간">--</b></div>${boardMarkup()}<p class="m-board-caption">지역을 누르면 내 증강을 반영한 가격과 설치물을 확인할 수 있습니다.</p>
   <section class="m-history"><div><h2>진행 기록</h2><span>최근5개</span></div><ol>${(displayedLog ?? g.log).slice(-5).reverse().map((text, i) => `<li class="${i ? "" : "latest"}"><span>${i ? "·" : "최근"}</span>${escape(text)}</li>`).join("")}</ol></section></section>
-  <aside class="m-sidebar">${!finished&&(actor!==v.seat||boardDiceControls()||animating||["augment","event"].includes(g.phase)&&!directPickKind())?"":`<section class="m-action-panel" aria-live="polite" aria-busy="${animating}">${g.world.interrupted ? `<p class="m-small-note">이벤트 이동 처리 · ${actor+1}P 선택 후 원래 차례로 돌아갑니다.</p>`:""}${controls()}${couponControls()}<p class="m-error" role="status">${escape(error)}</p></section>`}${playersMarkup()}${inspectorMarkup()}<section class="m-ability-history"><div class="m-section-title"><h2>능력 발동 기록</h2><span>최근6개</span></div>${g.abilities.events.some(e => e.id <= shownEventId&&e.ability!=="dice") ? `<ol>${g.abilities.events.filter(e => e.id <= shownEventId&&e.ability!=="dice").slice(-6).reverse().map(e => `<li><span>${e.actor + 1}P</span><p>${escape(e.caption)}</p></li>`).join("")}</ol>` : '<p class="m-small-note">증강을 획득하거나 효과가 적용되면 여기에 표시됩니다.</p>'}</section></aside></div>`}</main>${augmentMarkup() || eventMarkup() || infoMarkup() || resultMarkup()}`;
+  <aside class="m-sidebar">${playersMarkup()}${inspectorMarkup()}<section class="m-ability-history"><div class="m-section-title"><h2>능력 발동 기록</h2><span>최근6개</span></div>${g.abilities.events.some(e => e.id <= shownEventId&&e.ability!=="dice") ? `<ol>${g.abilities.events.filter(e => e.id <= shownEventId&&e.ability!=="dice").slice(-6).reverse().map(e => `<li><span>${e.actor + 1}P</span><p>${escape(e.caption)}</p></li>`).join("")}</ol>` : '<p class="m-small-note">증강을 획득하거나 효과가 적용되면 여기에 표시됩니다.</p>'}</section></aside></div>`}</main>${augmentMarkup() || eventMarkup() || infoMarkup() || resultMarkup()}`;
   root.querySelectorAll<HTMLCanvasElement>("canvas[data-profile], canvas[data-mascot], canvas[data-winner]").forEach(canvas => { const i = Number(canvas.dataset.profile ?? canvas.dataset.token ?? canvas.dataset.mascot ?? canvas.dataset.winner ?? 0), ctx = canvas.getContext("2d")!; ctx.imageSmoothingEnabled = false; ctx.drawImage(profiles[i], 0, 0, canvas.width, canvas.height); });
   root.querySelectorAll<HTMLDetailsElement>("details[data-details]").forEach(el => { if (openDetails.has(el.dataset.details)) el.open = true; });
   const modal = root.querySelector<HTMLElement>("[role=dialog]"); root.querySelector<HTMLElement>(".m-shell")!.inert = !!modal;
@@ -554,3 +569,6 @@ function couponControls(){
 }
 
 root.addEventListener("keydown",event=>{const tile=(event.target as Element).closest<SVGElement>(".m-board-svg [data-inspect]");if(tile&&!animating&&(event.key==='Enter'||event.key===' ')){event.preventDefault();if(tile.hasAttribute("data-pick-sale")){pickSale(Number(tile.dataset.pickSale));return;}if(tile.hasAttribute("data-pick-event-tile")){pickEventTile(Number(tile.dataset.pickEventTile));return;}if(tile.hasAttribute("data-pick-portal")){send({action:"portal_move",tile:Number(tile.dataset.pickPortal)});return;}selected=Number(tile.dataset.inspect);render()}});
+
+// Background tabs resume at the newest committed state instead of replaying stale motion.
+document.addEventListener('visibilitychange',()=>{if(online&&!document.hidden&&latestSnapshot){needsBaseline=true;receive(latestSnapshot);}});

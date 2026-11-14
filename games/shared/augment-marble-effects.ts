@@ -65,7 +65,7 @@ export function capabilities(g: Game, seat = g.turn): DiceCapabilities {
     selectiveDouble: g.abilities.ordinal === 0 && !!power(g, seat, "selective_double"), doubleLover: !!power(g, seat, "double_lover"),
     forces: owned.filter(a => a.effect === "force").map(a => `force_${a.tier}` as "force_silver" | "force_gold" | "force_prism"),
     mimic: !!power(g, seat, "mimic"), workSubsidy: !!power(g, seat, "subsidy"),
-    rerolls: owned.filter(a => a.effect === "reroll").map(a => a.tier === "silver" ? "suspicious_dice" : a.tier === "gold" ? "red_dice" : "black_dice"),
+    rerolls: owned.filter(a => a.effect === "reroll").map(a => a.id as "suspicious_dice" | "red_dice" | "black_dice"),
   };
 }
 export function acquireEffect(g: Game, seat: number, id: string, random: () => number, catalog: readonly AugmentDefinition[] = AUGMENT_CATALOG, visited = new Set<string>()) {

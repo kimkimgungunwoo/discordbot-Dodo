@@ -11,6 +11,7 @@ export interface DiceCapabilities {
   rerolls: RerollAbility[];
 }
 export interface RollContext {
+  bonus?: number;
   seat: number;
   ordinal: number;
   restricted: boolean;
@@ -41,7 +42,7 @@ export function diceChoices(roll: RollContext, capabilities: DiceCapabilities, h
     forces: before ? [...capabilities.forces] : [],
     copies: before && capabilities.mimic ? [...new Set(history)] : [],
     workSubsidy: before && roll.ordinal === 0 && capabilities.workSubsidy,
-    rerolls: available && roll.result !== null && roll.comparison === null ? capabilities.rerolls.filter(id => !roll.used.includes(id) && (id !== "suspicious_dice" || !roll.forcedDouble)) : [],
+    rerolls: available && roll.result !== null && roll.comparison === null ? capabilities.rerolls.filter(id => !roll.used.includes(id) && true) : [],
   };
 }
 export function configureRoll(roll: RollContext, capabilities: DiceCapabilities, force?: { ability: ForceAbility; option: number }, forcedDouble = false) {
@@ -92,10 +93,11 @@ export function throwDice(roll: RollContext, capabilities: DiceCapabilities, ran
 }
 export function rerollDice(roll: RollContext, capabilities: DiceCapabilities, ability: RerollAbility, random: () => number, die?: 0 | 1) {
   if (!diceChoices(roll, capabilities, []).rerolls.includes(ability)) throw new Error("지금 사용할 수 없는 리롤입니다.");
+  if(ability === "suspicious_dice"){roll.bonus=1+Math.floor(Math.min(.999999,Math.max(0,random()))*3);roll.used.push(ability);return;}
   const previous = roll.result!;
-  if (ability === "suspicious_dice" && die !== 0 && die !== 1) throw new Error("다시 굴릴 주사위를 선택해주세요.");
+
   const keepIndex = die === 0 ? 1 : 0;
-  const next = sampleDice(roll, capabilities.doubleLover, random, ability === "suspicious_dice" ? { index: keepIndex, value: previous[keepIndex] } : undefined);
+  const next = sampleDice(roll, capabilities.doubleLover, random, undefined);
   roll.used.push(ability);
   if (ability === "black_dice") roll.comparison = next;
   else roll.result = next;

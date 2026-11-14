@@ -41,3 +41,13 @@ test_*.py
 
 # Local documentation, exports and design previews
 /docs/
+
+# Local profiling / simulation utilities (production generators remain tracked)
+/games/server/scripts/analyze-marble.ts
+/games/server/scripts/benchmark-omok.ts
+/games/server/scripts/omok-benchmark-worker.ts
+/games/server/scripts/omok-positions.ts
+/games/server/scripts/profile-omok.ts
+/games/server/scripts/summarize-omok.ts
+.DS_Store
+*.tsbuildinfo

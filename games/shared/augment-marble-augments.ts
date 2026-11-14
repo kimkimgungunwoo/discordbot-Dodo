@@ -29,7 +29,7 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "selective_double", "name": "선택적 더블", "tier": "gold", "effect": "selective_double", "power": 1, "description": "매 차례 첫 주사위에서 더블 여부를 선택할 수 있습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "no_island", "name": "그런곳 가지 않아요", "tier": "silver", "effect": "no_island", "power": 1, "description": "3연속 더블이어도 무인도로 가지 않고 이동합니다. 추가 주사위는 던지지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "tax_silver", "name": "세금감면", "tier": "silver", "effect": "tax", "power": 20, "description": "세금이 20% 줄어듭니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "suspicious_dice", "name": "수상한주사위", "tier": "silver", "effect": "reroll", "power": 1, "description": "주사위를 던진 뒤 두 주사위 중 하나를 골라 다시 던질 수 있습니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "suspicious_dice", "name": "에디셔널 다이스", "tier": "gold", "effect": "reroll", "power": 1, "description": "기본 주사위의 도착 예정지를 확인한 뒤, 원하면 1~3이 나오는 추가 주사위를 한 번 던집니다. 추가 눈만큼 더 이동하며 더블 판정에는 포함하지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "low_kick", "name": "로우킥", "tier": "silver", "effect": "low_kick", "power": 1, "description": "차례를 기다리는 동안 자신을 통과하는 상대의 다음 주사위 합계를 10 이하로 제한합니다. 해당 투척의 주사위 능력은 무시합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "cocoa", "name": "코코아 팔기", "tier": "silver", "effect": "vendor", "power": 33, "description": "자신을 통과하는 상대에게 코코아를 팔아 33만원을 받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "grant_silver", "name": "지급", "tier": "silver", "effect": "grant", "power": 125, "description": "획득 즉시 125만원을 받습니다.", "hooks": ["acquire"]},
@@ -41,7 +41,7 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "double_lover", "name": "더블애호가", "tier": "silver", "effect": "double_lover", "power": 1, "description": "주사위에서 더블이 나올 확률이 증가합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "investor", "name": "전업투자자", "tier": "gold", "effect": "investor", "power": 2, "description": "월급을 받지 않는 대신 능력 수입과 부동산 수입 등 월급 외 수입이 2배가 됩니다.", "hooks": ["before_move", "arrive"]},
   {"id": "calf_kick", "name": "카프킥", "tier": "gold", "effect": "calf_kick", "power": 2, "description": "자신을 통과하는 상대의 남은 이동 칸 수를 2칸 줄입니다. 남은 칸이 부족하면 자신의 위치에서 멈춥니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "red_dice", "name": "레드다이스", "tier": "gold", "effect": "reroll", "power": 2, "description": "매 주사위마다 두 주사위를 한 번 다시 던질 수 있습니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "red_dice", "name": "레드다이스", "tier": "silver", "effect": "reroll", "power": 2, "description": "매 주사위마다 두 주사위를 한 번 다시 던질 수 있습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "vladimir", "name": "블라디미르", "tier": "gold", "effect": "vladimir", "power": 10, "description": "매 차례 시작 시 같은 라인의 상대 한 명을 골라 보유 현금의 10%를 흡수합니다. 모서리는 인접한 두 라인 모두에 포함됩니다.", "hooks": ["before_move", "arrive"]},
   {"id": "gambler_gold", "name": "도박사", "tier": "gold", "effect": "gambler", "power": 2, "description": "내 지역마다 각각 50% 확률로 통행료가 0.5배 또는 2배가 됩니다. 앞으로 얻는 지역에도 적용됩니다.", "hooks": ["acquire"]},
   {"id": "jujitsu", "name": "주짓수", "tier": "gold", "effect": "jujitsu", "power": 1, "description": "매 차례 시작 시 같은 칸의 상대를 기절시켜 한 차례 쉬게 합니다. 출발 칸에서는 발동하지 않습니다.", "hooks": ["before_move", "arrive"]},
@@ -52,7 +52,7 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "realtor_gold", "name": "부동산 고수", "tier": "gold", "effect": "realtor", "power": 20, "description": "지역 구매 비용을 20% 할인받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "glass_cannon", "name": "유리대포", "tier": "gold", "effect": "glass_cannon", "power": 1, "description": "얻는 돈은 2.5배, 잃는 돈은 2배입니다. 플레이어 간 거래의 추가 수입은 은행에서 지급하고, 추가 지출은 소멸하며 상대가 주고받는 금액은 늘어나지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "negotiator_gold", "name": "인수의 고수", "tier": "gold", "effect": "negotiator", "power": 20, "description": "인수 비용을 20% 할인받습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "gas", "name": "방귀쟁이", "tier": "silver", "effect": "gas", "power": 1, "description": "자신이 한 차례 동안 도착한 칸에 방귀를 남깁니다. 2라운드 안에 도착한 상대는 다음 주사위 합계가 10 이하로 제한되고 주사위 능력을 쓸 수 없습니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "gas", "name": "방귀쟁이", "tier": "silver", "effect": "gas", "power": 1, "description": "자신이 한 차례 동안 도착한 칸에 방귀를 남깁니다. 다른 플레이어가 밟으면 방귀는 사라지고, 2라운드 안에 도착한 상대는 다음 주사위 합계가 10 이하로 제한되고 주사위 능력을 쓸 수 없습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "conversion_prism", "name": "전환 : 프리즘", "tier": "gold", "effect": "conversion", "power": 1, "description": "이 카드를 소비하고 프리즘 증강 1개를 무작위로 얻습니다.", "hooks": ["acquire"], "targetTier": "prism"},
   {"id": "conversion_silver_two", "name": "전환 : 실버", "tier": "gold", "effect": "conversion", "power": 2, "description": "이 카드를 소비하고 실버 증강 2개를 무작위로 얻습니다.", "hooks": ["acquire"], "targetTier": "silver"},
   {"id": "builder_gold", "name": "건설고수 2", "tier": "gold", "effect": "builder", "power": 20, "description": "건물 건설 비용을 20% 할인받습니다.", "hooks": ["before_move", "arrive"]},
@@ -61,21 +61,19 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "subsidy", "name": "근로장려금", "tier": "gold", "effect": "subsidy", "power": 1, "description": "자신의 차례에 이동하는 대신 현재 위치에서 월급을 받는 것을 선택할 수 있습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "drop_kick", "name": "드롭킥", "tier": "prism", "effect": "drop_kick", "power": 3, "description": "자신을 통과하는 상대의 남은 이동 칸 수를 3칸 줄입니다. 부족하면 자신의 위치에서 멈춥니다. 상대의 다음 주사위는 합계 10 이하로 제한되며 주사위 능력을 무시합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "black_dice", "name": "블랙다이스", "tier": "prism", "effect": "reroll", "power": 3, "description": "매 주사위마다 다시 던진 뒤 기존 결과와 새 결과 중 하나를 선택할 수 있습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "trap", "name": "덫", "tier": "prism", "effect": "trap", "power": 1, "description": "자신이 한 차례 동안 밟은 칸에 덫을 남깁니다. 2라운드 안에 도착한 상대는 현재 더블 추가 투척이 취소되고 다음 자기 차례가 마비됩니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "trap", "name": "덫", "tier": "prism", "effect": "trap", "power": 1, "description": "자신이 최종 도착한 칸에만 덫을 남깁니다. 2라운드 안에 다른 플레이어가 밟으면 덫은 사라지고, 해당 상대는 현재 더블 추가 투척이 취소되고 다음 자기 차례가 마비됩니다.", "hooks": ["before_move", "arrive"]},
   {"id": "exploit", "name": "착취", "tier": "prism", "effect": "exploit", "power": 15, "description": "매 차례 시작 시 같은 라인의 생존 상대 수로 15%를 나눈 비율만큼 각 상대의 보유 현금을 흡수합니다. 1명은 15%, 2명은 각각 7.5%, 3명은 각각 5%입니다. 모서리는 인접한 두 라인에 포함하며, 같은 상대는 한 번만 계산합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "gambler_prism", "name": "도박사2", "tier": "prism", "effect": "gambler", "power": 4, "description": "내 지역마다 각각 50% 확률로 통행료가 0배 또는 4배가 됩니다. 앞으로 얻는 지역에도 적용됩니다.", "hooks": ["acquire"]},
   {"id": "alcohol", "name": "술팔기", "tier": "prism", "effect": "vendor", "power": 63, "description": "자신을 통과하는 상대에게 술을 팔아 63만원을 받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "grant_prism", "name": "지급3", "tier": "prism", "effect": "grant", "power": 1000, "description": "획득 즉시 1000만원을 받습니다.", "hooks": ["acquire"]},
   {"id": "revival_prism", "name": "트린다미어3", "tier": "prism", "effect": "revival", "power": 250, "description": "파산 시 한 번 부활하고 현금 250만원을 받습니다.", "hooks": ["acquire"]},
   {"id": "stealth", "name": "스텔스모드", "tier": "prism", "effect": "stealth", "power": 1, "description": "자신의 차례를 기다리는 동안 다른 플레이어의 증강 효과를 받지 않습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "trip", "name": "와사바리", "tier": "prism", "effect": "trip", "power": 1, "description": "자신을 통과하는 상대를 자신의 위치에 강제로 멈추게 합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "tax_prism", "name": "조세회피", "tier": "prism", "effect": "tax", "power": 100, "description": "세금을 내지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "island_owner", "name": "김씨표류기", "tier": "gold", "effect": "island_owner", "power": 1, "description": "무인도를 매수할 수 있고 무인도에 갇히지 않습니다. 갇힌 상대가 나오지 못하고 차례를 쉬는 동안 돈을 강탈합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "realtor_prism", "name": "부동산의 왕", "tier": "prism", "effect": "realtor", "power": 50, "description": "지역 구매 비용을 50% 할인받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "negotiator_prism", "name": "인수 왕", "tier": "prism", "effect": "negotiator", "power": 50, "description": "인수 비용을 50% 할인받습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "singed", "name": "신지드", "tier": "prism", "effect": "singed", "power": 1, "description": "이동 중 경로의 상대를 뒤로 2칸 던져 도착 효과를 발생시킵니다. 던져진 상대는 매입·인수를 할 수 없습니다. 자신이 도착한 칸에는 3라운드 동안 독을 남겨, 밟은 상대의 다음 차례 주사위를 10 이하로 제한하고 주사위 능력을 무시합니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "singed", "name": "신지드", "tier": "prism", "effect": "singed", "power": 1, "description": "이동 중 경로의 상대를 뒤로 2칸 던져 도착 효과를 발생시킵니다. 던져진 상대는 매입·인수를 할 수 없습니다. 자신이 도착한 칸에는 3라운드 동안 독을 남겨, 다른 플레이어가 밟으면 독은 사라지고 해당 상대의 다음 차례 주사위를 10 이하로 제한하고 주사위 능력을 무시합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "conversion_gold_two", "name": "전환 : 골드 2", "tier": "prism", "effect": "conversion", "power": 2, "description": "이 카드를 소비하고 골드 증강 2개를 무작위로 얻습니다.", "hooks": ["acquire"], "targetTier": "gold"},
-  {"id": "landmark", "name": "랜드마크 건설", "tier": "prism", "effect": "landmark", "power": 1, "description": "건물 3종이 완공된 자기 지역에 다시 도착하면 랜드마크를 건설할 수 있습니다. 추가 건설비는 토지와 건물 3종 정가 합계의 2배이며, 랜드마크는 인수할 수 없습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "builder_prism", "name": "건설왕", "tier": "prism", "effect": "builder", "power": 50, "description": "건물 건설 비용을 50% 할인받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "great_luck", "name": "운수대통", "tier": "prism", "effect": "luck", "power": 100, "description": "이벤트 칸에서 부정적 이벤트가 발생하지 않습니다.", "hooks": ["before_move", "arrive"]},
 ];
@@ -177,5 +175,5 @@ export function openRoundPrismOffer(state:AugmentState,seat:number,random:()=>nu
  const pool=catalog.filter(a=>a.tier==='prism'&&!p.owned.includes(a.id)).map(a=>a.id),cards:string[]=[];
  for(let i=0;i<Math.min(3,pool.length);i++)cards.push(sample(pool.filter(id=>!cards.includes(id)),random));
  if(!cards.length)return false;
- p.offer={id:`round30:${seat}`,round:30,tier:'prism',bonus:true,cards,rerolled:cards.map(()=>pool.length<=cards.length),seen:[...cards]};return true;
+ p.offer={id:`round30:${seat}`,round:20,tier:'prism',bonus:true,cards,rerolled:cards.map(()=>pool.length<=cards.length),seen:[...cards]};return true;
 }

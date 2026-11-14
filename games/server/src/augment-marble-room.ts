@@ -11,6 +11,8 @@ export class AugmentMarbleRoom extends RelayRoom {
   started = false;
   private readonly readyPlayers = new Set<string>();
   deadline = 0;
+  private presentationRevision=-1;
+  private presentationAt=0;
   private forgotten = false;
   private emptySince: number | null = null;
   private timer?: ReturnType<typeof setTimeout>;
@@ -28,12 +30,13 @@ export class AugmentMarbleRoom extends RelayRoom {
     if (this.result) peer.send({ type: this.delivered ? "FINISHED" : "RESULT_PENDING", result: this.result });
   }
   snapshot(peer: Peer): View {
+    if(this.presentationRevision!==this.game.revision){this.presentationRevision=this.game.revision;this.presentationAt=Date.now()+200;}
     const game = structuredClone(this.game);
     if(this.seat(peer.id)!==actingSeat(game))game.abilities.roll=null;
     if (game.augments) game.augments = publicAugmentState(game.augments, this.seat(peer.id));
     return { type: "MARBLE_STATE", matchId: this.matchId, game, seat: this.seat(peer.id),
       seats: this.definition.seats!.map(s => ({ ...s, connected: !!s.bot || [...this.peers].some(p => p.id === s.userId), ready: !!s.bot || this.readyPlayers.has(s.userId!) })),
-      started: this.started, deadline: this.deadline, serverNow: Date.now(), aborted: this.result?.aborted ? this.result.reason : undefined, rematch: this.rematchStatus() };
+      started: this.started, presentationAt:this.presentationAt, deadline: this.deadline, serverNow: Date.now(), aborted: this.result?.aborted ? this.result.reason : undefined, rematch: this.rematchStatus() };
   }
   override presence() { this.persist(); for (const peer of this.peers) peer.send(this.snapshot(peer)); }
   override leave(peer: Peer) {

@@ -1,3 +1,5 @@
+import { tileMark } from "./tile-marks";
+import { regionLandmark } from "./landmarks";
 import { BOARD, COLORS, GROUP_COLORS, actingSeat, type Game } from "../../../shared/augment-marble";
 import { displayedRent } from "./copy";
 type Point=[number,number];
@@ -48,29 +50,17 @@ function specialObjects():Drawable[]{return labels.flatMap((name,i)=>{if(!specia
  return[{y:cy,html:`<g class="special-icon" data-special-tile="${i}" aria-label="${name}" pointer-events="none" transform="translate(${cx} ${cy}) scale(${scale})" opacity="${occupied?.22:1}">${icon}</g>`}];
  })}
 
-function landmarkModel(x:number,y:number,w:number,d:number,color:string){
+function landmarkModel(x:number,y:number,w:number,d:number,color:string,tile:number){
  const [cx,cy]=project(x+w/2,y+d/2),scale=version===0?.57:.77;
- const tint=(hex:string,k:number)=>{const n=parseInt(hex.slice(1),16);return '#'+[n>>16&255,n>>8&255,n&255].map(v=>Math.round(k>=0?v+(255-v)*k:v*(1+k)).toString(16).padStart(2,'0')).join('')};
- const P=(x:number,y:number,z:number):Point=>[x+y*.45,-y*.3-z],path=(points:Point[],fill:string)=>`<polygon points="${points.map(p=>p.join(',')).join(' ')}" fill="${fill}" stroke="#303b36" stroke-width=".85" stroke-linejoin="round"/>`;
- const front=color,side=tint(color,-.28),roof=tint(color,.32);
- function prism(x0:number,y0:number,x1:number,y1:number,z0:number,z1:number){return path([P(x1,y0,z0),P(x1,y1,z0),P(x1,y1,z1),P(x1,y0,z1)],side)+path([P(x0,y0,z0),P(x1,y0,z0),P(x1,y0,z1),P(x0,y0,z1)],front)+path([P(x0,y0,z1),P(x1,y0,z1),P(x1,y1,z1),P(x0,y1,z1)],roof)}
- let body=`<ellipse cx="2" cy="3" rx="32" ry="5" fill="#303b3625"/>`;
- body+=prism(-27,-11,27,11,0,4)+prism(-24,-9,24,9,4,12);
- body+=prism(-23,-6,-13,6,12,27)+prism(13,-6,23,6,12,27);
- body+=prism(-13,-7,13,7,12,43)+prism(-10,-5,10,5,43,53)+prism(-6,-3,6,3,53,61);
- body+=path([P(-6,-3,61),P(6,-3,61),P(0,0,68)],'#dcc488')+path([P(6,-3,61),P(6,3,61),P(0,0,68)],'#a99056');
- const sp=P(0,0,68);body+=`<path d="M${sp[0]} ${sp[1]}v-7" stroke="#303b36" stroke-width="1.2"/><circle cx="${sp[0]}" cy="${sp[1]-7}" r="1.4" fill="#e2ce93" stroke="#303b36" stroke-width=".7"/>`;
- for(const z of [20,27,34]){for(const wx of [-8,0,8]){const q=P(wx,-7,z);body+=`<rect x="${q[0]-1.5}" y="${q[1]-3}" width="3" height="5" fill="#f4ead0"/>`}}
- for(const wx of [-19,18]){const q=P(wx,-6,21);body+=`<rect x="${q[0]-1.5}" y="${q[1]-3}" width="3" height="5" fill="#f4ead0"/>`}
- const door=P(0,-7,12);body+=`<path d="M${door[0]-3} ${door[1]}v-6q3-4 6 0v6z" fill="${tint(color,-.58)}"/>`;
- const sign=P(0,-9,6),seat=colors.indexOf(color)+1;body+=`<rect x="${sign[0]-9}" y="${sign[1]-5}" width="18" height="8" rx="1" fill="${tint(color,-.4)}"/><text x="${sign[0]}" y="${sign[1]+1}" text-anchor="middle" fill="#ffffff" font-size="7" font-weight="900">${seat}P</text>`;
- return `<g class="landmark-model" transform="translate(${cx} ${cy}) scale(${scale})">${body}</g>`;
+ const region=BOARD.filter(t=>t.kind==='city'&&t.group===BOARD[tile].group).findIndex(t=>t.index===tile);
+ const index=BOARD[tile].group*4+region;
+ return `<g class="landmark-model" data-landmark-region="${index}" transform="translate(${cx} ${cy}) scale(${scale})"><g transform="translate(-80 -125)">${regionLandmark(index,color,colors.indexOf(color))}</g></g>`;
 }
 
 function buildingObjects():Drawable[]{if(version===2)return[];const items:Drawable[]=[];
  const face=(points:Point[],fill:string)=>`<polygon points="${points.map(p=>p.join(',')).join(' ')}" fill="${fill}" stroke="#303b36" stroke-width="1"/>`;
- function block(x:number,y:number,w:number,d:number,h:number,color:string,kind:string){
-  if(kind==='landmark')return landmarkModel(x,y,w,d,color);
+ function block(x:number,y:number,w:number,d:number,h:number,color:string,kind:string,tile:number){
+  if(kind==='landmark')return landmarkModel(x,y,w,d,color,tile);
   if(version===1&&kind==='villa'){
    const left=x,right=x+w,bottom=y+d,eave=bottom-h,ridge=x+w/2,depthX=5,depthY=-4,roofH=8;
    const polygon=(points:Point[],fill:string)=>`<polygon points="${points.map(p=>p.join(',')).join(' ')}" fill="${fill}" stroke="#303b36" stroke-width="1" stroke-linejoin="round"/>`;
@@ -91,7 +81,7 @@ const a=project(x,y),b=project(x+w,y),c=project(x+w,y+d),e=project(x,y+d),top=(p
   return html;
  }
  for(const [key,state] of Object.entries(developed)){const i=Number(key),t=cell(i),side=t.col===0||t.col===9;let x,y;if(t.row===0){x=t.x+12;y=t.y+65}else if(t.row===9){x=t.x+12;y=t.y+17}else if(t.col===0){x=t.x+101;y=t.y+8}else{x=t.x+7;y=t.y+8}
-  if(version===0){if(t.row===0)y+=22;else if(t.row===9)y-=12;else if(t.col===0)x+=18;else x-=18}const types=state.landmark?['landmark']:(['villa','tower','hotel'] as const).filter((_,n)=>g.properties[i].buildings&(1<<n));if(version===1&&side&&t.row!==0&&t.row!==9){types.reverse();x=t.col===0?t.x+(state.landmark?72:94):t.x+13;y=t.y+(state.landmark?50:18)}if(version===1&&state.landmark&&t.row===0)y=t.y+82;const color=colors[state.owner];let html=state.count===0&&!state.landmark?`<g class="m-property-flag"><path d="M${x+10} ${y+30}v-28" stroke="#303b36" stroke-width="2"/><path d="M${x+11} ${y+2}l20 6l-20 8z" fill="${color}" stroke="#303b36" stroke-width="1"/></g>`:'';types.forEach((kind,n)=>{const vertical=version===1&&side&&t.row!==0&&t.row!==9,xx=x+(side?0:n*20),yy=y+(side?(vertical?[0,24,49][n]:n*19):0),size=kind==='landmark'?36:13,height=kind==='landmark'?(version===0?27:43):(version===0?[9,15,21]:vertical?types.map(k=>(({villa:9,tower:18,hotel:26} as Record<string,number>)[k])):types.map(k=>({villa:11,tower:23,hotel:32} as Record<string,number>)[k]))[n];html+=`<g class="building-unit" data-kind="${kind}">${block(xx,yy,size,size,height,color,kind)}</g>`});
+  if(version===0){if(t.row===0)y+=22;else if(t.row===9)y-=12;else if(t.col===0)x+=18;else x-=18}const types=state.landmark?['landmark']:(['villa','tower','hotel'] as const).filter((_,n)=>g.properties[i].buildings&(1<<n));if(version===1&&side&&t.row!==0&&t.row!==9){types.reverse();x=t.col===0?t.x+(state.landmark?72:94):t.x+13;y=t.y+(state.landmark?50:18)}if(version===1&&state.landmark&&t.row===0)y=t.y+82;const color=colors[state.owner];let html=state.count===0&&!state.landmark?`<g class="m-property-flag"><path d="M${x+10} ${y+30}v-28" stroke="#303b36" stroke-width="2"/><path d="M${x+11} ${y+2}l20 6l-20 8z" fill="${color}" stroke="#303b36" stroke-width="1"/></g>`:'';types.forEach((kind,n)=>{const vertical=version===1&&side&&t.row!==0&&t.row!==9,xx=x+(side?0:n*20),yy=y+(side?(vertical?[0,24,49][n]:n*19):0),size=kind==='landmark'?36:13,height=kind==='landmark'?(version===0?27:43):(version===0?[9,15,21]:vertical?types.map(k=>(({villa:9,tower:18,hotel:26} as Record<string,number>)[k])):types.map(k=>({villa:11,tower:23,hotel:32} as Record<string,number>)[k]))[n];html+=`<g class="building-unit" data-kind="${kind}">${block(xx,yy,size,size,height,color,kind,i)}</g>`});
   const anchor=project(x,y);items.push({y:anchor[1],html:`<g class="building-cluster" data-building-tile="${i}" aria-label="${labels[i]} · ${state.owner+1}P · ${state.landmark?'랜드마크':['별장','빌딩','호텔'].slice(0,state.count).join(', ')}" pointer-events="none">${html}</g>`});
  }return items;
 }
@@ -101,7 +91,7 @@ function pieces(){let all:Drawable[]=[...specialObjects(),...buildingObjects()];
 
  const anchors=BOARD.map(t=>{const [x,y]=foot(cell(t.index));return `<circle data-landing-anchor="${t.index}" cx="${x}" cy="${y}" r=".1" fill="transparent" pointer-events="none"/>`}).join('');
  function wallShape(index:number){const a=cell(index),b=cell((index+1)%36),horizontal=Math.abs(a.x+a.w/2-b.x-b.w/2)>Math.abs(a.y+a.h/2-b.y-b.h/2),x=horizontal?(b.x>a.x?a.x+a.w:a.x):Math.max(a.x,b.x),y=horizontal?Math.max(a.y,b.y):(b.y>a.y?a.y+a.h:a.y),length=horizontal?Math.min(a.h,b.h):Math.min(a.w,b.w);return `<g data-wall="${index}" class="m-wall"><rect x="${x-7}" y="${y-7}" width="${horizontal?14:length+14}" height="${horizontal?length+14:14}" fill="transparent"/><path d="M${x} ${y}l${horizontal?0:length} ${horizontal?length:0}" stroke="#fff9dd" stroke-width="15"/><path d="M${x} ${y}l${horizontal?0:length} ${horizontal?length:0}" stroke="#a13b2d" stroke-width="10"/><path d="M${x} ${y}l${horizontal?0:length} ${horizontal?length:0}" stroke="#ffd45c" stroke-width="6" stroke-dasharray="9 7"/></g>`}
- const installations=BOARD.map(t=>{const c=cell(t.index),marks=g.abilities.marks.filter(m=>m.tile===t.index),wall=g.world.walls.includes(t.index);return `<g class="m-installations" pointer-events="none">${marks.map((m,n)=>`<text class="m-board-mark" x="${c.x+c.w-9-n*12}" y="${c.y+13}" text-anchor="middle" font-size="13" aria-label="${m.owner+1}P ${m.kind==='gas'?'방귀':m.kind==='trap'?'덫':'독'}">${m.kind==='gas'?'♨':m.kind==='trap'?'⚠':'☠'}</text>`).join('')}${wall?wallShape(t.index):''}</g>`}).join('');
+ const installations=BOARD.map(t=>{const c=cell(t.index),marks=g.abilities.marks.filter(m=>m.tile===t.index),wall=g.world.walls.includes(t.index);return `<g class="m-installations" pointer-events="none">${marks.map((m,n)=>{const [bx,by,bw,bh]=labelBand(c);const horizontal=bw>=c.w*.9;const fx=horizontal?c.x:bx<=c.x?bx+bw:c.x,fy=horizontal?(by<=c.y?by+bh:c.y):c.y,fw=horizontal?c.w:c.w-bw,fh=horizontal?c.h-bh:c.h;return tileMark(m.kind,m.owner,fx+2+n*3,fy+2,Math.max(8,fw-4),Math.max(8,fh-4))}).join('')}${wall?wallShape(t.index):''}</g>`}).join('');
  const landingHighlight=(()=>{if(!opts.target||opts.linePick)return '';const t=cell(opts.target.tile),bottom=t.row===9,top=t.row===0,left=t.col===0,x=bottom||top?t.x+t.w/2:left?t.x+t.w+43:t.x-43,y=bottom?t.y-43:top?t.y+t.h+43:t.y+t.h/2,angle=top?180:bottom?0:left?90:-90;return `<g class="m-landing-highlight" data-destination-tile="${opts.target.tile}" pointer-events="none"><g class="m-destination-marker" transform="translate(${x} ${y}) rotate(${angle})"><path d="M-8 0H8V15H17L0 33 -17 15H-8Z"/></g></g>`})();
  const tilePicker=BOARD.filter(t=>opts.portalPick&&t.kind==="city"||opts.eventTilePick?.includes(t.index)||opts.salePick?.some(s=>s.tile===t.index)).map(tile=>{const t=cell(tile.index);return rect(t.x+3,t.y+3,t.w-6,t.h-6,`class="m-map-choice-glow" data-selectable-tile="${tile.index}" fill="#ffdc451a" stroke="#ffdc45" stroke-width="3" pointer-events="none"`)}).join('');
  const boundaryPicker=(opts.boundaryPick??[]).map(index=>{const a=cell(index),b=cell((index+1)%36),horizontal=Math.abs(a.x+a.w/2-b.x-b.w/2)>Math.abs(a.y+a.h/2-b.y-b.h/2),x=horizontal?(b.x>a.x?a.x+a.w:a.x):Math.max(a.x,b.x),y=horizontal?Math.max(a.y,b.y):(b.y>a.y?a.y+a.h:a.y),length=horizontal?Math.min(a.h,b.h):Math.min(a.w,b.w);return `<g data-pick-boundary="${index}" tabindex="0" role="button" aria-label="${BOARD[index].name}와 ${BOARD[(index+1)%36].name} 사이에 벽 설치"><path class="m-map-choice-glow" d="M${x} ${y}l${horizontal?0:length} ${horizontal?length:0}" stroke="#ffdc45" stroke-width="4"/><rect x="${x-7}" y="${y-7}" width="${horizontal?14:length+14}" height="${horizontal?length+14:14}" fill="transparent"/></g>`}).join('');
