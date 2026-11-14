@@ -63,7 +63,8 @@ const markKey=(m:{owner:number;tile:number;kind:string})=>`${m.owner}:${m.kind}:
 let landingTarget:{seat:number;tile:number}|null=null;
 let displayedPositions=new Map<number,number>();
 let moveProgress={done:0,total:0};
-const TILE_STEP_MS=350;
+const TILE_HOP_MS=220;
+const TILE_STEP_MS=250;
 
 const definition = (id: string) => AUGMENT_CATALOG.find(a => a.id === id);
 const augmentTooltip=new AugmentTooltip(root,button=>{const a=definition(button.dataset.ability??""),seat=Number(button.dataset.ownedSeat);if(!a||!view?.game.players[seat])return null;return{name:abilityLabel(a),owner:`${seat+1}P ${view.game.players[seat].name}`,tier:a.tier,tierLabel:TIER_LABELS[a.tier],description:a.description,timing:abilityTiming(a),notes:abilityNotes(a)};});
@@ -242,7 +243,7 @@ async function animateMovement(seat:number,path:number[],signal:AbortSignal){
   sound.play("hop");revealBoardTile(path[step]);const target=destination(path[step]),lift=reducedMotion.matches?0:Math.max(14,position.h*.85);
   sprite.dataset.step=String(moveProgress.done+1);sprite.dataset.tile=String(path[step]);root.querySelectorAll(".m-step-active").forEach(el=>el.classList.remove("m-step-active"));root.querySelector(`[data-inspect="${path[step]}"]`)?.classList.add("m-step-active");
   await new Promise<void>(resolve=>{
-   let handle=0;const duration=300,started=effectStart(duration);
+   let handle=0;const duration=TILE_HOP_MS,started=effectStart(duration);
    const done=()=>{cancelAnimationFrame(handle);signal.removeEventListener("abort",done);resolve()};
    const frame=(now:number)=>{if(signal.aborted){done();return}const t=Math.max(0,Math.min(1,(now-started)/duration)),x=position.x+(target.x-position.x)*t,y=position.y+(target.y-position.y)*t,jump=Math.sin(Math.PI*t)*lift,w=position.w+(target.w-position.w)*t,h=position.h+(target.h-position.h)*t;
     const point=space.viewport({x,y:y-jump,w,h}),ground=space.viewport({x,y,w,h});
@@ -251,7 +252,7 @@ async function animateMovement(seat:number,path:number[],signal:AbortSignal){
     if(t<1)handle=requestAnimationFrame(frame);else done();
    };signal.addEventListener("abort",done,{once:true});frame(performance.now());
   });if(signal.aborted)return;
-  await pause(TILE_STEP_MS-300,signal);if(signal.aborted)return;
+  await pause(TILE_STEP_MS-TILE_HOP_MS,signal);if(signal.aborted)return;
   if(step===path.length-1)sound.play("land");position=target;displayedPositions.set(seat,path[step]);
   let changed=false;for(const m of view!.game.abilities.marks)if(m.owner===seat&&m.tile===path[step])changed=hiddenMarks.delete(markKey(m))||changed;
   if(changed){const temp=document.createElement('template');const g=view!.game;temp.innerHTML=renderBoardB({...g,abilities:{...g.abilities,marks:[...g.abilities.marks.filter(m=>!hiddenMarks.has(markKey(m))),...consumedMarks]}},{seat:view!.seat,selected,positions:displayedPositions,target:null,birds:boardBirds,stealth:g.players.map((_,i)=>immune(g,i)),center:''});const fresh=temp.content.querySelectorAll('.m-installations');root.querySelectorAll('.m-installations').forEach((el,i)=>el.replaceWith(fresh[i]));}
