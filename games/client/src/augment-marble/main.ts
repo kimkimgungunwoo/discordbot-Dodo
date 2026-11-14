@@ -161,7 +161,7 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
     const event=group[0];if(event.target!==undefined){const before=consumedMarks.length;consumedMarks=consumedMarks.filter(m=>!(m.owner===event.actor&&m.tile===event.tile&&(m.kind==='poison'?'singed':m.kind)===event.ability));if(before!==consumedMarks.length)render();} presentationStage = "증강 발동"; shownEventId = Math.max(shownEventId, event.id); updateStage(); if(event.rentChange){const p=next.game.properties[event.tile];if(p.revisitBoost===event.rentChange.level)displayedProperties.delete(event.tile);else displayedProperties.set(event.tile,{...p,revisitBoost:event.rentChange.level});render();}if(event.remaining!==undefined){moveProgress.total=moveProgress.done+event.remaining;const direction=next.game.world.players[next.game.turn].reverseThisTurn?-1:1;landingTarget={seat:next.game.turn,tile:(event.tile+direction*event.remaining+360)%36};render();}const cue=abilitySound(event);if(cue)sound.play(cue);await abilityEffects.play(event, signal,next.game.players.map(p=>p.name)); if(event.flight&&!signal.aborted)await animateFlight(event.flight.seat,event.flight.to,signal); } };
   try {
     await play(plan.before.filter(e => e.ability !== "dice"));
-    if (plan.dice && !signal.aborted) await animateDice(plan.dice.dice, signal, plan.dice.die);
+    if (plan.dice && !signal.aborted) await animateDice(plan.dice.dice, signal, plan.dice.die,!!plan.dice.additional);
     if(!signal.aborted){
       landingTarget=teleport?{seat:teleport.seat,tile:teleport.to}:(previous?.phase==="dice"?projectedLanding(previous):null) ?? projectedLanding(next.game) ?? continuation?.target ?? (route.length>1&&next.game.abilities.lastMove?{seat:next.game.abilities.lastMove.seat,tile:next.game.abilities.lastMove.flight?route.at(-1)!:(route[0]+(next.game.world.players[next.game.abilities.lastMove.seat].reverseThisTurn?-1:1)*moveProgress.total+360)%36}:landingTarget);
       render();
@@ -189,15 +189,15 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
   if(!signal.aborted&&previous){for(const cue of cues)if(!earlyCues.has(cue))sound.play(cue);if(next.game.phase==="event"&&next.game.world.current?.serial!==previous.world.current?.serial){sound.play(`event-${eventDefinition(next.game.world.current!.id).category}`);await pause(1000,signal);}}
 }
 function updateStage() { const el = root.querySelector(".m-presentation-label"); if (el) el.textContent = presentationStage; }
-async function animateDice(result: number[], signal: AbortSignal, die?: 0 | 1) {
+async function animateDice(result: number[], signal: AbortSignal, die?: 0 | 1, additional=false) {
   sound.play("roll");
-  presentationStage = die === undefined ? "주사위를 굴리고 있습니다" : `${die + 1}번 주사위를 다시 굴리고 있습니다`; updateStage();
-  const dice = root.querySelector(".m-dice"); dice?.classList.add("rolling");
+  presentationStage = additional ? "에디셔널 다이스 · 추가 주사위" : die === undefined ? "주사위를 굴리고 있습니다" : `${die + 1}번 주사위를 다시 굴리고 있습니다`; updateStage();
+  const dice = root.querySelector(".m-dice"); dice?.classList.add("rolling");dice?.classList.toggle("additional-rolling",additional);
   let frame = 0;
-  const shuffle = () => root.querySelectorAll<HTMLElement>(".m-die").forEach((el, i) => { if (die === undefined || i === die) el.innerHTML = dieMarkup(1 + (frame * (i ? 5 : 1) + i * 3) % 6); });
+  const shuffle = () => root.querySelectorAll<HTMLElement>(additional?".m-extra-die":".m-die:not(.m-extra-die)").forEach((el, i) => { if (die === undefined || i === die) el.innerHTML = dieMarkup(1 + (frame * (i ? 5 : 1) + i * 3) % (additional?3:6)); });
   const interval = !reducedMotion.matches ? setInterval(() => { frame++; shuffle(); }, 70) : undefined;
-  await pause(620, signal); clearInterval(interval); dice?.classList.remove("rolling");
-  if (!signal.aborted) { root.querySelectorAll<HTMLElement>(".m-die").forEach((el, i) => el.innerHTML = dieMarkup(result[i])); dice?.classList.add("landed");sound.play(result.length===2&&result[0]===result[1]?"double":"dice"); }
+  await pause(620, signal); clearInterval(interval); dice?.classList.remove("rolling","additional-rolling");
+  if (!signal.aborted) { root.querySelectorAll<HTMLElement>(additional?".m-extra-die":".m-die:not(.m-extra-die)").forEach((el, i) => el.innerHTML = dieMarkup(result[i])); dice?.classList.add("landed");sound.play(result.length===2&&result[0]===result[1]?"double":"dice"); }
 }
 function revealBoardTile(index:number){const stage=root.querySelector<HTMLElement>(".m-board-stage"),anchor=root.querySelector(`[data-landing-anchor="${index}"]`);if(!stage||!anchor)return 0;const r=anchor.getBoundingClientRect(),box=stage.getBoundingClientRect(),before=stage.scrollLeft;if(r.left<box.left+32||r.right>box.right-32)stage.scrollLeft+=r.left-(box.left+box.width/2);return stage.scrollLeft-before;}
 async function animateWall(seat:number,wall:{boundary:number;tile:number;next:number},signal:AbortSignal){
@@ -374,6 +374,8 @@ function controls() {
   if (g.phase === "buy") return `<span class="m-eyebrow">주인 없는 지역</span><h2>${t.name} 매입</h2><p>${player.laps>=2?"매입 후 바로 건설할 수 있습니다.":"매입 후 재방문하면 건설할 수 있습니다."}</p>${quote(t.price, purchaseCost(g, t.index))}${button(`${purchaseCost(g, t.index)}만원에 매입`, "buy", player.cash < purchaseCost(g, t.index), "", true)}${button("매입하지 않고 진행", "skip")}`;
   if (g.phase === "build") {
     const landmark = landmarkAvailable(g,t.index);
+    if(landmark)return `<h2>${t.name} · 랜드마크</h2>${quote(landmarkBase(t.index),landmarkCost(g,t.index))}${button("랜드마크 건설 · 통행료 2배","landmark",player.cash<landmarkCost(g,t.index),"",true)}${button("건설하지 않고 진행","end",false,"",true)}`;
+
     return `<span class="m-eyebrow">내 지역</span><h2>${t.name} ${p.landmark ? "랜드마크" : "건설"}</h2><p>감면 전 청구 통행료 ${money(displayedRent(g, t.index))}. </p><div class="m-build-options" data-build-key="${g.turnId}-${t.index}">${BUILDINGS.map((_, i) => {
       const b = construction(t.index, i), cost = buildCost(g, t.index, i), built = !!(p.buildings & (1 << i));
       const preview = structuredClone(g); preview.properties[t.index].buildings |= 1 << i;
@@ -416,7 +418,7 @@ function boardDiceControls(){return !!view&&["roll","dice"].includes(view.game.p
 function ownDiceControls(){return !!view&&!view.aborted&&view.game.phase!=="augment"&&(view.game.phase!=="event"||!!directPickKind())&&view!.started&&view!.seat===actingSeat(view!.game)&&!view!.aborted&&!animating&&!drawingOrder;}
 function boardMarkup() {
  const v=view!,g=v.game,centerSeat=g.winner??actingSeat(g),target=g.phase==="dice"&&!animating?projectedLanding(g):landingTarget;
- const center=`<div class="m-center" style="--seat:${COLORS[centerSeat]}" data-center-seat="${centerSeat}"><div class="m-dice" role="img" aria-label="${g.dice.length?`주사위 ${g.dice.join(', ')}`:'주사위 대기'}">${(g.world.players[g.turn].lostThisTurn?[0]:[0,1]).map(i=>`<span class="m-die">${dieMarkup(g.dice[i]??0)}</span>`).join('')}</div><p class="m-center-hint">${target?`${target.seat+1}P · ${BOARD[target.tile].name} 도착${animating||g.phase==="dice"?" 예정":""}`:`${g.round}/${MAX_ROUNDS}라운드`}</p><span class="m-move-progress" aria-live="off">${animating&&moveProgress.total?`${moveProgress.done} / ${moveProgress.total}칸`:''}</span><div class="m-board-action-slot">${ownDiceControls()?`<section class="m-board-actions" aria-label="주사위 조작">${controls()}${couponControls()}<p class="m-error" role="status">${escape(error)}</p></section>`:""}</div></div>`;
+ const center=`<div class="m-center" style="--seat:${COLORS[centerSeat]}" data-center-seat="${centerSeat}"><div class="m-dice" role="img" aria-label="${g.dice.length?`주사위 ${g.dice.join(', ')}`:'주사위 대기'}">${(g.world.players[g.turn].lostThisTurn?[0]:[0,1]).map(i=>`<span class="m-die">${dieMarkup(g.dice[i]??0)}</span>`).join('')}${g.dice[2]!==undefined?`<span class="m-extra-label">＋</span><span class="m-die m-extra-die" aria-label="추가 주사위 ${g.dice[2]}">${dieMarkup(g.dice[2])}</span>`:""}</div><p class="m-center-hint">${target?`${target.seat+1}P · ${BOARD[target.tile].name} 도착${animating||g.phase==="dice"?" 예정":""}`:`${g.round}/${MAX_ROUNDS}라운드`}</p><span class="m-move-progress" aria-live="off">${animating&&moveProgress.total?`${moveProgress.done} / ${moveProgress.total}칸`:''}</span><div class="m-board-action-slot">${ownDiceControls()?`<section class="m-board-actions" aria-label="주사위 조작">${controls()}${couponControls()}<p class="m-error" role="status">${escape(error)}</p></section>`:""}</div></div>`;
  const boardGame={...g,abilities:{...g.abilities,marks:[...g.abilities.marks.filter(m=>!hiddenMarks.has(markKey(m))),...consumedMarks]},properties:g.properties.map((p,i)=>displayedProperties.get(i)??p),world:heldWall===undefined?g.world:{...g.world,walls:[...g.world.walls,heldWall]}};
  return renderBoardB(boardGame,{seat:v.seat,selected,positions:displayedPositions,target,birds:boardBirds,stealth:g.players.map((p,i)=>g.phase!=="finished"&&!v.aborted&&!p.bankrupt&&immune(g,i)),center,salePick:saleTiles(),eventTilePick:directPickKind()==="tile"?eventOwnedTiles(g):[],boundaryPick:directPickKind()==="boundary"?BOARD.filter(t=>!g.world.walls.includes(t.index)).map(t=>t.index):[],portalPick:g.phase==="portal"&&editable(),linePick:directPickKind()==="line"});
 }
