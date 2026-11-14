@@ -197,7 +197,7 @@ export function strategicBotAction(g:Game,fallback:Action):Action {
   if(roll.comparison)return {action:'dice_choose',useNew:score(roll.comparison)>score(roll.result!)};
   const current=score(roll.result!),choices=availableDice(g);let best:Action={action:'dice_confirm'},value=current;
   for(const ability of choices.rerolls){
-   if(ability==='suspicious_dice'){for(const die of [0,1]as const){const pairs=diceCandidates(roll,{index:die===0?1:0,value:roll.result![die===0?1:0]});const next=pairs.reduce((n,p)=>n+score(p),0)/Math.max(1,pairs.length);if(next>value+3){value=next;best={action:'dice_reroll',ability,die};}}}
+   if(ability==='suspicious_dice'){const next=[1,2,3].reduce((n,bonus)=>n+score([roll.result![0]+bonus,roll.result![1]]),0)/3;if(next>value+2){value=next;best={action:'dice_reroll',ability};}}
    else{const next=expected(roll,capabilities(g).doubleLover,p=>ability==='black_dice'?Math.max(current,score(p)):score(p));if(next>value+2){value=next;best={action:'dice_reroll',ability};}}
   }
   return best;

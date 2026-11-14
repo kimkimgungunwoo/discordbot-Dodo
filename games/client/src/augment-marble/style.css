@@ -1841,3 +1841,45 @@ body:has(.m-shell),body:has(.m-setup){background:#f3f1e7;color:#171714}
 @keyframes m-toxic-skull{0%{opacity:0;translate:0 15px}30%,80%{opacity:1;translate:0 0}100%{opacity:0;translate:0 -8px}}
 @keyframes m-sleep-sway{from{transform:rotate(-12deg)}to{transform:rotate(12deg)}}
 @media(prefers-reduced-motion:reduce){.m-status-impact *{animation:none!important}.m-trap-spark{display:none}}
+
+.m-money-receipt{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));width:min(330px,calc(100vw - 28px));z-index:116;background:#fffef8;color:#22231d;border:2px solid #25251f;box-shadow:4px 4px 0 #25251f33;padding:11px 12px;animation:m-receipt-enter .18s ease-out both}
+.m-money-receipt>header{display:flex;align-items:center;justify-content:space-between;padding-bottom:7px;border-bottom:1px solid #dcdccf;font-size:13px}
+.m-money-receipt>header button{border:0;background:transparent;color:#68685e;padding:0;width:24px;height:24px;min-height:0;font:22px/1 sans-serif;box-shadow:none;cursor:pointer}
+.m-money-receipt>header button:focus-visible{outline:2px solid #5034ae;outline-offset:2px}
+.m-money-receipt-list{max-height:min(220px,35dvh);overflow-y:auto;overscroll-behavior:contain}
+.m-money-receipt-row{padding:10px 0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;border-bottom:1px solid #ecece2}
+.m-money-receipt-row:last-child{border-bottom:0}
+.m-money-route{display:grid;grid-template-columns:minmax(0,1fr) 14px minmax(0,1fr);align-items:center;gap:4px;min-width:0}
+.m-money-party{display:flex;align-items:center;gap:4px;min-width:0;font-size:11px;font-weight:700}
+.m-money-party b{flex:0 0 auto;padding:3px 4px;color:#fff;font-size:10px;line-height:1.1;border-radius:2px;text-shadow:0 1px 1px #0006}
+.m-money-party>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m-money-route-arrow{text-align:center;font-weight:900;color:#77776a}
+.m-money-receipt-amount{white-space:nowrap;font-size:14px;font-weight:900;font-variant-numeric:tabular-nums}
+.m-money-receipt>small{display:block;margin-top:7px;color:#737368;font-size:10px}
+@keyframes m-receipt-enter{from{opacity:0;translate:0 7px}to{opacity:1;translate:0 0}}
+@media(max-width:600px){.m-money-receipt{right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));width:min(320px,calc(100vw - 20px));padding:9px 10px}.m-money-receipt-list{max-height:160px}}
+@media(prefers-reduced-motion:reduce){.m-money-receipt{animation:none}}
+
+.m-money-stack{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));width:min(300px,calc(100vw - 28px));display:flex;flex-direction:column;gap:6px;z-index:116;pointer-events:none}
+.m-money-stack>.m-money-receipt{position:relative;inset:auto;width:100%;margin:0;padding:10px 12px;border:1px solid #c4c8b9;border-radius:6px;box-shadow:0 4px 12px #25251f22;animation:m-money-toast 1.25s ease both}
+@keyframes m-money-toast{0%{opacity:0;transform:translateX(20px)}15%,80%{opacity:1;transform:none}100%{opacity:0;transform:translateY(5px)}}
+@media(max-width:600px){.m-money-stack{right:10px;bottom:10px}}
+@media(prefers-reduced-motion:reduce){.m-money-stack>.m-money-receipt{animation:none}}
+
+/* Stable board controls keep transaction choices out of the player list. */
+.m-board-action-slot{height:230px;min-height:230px;flex-basis:230px}
+.m-board .m-board-actions{height:230px;min-height:230px;max-height:230px;overflow:hidden;background:#fffef7;border:2px solid #292d27;border-radius:5px;box-shadow:4px 4px 0 #29332226;padding:12px;color:#242820;pointer-events:auto}
+.m-board-actions h2{font-size:17px;margin:3px 0 6px}.m-board-actions p{font-size:11px;line-height:1.4;margin:5px 0;color:#596151}
+.m-board-actions>button{padding:7px 9px;min-height:30px;margin-top:5px;font-size:12px}
+.m-board-actions .m-build-options{display:flex;gap:5px;margin:6px 0}.m-board-actions .m-build-options>*{flex:1;min-width:0;padding:6px;font-size:11px}
+.m-board-actions .m-eyebrow{font-size:10px}.m-board-actions .m-coupon-controls{margin-top:4px}
+@media(max-width:760px){.m-board-action-slot{height:230px;min-height:230px;flex-basis:230px}.m-board .m-board-actions{padding:9px}}
+
+/* Reserve layout space outside the visible card; never stretch a one-button card. */
+.m-board .m-board-actions{height:auto;min-height:0;max-height:none;overflow:visible;align-self:start}
+.m-board-action-slot{display:flex;align-items:flex-start;justify-content:center}
+.m-board .m-board-actions{width:100%}
+
+.m-board .m-board-actions .m-quote{padding:5px 8px;margin:6px 0;border-left-width:3px;min-height:0;gap:3px}.m-board .m-board-actions .m-quote strong{font-size:20px;line-height:1.2}.m-board .m-board-actions .m-quote span,.m-board .m-board-actions .m-quote small{font-size:10px}.m-board .m-board-actions .m-build-choice small{font-size:9px;line-height:1.25}.m-board .m-board-actions .m-build-choice{padding:5px}.m-board .m-board-actions .m-eyebrow{display:none}.m-board .m-center{justify-content:flex-start;inset:24% auto 16%;}.m-board .m-board-actions>p{font-size:10px;line-height:1.3;margin:4px 0}.m-board .m-board-actions>button{padding:6px 8px;min-height:28px;font-size:11px}
+.m-tile-residue .puff{transform-box:fill-box;transform-origin:center;animation:m-residue-gas 2.6s ease-in-out infinite}.m-tile-residue .puff:nth-child(2){animation-delay:-.9s}.m-tile-residue .bubble{animation:m-residue-bubble 2.2s ease-in-out infinite}.m-tile-residue .bubble:nth-child(2n){animation-delay:-1s}.m-tile-residue .poison{transform-box:fill-box;transform-origin:center;animation:m-residue-pool 3s ease-in-out infinite}.m-tile-residue .jaw{transform-origin:90px 98px;animation:m-residue-jaw 3s ease-in-out infinite}
+@keyframes m-residue-gas{0%,100%{opacity:.4;transform:translateY(3px) scale(.94)}50%{opacity:.8;transform:translateY(-3px) scale(1.04)}}@keyframes m-residue-bubble{0%{opacity:0;transform:translateY(6px)}30%,65%{opacity:.9}100%{opacity:0;transform:translateY(-14px)}}@keyframes m-residue-pool{50%{transform:scale(1.04);opacity:.75}}@keyframes m-residue-jaw{0%,75%,100%{transform:scaleY(1)}85%{transform:scaleY(.8)}}@media(prefers-reduced-motion:reduce){.m-tile-residue *{animation:none!important}}

@@ -7,12 +7,12 @@ const timing: Partial<Record<EffectKind, string>> = {
   builder:"건설 시", realtor:"매입 시", negotiator:"인수 시", salary:"월급 수령 시", tax:"세금 정산 시", investor:"수입 발생 시", glass_cannon:"수입·지출 발생 시",
   steal:"첫 차례 이후 · 같은 칸", vladimir:"차례 시작 · 대상 선택", exploit:"차례 시작 · 같은 라인 · 15% ÷ 상대 수", jujitsu:"차례 시작 · 같은 칸",
   low_kick:"상대가 나를 통과할 때", calf_kick:"상대가 나를 통과할 때", drop_kick:"상대가 나를 통과할 때", trip:"상대가 나를 통과할 때", vendor:"상대가 나를 통과할 때", pickpocket:"상대를 통과할 때", robber:"상대를 통과할 때", singed:"이동 중 상대 통과 · 도착 시 독 설치",
-  gas:"도착 시 설치 · 2라운드", trap:"이동 경로 설치 · 2라운드", revival:"파산 위기 · 1회", gambler:"지역별 통행료 추첨", conversion:"획득 즉시 · 카드 소비", grant:"획득 즉시", luck:"이벤트 도착 시", no_island:"3연속 더블 시", stealth:"자기 차례 대기 중", island_owner:"무인도 매수 · 갇힌 상대의 휴식 시", landmark:"건물 3개 완공 후 재방문",
+  gas:"도착 시 설치 · 2라운드", trap:"도착 시 설치 · 2라운드", revival:"파산 위기 · 1회", gambler:"지역별 통행료 추첨", conversion:"획득 즉시 · 카드 소비", grant:"획득 즉시", luck:"이벤트 도착 시", no_island:"3연속 더블 시", stealth:"자기 차례 대기 중", island_owner:"무인도 매수 · 갇힌 상대의 휴식 시", landmark:"건물 3개 완공 후 재방문",
 };
 export function abilityTiming(a: AugmentDefinition) { return a.effect ? timing[a.effect] ?? "보유 중 적용" : "보유 중 적용"; }
 export function abilityNotes(a: AugmentDefinition): string[] {
   const e=a.effect;
-  if(e==="reroll") return ["수상한주사위·레드다이스·블랙다이스는 서로 다른 능력입니다. 보유한 능력은 투척마다 각각 한 번 사용할 수 있습니다.","합계 제한 상태에서는 주사위 능력을 사용할 수 없습니다. 다시 굴리거나 비교해도 제한 시간은 늘어나지 않습니다."];
+  if(e==="reroll") return ["에디셔널 다이스·레드다이스·블랙다이스는 서로 다른 능력입니다. 보유한 능력은 투척마다 각각 한 번 사용할 수 있습니다.","합계 제한 상태에서는 주사위 능력을 사용할 수 없습니다. 다시 굴리거나 비교해도 제한 시간은 늘어나지 않습니다."];
   if(e==="selective_double") return ["매 차례 첫 투척에서만 선택할 수 있습니다. 더블 추가 투척에는 선택할 수 없습니다.","더블 확정에 따른 현금 보상은 없습니다."];
   if(e==="mimic") return ["자신의 직전 차례가 끝난 뒤 다른 플레이어가 확정한 투척만 복사합니다.","복사 이동은 더블 추가 투척이나 현금 보상을 주지 않습니다."];
   if(e==="gas" || e==="trap" || e==="singed") return ["지나가는 것만으로 설치물이 발동하지 않습니다. 최종 도착 시 적용됩니다.","지속 시간은 전체 라운드 기준이며, 설치자의 다음 차례에 일괄 삭제되지 않습니다."];

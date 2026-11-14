@@ -9,9 +9,9 @@ import { AUGMENT_CATALOG, createAugmentState, openRoundPrismOffer, openAugmentOf
 // Money is expressed in 만원. Shared by the authoritative server and practice mode.
 export const COLORS = ["#547f9b", "#ba705e", "#6f8b63", "#b48a48"];
 export const GROUP_COLORS = ["#b73730", "#956000", "#24733e", "#007688", "#6940a6", "#ac2e69", "#315ab7"];
-export const MAX_ROUNDS = 60;
+export const MAX_ROUNDS = 40;
 export const REVISIT_BONUS_PERCENT = 40;
-export const COLOR_GROUPS_TO_WIN = 2;
+export const COLOR_GROUPS_TO_WIN = 1;
 export const TURN_MS = 45_000;
 export type Tile = { index: number; name: string; kind: "city" | "start" | "rest" | "event" | "bonus" | "portal"; group: number; line: number; price: number };
 const labels = ["출발", "A1", "A2", "A3", "A4", "이벤트", "B1", "B2", "B3", "무인도", "B4", "C1", "C2", "C3", "이벤트", "C4", "D1", "D2", "이벤트", "D3", "D4", "E1", "E2", "보너스", "E3", "E4", "F1", "포탈", "F2", "F3", "F4", "G1", "이벤트", "G2", "G3", "G4"];
@@ -25,7 +25,7 @@ export type Phase = "portal" | "event" | "rent" | "augment" | "roll" | "dice" | 
 export type WinReason = "bankruptcy" | "triple" | "line" | "assets";
 export interface Game { roundPrism?:{given:boolean;pending:number[]}; locustBatch?:{id:number;path:number[]}; landmarkVisit?:{seat:number;tile:number;turnId:number}; teleport?:{id:number;seat:number;from:number;to:number}; destructionBatch?:{id:number;revision:number;kind:"quake"|"missile";items:{tile:number;before:Property}[]}; flightBatch?:{id:number;items:{seat:number;from:number;to:number}[]}; turnOrder?:number[];orderDrawUntil?:number; moneyTransfers?:MoneyTransfer[]; world: EventState; abilities: AbilityRuntime; players: Player[]; properties: Property[]; turn: number; turnId: number; round: number; roundPending: number[]; revision: number; phase: Phase; dice: number[]; doubles: number; extraTurn: boolean; winner: number | null; reason: WinReason | null; debt: { amount: number; creditor: number | null; reason: "rent" | "land_tax"; principal?:number;receipt?:number; resume: "takeover" | "arrival" | "event" } | null; log: string[]; augments: AugmentState | null; augmentSeat: number | null; augmentResume: "start" | "arrive" | "round30" | null }
 export interface Seat { userId: string | null; name: string; bot?: string }
-export interface View { type: "MARBLE_STATE"; matchId: string; game: Game; seats: (Seat & { connected: boolean; ready?: boolean })[]; seat: number; started: boolean; deadline: number; serverNow: number; aborted?: string; rematch?: { matchId: string; votes: string[]; required: number; delivered: boolean } }
+export interface View { presentationAt?:number; type: "MARBLE_STATE"; matchId: string; game: Game; seats: (Seat & { connected: boolean; ready?: boolean })[]; seat: number; started: boolean; deadline: number; serverNow: number; aborted?: string; rematch?: { matchId: string; votes: string[]; required: number; delivered: boolean } }
 export interface Action { action: "portal_move" | "roll" | "buy" | "build" | "takeover" | "skip" | "end" | "sell" | "bankrupt" | "augment_select" | "augment_reroll" | "dice_force" | "dice_double" | "dice_copy" | "dice_reroll" | "dice_choose" | "dice_confirm" | "subsidy" | "escape" | "landmark" | "ability_target" | "island_buy" | "event_resolve" | "rent_pay" | "coupon_pass" | "home_stone" | "extra_coupon"; eventSerial?: number; amount?: number; decline?: boolean; augmentId?: string; line?: number; steps?: number; target?: number; ability?: ForceAbility | RerollAbility; option?: number; die?: 0 | 1; useNew?: boolean; offerId?: string; slot?: number; buildings?:number[]; building?: number; tile?: number }
 export interface AugmentOptions { catalog?: readonly AugmentDefinition[]; tierSequence?: readonly AugmentTier[]; random?: () => number }
 export function canAct(g:Game,seat:number){return g.phase==="augment"&&g.augmentResume==="round30"?!!g.roundPrism?.pending.includes(seat):seat===actingSeat(g);}
@@ -60,8 +60,8 @@ export function rent(g: Game, index: number, modifiers = true) {
   const monopoly = BOARD.filter(x => x.group === t.group).every(x => g.properties[x.index].owner === p.owner);
   return Math.max(0, Math.ceil((baseRent(index) + BUILDINGS.reduce((sum, _, i) => sum + (p.buildings & (1 << i) ? construction(index, i).rent : 0), 0)) * (1+Math.max(0,p.revisitBoost??0)*REVISIT_BONUS_PERCENT/100) * (monopoly ? 2 : 1) * (p.landmark ? 2 : 1) * (g.abilities.gambles[p.owner]?.[index] !== undefined && modifiers && definitionsActive(g,p.owner) ? g.abilities.gambles[p.owner][index] : 1) * Math.pow(2,p.festival ?? 0) * Math.pow(.7,p.locust ?? 0) * (g.world?.famineUntil > g.round ? .5 : 1) - 1e-9));
 }
-export function value(g: Game, index: number) { return (g.properties[index].landmark ? BOARD[index].price : 0) + BOARD[index].price + BUILDINGS.reduce((sum, _, i) => sum + (g.properties[index].buildings & (1 << i) ? construction(index, i).cost : 0), 0); }
-export function assets(g: Game, owner: number) { return g.players[owner].cash + BOARD.reduce((sum, t) => sum + (g.properties[t.index].owner === owner && !g.properties[t.index].landmark ? incomeAmount(g, owner, Math.floor(value(g, t.index) / 2)) : 0), 0); }
+export function value(g: Game, index: number) { return (g.properties[index].landmark ? landmarkBase(index) : 0) + BOARD[index].price + BUILDINGS.reduce((sum, _, i) => sum + (g.properties[index].buildings & (1 << i) ? construction(index, i).cost : 0), 0); }
+export function assets(g: Game, owner: number) { return g.players[owner].cash + BOARD.reduce((sum, t) => sum + (g.properties[t.index].owner === owner ? incomeAmount(g, owner, Math.floor(value(g, t.index) / 2)) : 0), 0); }
 function win(g: Game, winner: number, reason: WinReason) { g.winner = winner; g.reason = reason; g.phase = "finished"; note(g, `${winner + 1}P ${reason === "triple" ? "컬러독점" : reason === "line" ? "라인 독점" : reason === "assets" ? "라운드 제한 · 자산승리" : "파산승리"}!`); }
 function checkWin(g: Game) {
   const alive = g.players.map((p, i) => p.bankrupt ? -1 : i).filter(i => i >= 0);
@@ -155,10 +155,10 @@ function end(g: Game,random:()=>number=Math.random,catalog:readonly AugmentDefin
   const order=g.turnOrder??g.players.map((_,i)=>i);
   do { g.turn = order[(order.indexOf(g.turn)+(g.world?.direction??1)+order.length)%order.length]; } while (g.players[g.turn].bankrupt);
   g.doubles = 0; g.turnId++; g.abilities.ordinal = 0; g.abilities.roll = null; g.phase = "roll";
-  if(g.round===30&&!g.roundPrism?.given&&g.augments){
+  if(g.round===20&&!g.roundPrism?.given&&g.augments){
    const pending=g.players.flatMap((p,i)=>!p.bankrupt&&openRoundPrismOffer(g.augments!,i,random,catalog)?[i]:[]);
    g.roundPrism={given:true,pending};
-   if(pending.length){g.phase="augment";g.augmentResume="round30";g.augmentSeat=pending[0];note(g,"30라운드 · 생존자 모두 프리즘 증강 선택");return;}
+   if(pending.length){g.phase="augment";g.augmentResume="round30";g.augmentSeat=pending[0];note(g,"20라운드 · 생존자 모두 프리즘 증강 선택");return;}
   }
   startTurn(g);
 }
@@ -288,7 +288,7 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
     consumeLoss(g,g.turn,cost);transferMoney(g,g.turn,property.owner,cost,principal,receipt); property.owner = g.turn;property.purchasedTurn=g.turnId;delete g.landmarkVisit;for(const gambles of g.abilities.gambles)delete gambles[index];refreshGamble(g,g.turn,index,random); cashback(g, g.turn, cost); g.phase = player.laps>=2?"build":"end"; note(g, `${g.turn + 1}P ${BOARD[index].name} 인수 · ${cost}만원`); checkWin(g);
   } else if (input.action === "sell") {
     requirePhase("debt"); const tile = input.tile;
-    if (!Number.isInteger(tile) || tile! < 0 || tile! >= BOARD.length || g.properties[tile!].owner !== g.turn || g.properties[tile!].landmark) throw new Error("내 지역만 매각할 수 있습니다.");
+    if (!Number.isInteger(tile) || tile! < 0 || tile! >= BOARD.length || g.properties[tile!].owner !== g.turn) throw new Error("내 지역만 매각할 수 있습니다.");
     const proceeds = Math.floor(value(g, tile!) / 2); g.properties[tile!] = { owner: null, buildings: 0,locust:g.properties[tile!].locust }; const paid = receiveIncome(g, g.turn, proceeds);
     note(g, `${BOARD[tile!].name} 매각 · ${paid}만원`);
     const debt = g.debt!; if (pay(g, debt.amount, debt.creditor, debt.resume, debt.reason,debt)) afterPayment(g, random, catalog);
@@ -360,7 +360,7 @@ function chooseAutoAction(g: Game, bot = false): Action {
   }
   if (g.phase === "debt") {
     if (assets(g, g.turn) < g.debt!.amount) return { action: "bankrupt" };
-    const owned = BOARD.filter(t => g.properties[t.index].owner === g.turn && !g.properties[t.index].landmark).sort((a, b) => salePriority(g, a.index) - salePriority(g, b.index));
+    const owned = BOARD.filter(t => g.properties[t.index].owner === g.turn).sort((a, b) => salePriority(g, a.index) - salePriority(g, b.index));
     return { action: "sell", tile: owned[0].index };
   }
   if (bot && g.phase === "end" && index===9 && power(g,g.turn,"island_owner") && g.abilities.islandOwner===null && cash>=lossAmount(g,g.turn,ISLAND_COST)) return {action:"island_buy"};
@@ -374,7 +374,7 @@ function chooseAutoAction(g: Game, bot = false): Action {
 export function purchaseCost(g: Game, index: number, seat = g.turn) { return spendCost(g, seat, BOARD[index].price, "realtor"); }
 export function buildCost(g: Game, index: number, building: number, seat = g.turn) { return spendCost(g, seat, construction(index, building).cost, "builder"); }
 export function landmarkBase(index:number){return 2*(BOARD[index].price+BUILDINGS.reduce((sum,_,i)=>sum+construction(index,i).cost,0));}
-export function landmarkAvailable(g:Game,index=g.players[g.turn].position){const p=g.properties[index],visit=g.landmarkVisit;return g.phase==="build"&&g.players[g.turn].position===index&&!!power(g,g.turn,"landmark")&&p.owner===g.turn&&p.buildings===7&&!p.landmark&&visit?.seat===g.turn&&visit.tile===index&&visit.turnId===g.turnId;}
+export function landmarkAvailable(g:Game,index=g.players[g.turn].position){const p=g.properties[index],visit=g.landmarkVisit;return g.phase==="build"&&g.players[g.turn].position===index&&p.owner===g.turn&&p.buildings===7&&!p.landmark&&visit?.seat===g.turn&&visit.tile===index&&visit.turnId===g.turnId;}
 export function landmarkCost(g: Game, index: number) { return spendCost(g, g.turn, landmarkBase(index), "builder"); }
 export function takeoverBase(g:Game,index:number){return Math.ceil(value(g,index)*1.5);}
 export function playerDisplayOrder(g:Game){const order=[...(g.turnOrder??g.players.map((_,i)=>i))];return g.world.direction===-1?order.reverse():order;}
@@ -447,12 +447,12 @@ function diceAction(g: Game, input: Action, random: () => number, catalog: reado
     emitAbility(g.abilities, { actor: g.turn, tile: g.players[g.turn].position, ability: "subsidy", caption: `근로장려금 ${paid}만원`, visual: "income" });
     g.extraTurn = false; end(g,random,catalog);
   } else if (input.action === "dice_reroll") {
-    rerollDice(roll, c, input.ability as RerollAbility, random, input.die); g.dice = [...roll.result!];
-    emitAbility(g.abilities,{actor:g.turn,tile:g.players[g.turn].position,ability:input.ability!,stage:"before_move",caption:`${AUGMENT_CATALOG.find(a=>a.id===input.ability)?.name??"주사위 능력"} · 다시 던지기`,visual:"dice"});
-    g.abilities.lastThrow = { id: (g.abilities.lastThrow?.id ?? 0) + 1, seat: g.turn, kind: "reroll", dice: [...(roll.comparison ?? roll.result!)], ...(input.ability === "suspicious_dice" ? { die: input.die } : {}) };
+    rerollDice(roll, c, input.ability as RerollAbility, random, input.die); g.dice = [...roll.result!,...(roll.bonus?[roll.bonus]:[])];
+    emitAbility(g.abilities,{actor:g.turn,tile:g.players[g.turn].position,ability:input.ability!,stage:"before_move",caption:input.ability === "suspicious_dice" ? `에디셔널 다이스 · +${roll.bonus}칸` : `${AUGMENT_CATALOG.find(a=>a.id===input.ability)?.name??"주사위 능력"} · 다시 던지기`,visual:"dice"});
+    g.abilities.lastThrow = { id: (g.abilities.lastThrow?.id ?? 0) + 1, seat: g.turn, kind: "reroll", dice: input.ability === "suspicious_dice" ? [roll.bonus!] : [...(roll.comparison ?? roll.result!)], ...(input.ability === "suspicious_dice" ? { die: input.die } : {}) };
   } else if (input.action === "dice_choose") {
     if (typeof input.useNew !== "boolean") throw new Error("주사위 결과를 선택해주세요.");
-    chooseBlackDice(roll, input.useNew); g.dice = [...roll.result!];
+    chooseBlackDice(roll, input.useNew); g.dice = [...roll.result!,...(roll.bonus?[roll.bonus]:[])];
   } else {
     if (!roll.result || roll.comparison) throw new Error("비교 결과를 먼저 선택해주세요.");
     finishDice(g, random, catalog);
@@ -463,9 +463,9 @@ function finishDice(g: Game, random: () => number, catalog: readonly AugmentDefi
   const roll = g.abilities.roll!, player = g.players[g.turn], copied = g.abilities.copied;
   const double = !g.world.players[g.turn].lostThisTurn && !copied && g.dice[0] === g.dice[1];
   g.doubles = double ? g.doubles + 1 : 0; g.extraTurn = double;
-  g.abilities.history.push(g.dice[0] + g.dice[1]); if (g.abilities.history.length > 12) g.abilities.history.shift();
+  g.abilities.history.push(g.dice.reduce((sum,n)=>sum+n,0)); if (g.abilities.history.length > 12) g.abilities.history.shift();
   if (roll.restricted && g.abilities.statuses[g.turn].restrictedRolls > 0) g.abilities.statuses[g.turn].restrictedRolls--;
-  g.abilities.throws.push({seat:g.turn, sum:g.dice[0]+g.dice[1], turnId:g.turnId});
+  g.abilities.throws.push({seat:g.turn, sum:g.dice.reduce((sum,n)=>sum+n,0), turnId:g.turnId});
   g.abilities.throws = g.abilities.throws.filter(t => t.turnId >= Math.min(...g.abilities.lastOwnTurn));
   note(g, `${g.turn + 1}P 주사위 ${g.dice.join(" + ")}${double ? " · 더블" : copied ? " · 복사" : ""}`);
   for (const event of g.abilities.events) if (event.id >= firstEffect) event.stage = "before_move";
@@ -474,7 +474,7 @@ function finishDice(g: Game, random: () => number, catalog: readonly AugmentDefi
   if (g.doubles >= 3 && (power(g, g.turn, "no_island") || power(g, g.turn, "island_owner"))) g.extraTurn = false;
   if (g.doubles >= 3 && !power(g, g.turn, "no_island") && !power(g, g.turn, "island_owner")) { g.abilities.lastMove.path.push(9); player.position = 9; player.rest = 3; g.extraTurn = false; g.phase = "end"; note(g, "3연속 더블 · 무인도로 이동합니다."); return; }
   if(g.abilities.ordinal===0 && g.world.players[g.turn].reverseThisTurn && g.world.players[g.turn].reverseMoves>0)g.world.players[g.turn].reverseMoves--;
-  g.abilities.movement = { seat: g.turn, remaining: g.dice[0] + g.dice[1], visited: [], resume: "step" };
+  g.abilities.movement = { seat: g.turn, remaining: g.dice.reduce((sum,n)=>sum+n,0), visited: [], resume: "step" };
   advanceMovement(g, random, catalog);
 }
 function advanceMovement(g: Game, random: () => number, catalog: readonly AugmentDefinition[]) {
@@ -517,6 +517,7 @@ function applyMarks(g: Game, seat: number) {
   const tile = g.players[seat].position;
   const hit = g.abilities.marks.filter(m => m.tile === tile && m.owner !== seat && !g.players[m.owner].bankrupt && definitionsActive(g,m.owner) && !immune(g, seat) && (m.expiresRound ?? Infinity) > g.round);
   for (const mark of hit) {
+    g.abilities.marks = g.abilities.marks.filter(m => m !== mark);
     const status=g.abilities.statuses[seat];
     if (mark.kind === "trap") {status.skipTurns = Math.max(status.skipTurns, 1);status.skipBy="덫";cancelExtraTurn(g,seat);}
     else if(mark.kind === "poison"){status.nextTurnRestricted=true;}
@@ -527,10 +528,10 @@ function applyMarks(g: Game, seat: number) {
 function landEffects(g: Game) {
   const tile=g.players[g.turn].position;
   applyMarks(g,g.turn);
-  // Original traps/poison persist for the stated rounds, rather than being consumed on first arrival.
+  // Marks remain until expiry or the first eligible opponent triggers them.
   for (const [effect, kind, duration] of [["gas","gas",2],["trap","trap",2],["singed","poison",3]] as const) {
     if (!power(g, g.turn, effect)) continue;
-    const tiles = kind === "trap" ? (g.abilities.lastMove?.path.slice(1) ?? [tile]) : [tile];
+    const tiles = [tile];
     for (const at of new Set(tiles)) {
       g.abilities.marks = g.abilities.marks.filter(m => !(m.tile === at && m.kind === kind && m.owner === g.turn));
       g.abilities.marks.push({tile:at,owner:g.turn,kind,power:1,expiresAtOwnerTurn:0,expiresRound:g.round+duration});
@@ -575,7 +576,7 @@ function forcedArrival(g: Game, seat: number, random: () => number) {
 function settleForcedPayment(g: Game, seat: number, amount: number, creditor: number | null,split:PaymentSplit={}) {
   const p=g.players[seat];
   // Forced displacement has no purchase phase. Liquidate assets only as needed for compulsory payments.
-  for (const tile of BOARD.filter(t => g.properties[t.index].owner===seat && !g.properties[t.index].landmark).sort((a,b)=>salePriority(g,a.index)-salePriority(g,b.index))) {
+  for (const tile of BOARD.filter(t => g.properties[t.index].owner===seat).sort((a,b)=>salePriority(g,a.index)-salePriority(g,b.index))) {
     if(p.cash>=amount) break;
     const proceeds=saleProceeds(g,tile.index,seat);g.properties[tile.index]={owner:null,buildings:0,locust:g.properties[tile.index].locust};bankCashChange(g,seat,proceeds);
   }
