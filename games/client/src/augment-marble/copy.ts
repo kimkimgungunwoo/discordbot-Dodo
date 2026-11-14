@@ -12,7 +12,7 @@ const timing: Partial<Record<EffectKind, string>> = {
 export function abilityTiming(a: AugmentDefinition) { return a.effect ? timing[a.effect] ?? "보유 중 적용" : "보유 중 적용"; }
 export function abilityNotes(a: AugmentDefinition): string[] {
   const e=a.effect;
-  if(e==="reroll") return ["에디셔널 다이스·레드다이스·블랙다이스는 서로 다른 능력입니다. 보유한 능력은 투척마다 각각 한 번 사용할 수 있습니다.","합계 제한 상태에서는 주사위 능력을 사용할 수 없습니다. 다시 굴리거나 비교해도 제한 시간은 늘어나지 않습니다."];
+  if(e==="reroll") return [a.id==="suspicious_dice"?"도착 예정지를 확인한 뒤 사용 여부를 선택합니다. 추가 주사위는 1~3이며, 원래 두 주사위의 더블 판정은 유지됩니다.":"투척마다 한 번 사용할 수 있습니다.","합계 제한 상태에서는 주사위 능력을 사용할 수 없습니다. 다시 굴리거나 비교해도 제한 시간은 늘어나지 않습니다."];
   if(e==="selective_double") return ["매 차례 첫 투척에서만 선택할 수 있습니다. 더블 추가 투척에는 선택할 수 없습니다.","더블 확정에 따른 현금 보상은 없습니다."];
   if(e==="mimic") return ["자신의 직전 차례가 끝난 뒤 다른 플레이어가 확정한 투척만 복사합니다.","복사 이동은 더블 추가 투척이나 현금 보상을 주지 않습니다."];
   if(e==="gas" || e==="trap" || e==="singed") return ["지나가는 것만으로 설치물이 발동하지 않습니다. 최종 도착 시 적용됩니다.","지속 시간은 전체 라운드 기준이며, 설치자의 다음 차례에 일괄 삭제되지 않습니다."];

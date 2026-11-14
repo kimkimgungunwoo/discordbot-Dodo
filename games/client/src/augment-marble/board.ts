@@ -54,6 +54,12 @@ function landmarkModel(x:number,y:number,w:number,d:number,color:string,tile:num
  const [cx,cy]=project(x+w/2,y+d/2),scale=version===0?.57:.77;
  const region=BOARD.filter(t=>t.kind==='city'&&t.group===BOARD[tile].group).findIndex(t=>t.index===tile);
  const index=BOARD[tile].group*4+region;
+ if(version===1){
+  const c=cell(tile),[bx,by,bw,bh]=labelBand(c),horizontal=bw>=c.w*.9;
+  const fx=horizontal?c.x:bx<=c.x?bx+bw:c.x,fy=horizontal?(by<=c.y?by+bh:c.y):c.y;
+  const fw=horizontal?c.w:c.w-bw,fh=horizontal?c.h-bh:c.h;
+  return `<svg class="landmark-model" data-landmark-region="${index}" x="${fx+3}" y="${fy+3}" width="${fw-6}" height="${fh-6}" viewBox="18 10 124 138" preserveAspectRatio="xMidYMid meet" overflow="hidden">${regionLandmark(index,color,colors.indexOf(color))}</svg>`;
+ }
  return `<g class="landmark-model" data-landmark-region="${index}" transform="translate(${cx} ${cy}) scale(${scale})"><g transform="translate(-80 -125)">${regionLandmark(index,color,colors.indexOf(color))}</g></g>`;
 }
 

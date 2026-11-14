@@ -1,4 +1,5 @@
 import { applyAction, type Game } from "../../../shared/augment-marble";
+import { createRoll } from "../../../shared/augment-marble-runtime";
 import type { AbilityEvent } from "../../../shared/augment-marble-runtime";
 
 export interface PresentationStep { path: number[]; events: AbilityEvent[] }
@@ -31,9 +32,9 @@ export function planPresentation(previous: Game | undefined, next: Game, events:
 
 /** Preview a confirmed dice result without modifying state or exposing future augment offers. */
 export function projectedLanding(g:Game):{seat:number;tile:number}|null {
- if(g.phase!=="dice"||!g.abilities.roll?.result)return null;
+ if(g.phase!=="dice"||g.dice.length<2)return null;
  const copy=structuredClone(g);
  if(copy.augments)copy.augments.players.forEach((p,i)=>{p.acquired=4;p.offer=null;if(i!==g.turn)p.owned=p.owned.filter(a=>!["calf_kick","drop_kick","trip"].includes(a));});
- copy.abilities.roll!.comparison=null;copy.dice=[...copy.abilities.roll!.result!];
+ copy.abilities.roll ??= createRoll(g.turn,g.abilities.ordinal);copy.abilities.roll.result=[g.dice[0],g.dice[1]];copy.abilities.roll.bonus=g.dice[2];copy.abilities.roll.comparison=null;copy.dice=[...g.dice];
  try{applyAction(copy,{action:"dice_confirm"},()=>.6);return {seat:g.turn,tile:copy.players[g.turn].position};}catch{return null;}
 }

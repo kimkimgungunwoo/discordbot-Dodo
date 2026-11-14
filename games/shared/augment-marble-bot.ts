@@ -98,13 +98,13 @@ function propertyOpportunity(g:Game,seat:number,tile:number):number {
 }
 function movementEvaluator(g:Game){
  const seat=g.turn,cache=new Map<string,number>();
- return (pair:readonly number[],copied=false):number=>{
-  const key=pair.join(',')+':'+copied;if(cache.has(key))return cache.get(key)!;
+ return (pair:readonly number[],copied=false,bonus=g.abilities.roll?.bonus??0):number=>{
+  const key=pair.join(',')+':'+copied+':'+bonus;if(cache.has(key))return cache.get(key)!;
   const preview=structuredClone(g),cash=g.players[seat].cash,wealth=netWorth(g,seat);
   // Skip future augment offers; keep current public owned abilities intact.
   if(preview.augments)preview.augments.players.forEach(p=>{p.acquired=4;p.offer=null;});
-  preview.augmentSeat=null;preview.augmentResume=null;preview.phase='dice';preview.dice=[...pair];preview.abilities.copied=copied;
-  preview.abilities.roll=createRoll(seat,g.abilities.ordinal,!!g.abilities.roll?.restricted);preview.abilities.roll.result=pair as DicePair;
+  preview.augmentSeat=null;preview.augmentResume=null;preview.phase='dice';preview.dice=[...pair,...(bonus?[bonus]:[])];preview.abilities.copied=copied;
+  preview.abilities.roll=createRoll(seat,g.abilities.ordinal,!!g.abilities.roll?.restricted);preview.abilities.roll.result=pair as DicePair;preview.abilities.roll.bonus=bonus;
   try{
    applyAction(preview,{action:'dice_confirm'},()=>.6);
    const p=preview.players[seat],s=preview.abilities.statuses[seat];
@@ -197,7 +197,7 @@ export function strategicBotAction(g:Game,fallback:Action):Action {
   if(roll.comparison)return {action:'dice_choose',useNew:score(roll.comparison)>score(roll.result!)};
   const current=score(roll.result!),choices=availableDice(g);let best:Action={action:'dice_confirm'},value=current;
   for(const ability of choices.rerolls){
-   if(ability==='suspicious_dice'){const next=[1,2,3].reduce((n,bonus)=>n+score([roll.result![0]+bonus,roll.result![1]]),0)/3;if(next>value+2){value=next;best={action:'dice_reroll',ability};}}
+   if(ability==='suspicious_dice'){const next=[1,2,3].reduce((n,bonus)=>n+score(roll.result!,false,bonus),0)/3;if(next>value+2){value=next;best={action:'dice_reroll',ability};}}
    else{const next=expected(roll,capabilities(g).doubleLover,p=>ability==='black_dice'?Math.max(current,score(p)):score(p));if(next>value+2){value=next;best={action:'dice_reroll',ability};}}
   }
   return best;

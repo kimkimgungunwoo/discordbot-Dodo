@@ -19,7 +19,7 @@ export const BOARD: Tile[] = labels.map((name, index) => {
   const group = /^[A-G][1-4]$/.test(name) ? name.charCodeAt(0) - 65 : -1;
   return { index, name, kind: group >= 0 ? "city" : name === "출발" ? "start" : name === "무인도" ? "rest" : name === "보너스" ? "bonus" : name === "포탈" ? "portal" : "event", group, line: Math.floor(index / 9), price: group < 0 ? 0 : GROUP_ECONOMY[group].land[Number(name[1]) - 1] };
 });
-export interface Player { name: string; cash: number; position: number; bankrupt: boolean; rest: number; laps: number }
+export interface Player { liquidationRescueUsed?:boolean; name: string; cash: number; position: number; bankrupt: boolean; rest: number; laps: number }
 export interface Property { revisitBoost?:number; owner: number | null; buildings: number; landmark?: boolean; builtTurn?: number; purchasedTurn?:number; festival?: number; locust?: number }
 export type Phase = "portal" | "event" | "rent" | "augment" | "roll" | "dice" | "buy" | "build" | "takeover" | "debt" | "end" | "finished";
 export type WinReason = "bankruptcy" | "triple" | "line" | "assets";
@@ -81,10 +81,9 @@ function settlePayment(g:Game,payer:number,amount:number,creditor:number|null,sp
  if(receipt>principal)note(g,`${creditor+1}P 유리대포 · 추가 수입 ${receipt-principal}만원 은행 지급`);
 }
 function pay(g: Game, amount: number, creditor: number | null, resume: "takeover" | "arrival" | "event" = "takeover", reason: "rent" | "land_tax" = "rent",split:PaymentSplit={}) {
-  const revive = g.abilities.statuses[g.turn].revival;
-  if (g.players[g.turn].cash < amount && assets(g, g.turn) < amount && revive && !revive.consumed && definitionsActive(g,g.turn)) {
-    for (let tile = 0; tile < g.properties.length; tile++) if (g.properties[tile].owner === g.turn && !g.properties[tile].landmark) g.properties[tile] = { owner: null, buildings: 0,locust:g.properties[tile].locust };
-    revivePlayer(g,g.turn);
+  if(assets(g,g.turn)<amount){
+    const saved=resolveInsolvency(g,g.turn,creditor,split);
+    if(!saved){g.debt=null;g.abilities.movement=null;g.extraTurn=false;checkWin(g);if(g.winner===null)end(g);return false;}
     return true;
   }
   if (g.players[g.turn].cash < amount) { g.debt = { amount, creditor, resume, reason,...split }; g.phase = "debt"; note(g, `${g.turn + 1}P 지급할 ${amount}만원이 부족합니다. 자산을 매각해주세요.`); return false; }
@@ -438,8 +437,9 @@ function diceAction(g: Game, input: Action, random: () => number, catalog: reado
     if (!choices.copies.includes(input.option!)) throw new Error("복사할 수 없는 이동량입니다.");
     const sum = input.option!;
     emitAbility(g.abilities,{actor:g.turn,tile:g.players[g.turn].position,ability:"mimic",stage:"before_move",caption:`따라쟁이 · ${sum}칸 이동 복사`,visual:"dice"});
-    roll.result = [Math.max(1, sum - 6), Math.min(6, sum - 1)];
-    g.abilities.copied = true; g.dice = [...roll.result];
+    roll.result = [Math.min(6,Math.max(1,sum-1)), Math.min(6,Math.max(1,sum-6))];
+    roll.bonus = sum>12?sum-12:undefined;
+    g.abilities.copied = true; g.dice = [...roll.result,...(roll.bonus?[roll.bonus]:[])];
     g.abilities.lastThrow = { id: (g.abilities.lastThrow?.id ?? 0) + 1, seat: g.turn, kind: "copy", dice: [...g.dice] }; finishDice(g, random, catalog);
   } else if (input.action === "subsidy") {
     if (!choices.workSubsidy) throw new Error("근로장려금을 받을 수 없습니다.");
@@ -449,7 +449,7 @@ function diceAction(g: Game, input: Action, random: () => number, catalog: reado
   } else if (input.action === "dice_reroll") {
     rerollDice(roll, c, input.ability as RerollAbility, random, input.die); g.dice = [...roll.result!,...(roll.bonus?[roll.bonus]:[])];
     emitAbility(g.abilities,{actor:g.turn,tile:g.players[g.turn].position,ability:input.ability!,stage:"before_move",caption:input.ability === "suspicious_dice" ? `에디셔널 다이스 · +${roll.bonus}칸` : `${AUGMENT_CATALOG.find(a=>a.id===input.ability)?.name??"주사위 능력"} · 다시 던지기`,visual:"dice"});
-    g.abilities.lastThrow = { id: (g.abilities.lastThrow?.id ?? 0) + 1, seat: g.turn, kind: "reroll", dice: input.ability === "suspicious_dice" ? [roll.bonus!] : [...(roll.comparison ?? roll.result!)], ...(input.ability === "suspicious_dice" ? { die: input.die } : {}) };
+    g.abilities.lastThrow = { id: (g.abilities.lastThrow?.id ?? 0) + 1, seat: g.turn, kind: "reroll", additional: input.ability === "suspicious_dice", dice: input.ability === "suspicious_dice" ? [roll.bonus!] : [...(roll.comparison ?? roll.result!)], ...(input.ability === "suspicious_dice" ? { die: input.die } : {}) };
   } else if (input.action === "dice_choose") {
     if (typeof input.useNew !== "boolean") throw new Error("주사위 결과를 선택해주세요.");
     chooseBlackDice(roll, input.useNew); g.dice = [...roll.result!,...(roll.bonus?[roll.bonus]:[])];
@@ -580,14 +580,21 @@ function settleForcedPayment(g: Game, seat: number, amount: number, creditor: nu
     if(p.cash>=amount) break;
     const proceeds=saleProceeds(g,tile.index,seat);g.properties[tile.index]={owner:null,buildings:0,locust:g.properties[tile.index].locust};bankCashChange(g,seat,proceeds);
   }
-  if(p.cash<amount) {
-    const revival=g.abilities.statuses[seat].revival;
-    if(revival&&!revival.consumed && revivePlayer(g,seat)) return;
-    settlePayment(g,seat,p.cash,creditor,split);
-    p.cash=0;p.bankrupt=true;g.properties.forEach(prop=>{if(prop.owner===seat){prop.owner=null;prop.buildings=0;prop.landmark=false;}});checkWin(g);return;
-  }
+  if(p.cash<amount){resolveInsolvency(g,seat,creditor,split);checkWin(g);return;}
   settlePayment(g,seat,amount,creditor,split);
 
+}
+/** One liquidation rescue per player, independent of owned revival charges. */
+function resolveInsolvency(g:Game,seat:number,creditor:number|null,split:PaymentSplit={}){
+ const p=g.players[seat];
+ const clearAssets=()=>{g.properties.forEach((prop,i)=>{if(prop.owner===seat)g.properties[i]={owner:null,buildings:0,locust:prop.locust};});};
+ if(!p.liquidationRescueUsed){
+  const liquidation=assets(g,seat);bankCashChange(g,seat,liquidation-p.cash);settlePayment(g,seat,liquidation,creditor,split);clearAssets();p.cash=0;p.liquidationRescueUsed=true;
+  note(g,`${seat+1}P 매각 구제 · 1회 사용, 남은 채무 면제`);return true;
+ }
+ if(revivePlayer(g,seat)){clearAssets();return true;}
+ const liquidation=assets(g,seat);bankCashChange(g,seat,liquidation-p.cash);settlePayment(g,seat,liquidation,creditor,split);clearAssets();p.cash=0;p.bankrupt=true;
+ g.abilities.marks=g.abilities.marks.filter(m=>m.owner!==seat);note(g,`${seat+1}P 파산 · 남은 구제·부활 없음`);return false;
 }
 function criticalProperty(g: Game, index: number, seat: number) {
   const tile = BOARD[index];
