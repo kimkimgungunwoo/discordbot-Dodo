@@ -1,3 +1,4 @@
+import {hasBlack,blackTargets} from "./augment-marble-black.js";
 /** Public board + own choices only. No future tier schedule, hidden offers or live RNG access. */
 import { AUGMENT_CATALOG, type AugmentDefinition } from './augment-marble-augments.js';
 import { capabilities, incomeAmount, lossAmount, power, salaryAmount } from './augment-marble-effects.js';
@@ -80,7 +81,7 @@ function invest(g:Game):Action|null{
   }return best;
  }
  if(g.phase==='takeover'){
-  if(property.owner===null||property.owner===seat||property.landmark)return {action:'end'};
+  if(property.owner===null||property.owner===seat||property.landmark&&!hasBlack(g,seat,"landmark_takeover"))return {action:'end'};
   const cost=takeoverCost(g,tile),priority=territoryPriority(g,seat,tile);if(cost>p.cash)return {action:'end'};
   const worthwhile=priority.win||priority.block||priority.complete||priority.deny||priority.owned>0||rent(g,tile)*2+BOARD[tile].price*.5>=cost||plan.rich&&rent(g,tile)>0&&cost<=p.cash*.15;
   return {action:priority.win||priority.block||cost<=plan.spend&&worthwhile?'takeover':'end'};
@@ -98,15 +99,15 @@ function propertyOpportunity(g:Game,seat:number,tile:number):number {
 }
 function movementEvaluator(g:Game){
  const seat=g.turn,cache=new Map<string,number>();
- return (pair:readonly number[],copied=false,bonus=g.abilities.roll?.bonus??0):number=>{
-  const key=pair.join(',')+':'+copied+':'+bonus;if(cache.has(key))return cache.get(key)!;
+ return (pair:readonly number[],copied=false,bonus=g.abilities.roll?.bonus??0,direction?:number):number=>{
+  const key=pair.join(',')+':'+copied+':'+bonus+':'+direction;if(cache.has(key))return cache.get(key)!;
   const preview=structuredClone(g),cash=g.players[seat].cash,wealth=netWorth(g,seat);
   // Skip future augment offers; keep current public owned abilities intact.
   if(preview.augments)preview.augments.players.forEach(p=>{p.acquired=4;p.offer=null;});
   preview.augmentSeat=null;preview.augmentResume=null;preview.phase='dice';preview.dice=[...pair,...(bonus?[bonus]:[])];preview.abilities.copied=copied;
   preview.abilities.roll=createRoll(seat,g.abilities.ordinal,!!g.abilities.roll?.restricted);preview.abilities.roll.result=pair as DicePair;preview.abilities.roll.bonus=bonus;
   try{
-   applyAction(preview,{action:'dice_confirm'},()=>.6);
+   applyAction(preview,{action:'dice_confirm',option:direction},()=>.6);
    const p=preview.players[seat],s=preview.abilities.statuses[seat];
    let score=(p.cash-cash)+(netWorth(preview,seat)-wealth-(p.cash-cash))*.6;
    if(p.bankrupt)score-=2000;
@@ -193,6 +194,8 @@ export function strategicBotAction(g:Game,fallback:Action):Action {
   return best;
  }
  if(g.phase==='dice'){
+  if(hasBlack(g,g.turn,'unfair_trade')&&g.black?.tradeThrow!==`${g.turnId}:${g.abilities.ordinal}`){const wealth=(seat:number)=>BOARD.reduce((n,t)=>n+(g.properties[t.index].owner===seat?t.price+([0,1,2].filter(i=>g.properties[t.index].buildings&(1<<i)).length*30)+(g.properties[t.index].landmark?200:0):0),0);const own=wealth(g.turn),targets=blackTargets(g,g.turn).sort((a,b)=>wealth(b)-wealth(a));if(targets[0]!==undefined&&wealth(targets[0])>own+50)return{action:'black_trade',target:targets[0]};}
+
   const roll=g.abilities.roll!,score=movementEvaluator(g);
   if(roll.comparison)return {action:'dice_choose',useNew:score(roll.comparison)>score(roll.result!)};
   const current=score(roll.result!),choices=availableDice(g);let best:Action={action:'dice_confirm'},value=current;
@@ -200,6 +203,8 @@ export function strategicBotAction(g:Game,fallback:Action):Action {
    if(ability==='suspicious_dice'){const next=[1,2,3].reduce((n,bonus)=>n+score(roll.result!,false,bonus),0)/3;if(next>value+2){value=next;best={action:'dice_reroll',ability};}}
    else{const next=expected(roll,capabilities(g).doubleLover,p=>ability==='black_dice'?Math.max(current,score(p)):score(p));if(next>value+2){value=next;best={action:'dice_reroll',ability};}}
   }
+  if(best.action==='dice_confirm'&&power(g,g.turn,'direction')&&!roll.restricted){best.option=score(roll.result!,false,roll.bonus??0,-1)>score(roll.result!,false,roll.bonus??0,1)?-1:1;}
+  if(best.action==='dice_confirm'&&hasBlack(g,g.turn,'mind_control')){const steps=g.dice.reduce((n,x)=>n+x,0),direction=best.option??(g.world.players[g.turn].reverseThisTurn?-1:1);const ranked=blackTargets(g,g.turn).map(target=>{const tile=(g.players[target].position+direction*steps+3600)%36,owner=g.properties[tile].owner;return{target,value:BOARD[tile].kind==='rest'?180:owner!==null&&owner!==target?rentPayment(g,tile,target)*(owner===g.turn?1.5:.6):0}}).sort((a,b)=>b.value-a.value);if(ranked[0]&&ranked[0].value>Math.max(25,value+10))best.target=ranked[0].target;}
   return best;
  }
  if(g.phase==='end'&&!g.world.interrupted&&!state.endLocked&&!g.extraTurn&&!p.rest&&!g.abilities.statuses[seat].skipTurns&&state.extraCoupons){const next=expected(createRoll(seat,g.abilities.ordinal+1),capabilities(g).doubleLover,movementEvaluator(g));if(next>10||g.round>MAX_ROUNDS-10&&next>-10)return {action:'extra_coupon'};}

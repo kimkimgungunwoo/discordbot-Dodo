@@ -1,7 +1,8 @@
+import type { BlackId } from "./augment-marble-black.js";
 /** Selection rules only. Concrete augment effects are registered separately. */
-export const AUGMENT_TIERS = ["silver", "gold", "prism"] as const;
+export const AUGMENT_TIERS = ["silver", "gold", "prism", "black"] as const;
 export type AugmentTier = typeof AUGMENT_TIERS[number];
-export const TIER_LABELS: Record<AugmentTier, string> = { silver: "실버", gold: "골드", prism: "프리즘" };
+export const TIER_LABELS: Record<AugmentTier, string> = { silver: "실버", gold: "골드", prism: "프리즘", black:"블랙" };
 export const AUGMENT_MILESTONES = [0, 1, 3, 5] as const;
 export const AUGMENT_SELECTION_MS = 30_000;
 // Initial configurable distribution; sampled once per match and acquisition slot.
@@ -18,9 +19,24 @@ export interface AugmentDefinition {
   power?: number;
   targetTier?: AugmentTier;
 }
-export type EffectKind = "builder" | "calf_kick" | "cashback" | "conversion" | "double_lover" | "drop_kick" | "exploit" | "force" | "gambler" | "gas" | "glass_cannon" | "grant" | "investor" | "island_owner" | "jujitsu" | "landmark" | "low_kick" | "luck" | "mimic" | "negotiator" | "no_island" | "pickpocket" | "realtor" | "reroll" | "revival" | "robber" | "salary" | "selective_double" | "singed" | "steal" | "stealth" | "subsidy" | "tax" | "trap" | "trip" | "vendor" | "vladimir";
+export type EffectKind = BlackId | "direction" | "builder" | "calf_kick" | "cashback" | "conversion" | "double_lover" | "drop_kick" | "exploit" | "force" | "gambler" | "gas" | "glass_cannon" | "grant" | "investor" | "island_owner" | "jujitsu" | "landmark" | "low_kick" | "luck" | "mimic" | "negotiator" | "no_island" | "pickpocket" | "realtor" | "reroll" | "revival" | "robber" | "salary" | "selective_double" | "singed" | "steal" | "stealth" | "subsidy" | "tax" | "trap" | "trip" | "vendor" | "vladimir";
 // 57 active original cards after retiring the three force-control augments.
 export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
+  {"id": "collector", "name": "징수의 총", "tier": "black", "effect": "collector", "power": 1, "description": "획득 시 현금 50만원 이하 상대를 처형합니다. 최초 처형은 현금을 흡수하지 않으며 기본 구제·능력 부활이 가능합니다. 이후 자신의 강탈·지역 통행료로 현금이 50만원 이하가 된 상대는 기본 구제·능력 부활을 무시하고 처형하여 남은 현금 전부를 흡수합니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "devour", "name": "꿀꺽", "tier": "black", "effect": "devour", "power": 1, "description": "자신이 최종 도착한 칸의 상대 전원을 처형하고 현금을 모두 흡수합니다. 이벤트·강제 이동 도착에도 발동합니다. 기본 구제·능력 부활을 무시합니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "goblin", "name": "도깨비", "tier": "black", "effect": "goblin", "power": 1, "description": "주사위로 이동한 뒤 -2~+2칸 중 추가 이동을 선택합니다. 추가 이동을 끝낸 최종 칸의 도착 효과만 적용합니다. 매 투척마다 사용할 수 있습니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "redistribution", "name": "부의 재분배", "tier": "black", "effect": "redistribution", "power": 1, "description": "획득 즉시 1회, 생존 플레이어의 보유 현금을 합쳐 균등분배합니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "mind_control", "name": "정신조종", "tier": "black", "effect": "mind_control", "power": 1, "description": "매 주사위 결과 확정 시 자신 대신 다른 플레이어를 강제 이동시킬 수 있습니다. 자신의 주사위 능력과 방향을 적용하며, 도착 효과는 이동한 상대에게 적용합니다. 더블 추가 투척은 자신에게 유지됩니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "dirge", "name": "진흔곡", "tier": "black", "effect": "dirge", "power": 1, "description": "자신이 최종 도착할 때마다 다른 생존 플레이어의 보유 현금을 각각 15% 강탈합니다. 획득 즉시에는 발동하지 않습니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "leech", "name": "거머리", "tier": "black", "effect": "leech", "power": 1, "description": "매 자기 차례 시작, 자신을 제외한 강탈 가능한 상대 중 현금이 가장 많은 한 명에게서 현금 10%를 강탈합니다. 동률이면 선택합니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "sniper", "name": "저격수", "tier": "black", "effect": "sniper", "power": 1, "description": "매 자기 차례 시작, 자신의 라인과 모든 모서리를 제외한 위치의 상대를 선택해 현금 10%를 강탈합니다. 대상의 다음 주사위는 합계 10 이하로 제한되고 주사위 능력을 사용할 수 없습니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "silent", "name": "사일런트", "tier": "black", "effect": "silent", "power": 1, "description": "자신을 제외한 플레이어의 블랙 이외 증강을 무효화합니다. 자신이 탈락해도 유지됩니다. 이 능력 소유자들은 자신의 일반 증강을 보호합니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "shaco", "name": "샤코", "tier": "black", "effect": "shaco", "power": 1, "description": "무작위 칸에 자원을 공유하는 분신을 만듭니다. 함께 이동하고 도착 효과는 본체·분신·둘 다 중 선택합니다. 선택한 효과의 비용과 불이익도 모두 적용합니다. 개체 하나를 희생해 처형·파산을 막을 수 있으며 희생한 개체는 재생성되지 않습니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "adamant", "name": "금강불괴", "tier": "black", "effect": "adamant", "power": 1, "description": "이동·대기 중 상대의 블랙을 포함한 증강, 부정 이벤트, 이동 제한과 강제 이동을 무시합니다. 일반 통행료·세금·자발적 지출은 정상 적용됩니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "landmark_takeover", "name": "랜드마크 인수", "tier": "black", "effect": "landmark_takeover", "power": 1, "description": "다른 플레이어의 랜드마크를 인수할 수 있습니다. 토지·건물·랜드마크 정가를 포함한 기본 인수 비용에 할인과 지출 효과를 적용합니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "unfair_trade", "name": "부당거래", "tier": "black", "effect": "unfair_trade", "power": 1, "description": "매 투척 결과를 확인한 뒤 선택적으로 상대 한 명과 소유 지역 전체를 교환합니다. 건물·랜드마크·재방문 가산 등 땅의 상태는 유지됩니다.", "hooks": ["acquire", "before_move", "arrive"]},
+
+  {id:"yin_yang",name:"음과 양",tier:"prism",effect:"direction",power:1,description:"주사위 결과를 확인한 뒤 앞으로 또는 뒤로 이동할지 선택합니다. 선택한 방향으로 주사위 합계만큼 이동합니다.",hooks:["before_move","arrive"]},
   {"id": "mosquito", "name": "모기", "tier": "silver", "effect": "steal", "power": 10, "description": "자신의 차례 시작 시 같은 칸의 모든 상대에게서 보유 골드의 10%를 강탈합니다. 첫 차례에는 발동하지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "realtor_silver", "name": "부동산 할인", "tier": "silver", "effect": "realtor", "power": 10, "description": "지역 구매 비용을 10% 할인받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "builder_silver", "name": "건설자", "tier": "silver", "effect": "builder", "power": 10, "description": "건물 건설 비용을 10% 할인받습니다.", "hooks": ["before_move", "arrive"]},
@@ -67,7 +83,7 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "alcohol", "name": "술팔기", "tier": "prism", "effect": "vendor", "power": 63, "description": "자신을 통과하는 상대에게 술을 팔아 63만원을 받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "grant_prism", "name": "지급3", "tier": "prism", "effect": "grant", "power": 1000, "description": "획득 즉시 1000만원을 받습니다.", "hooks": ["acquire"]},
   {"id": "revival_prism", "name": "트린다미어3", "tier": "prism", "effect": "revival", "power": 250, "description": "파산 시 한 번 부활하고 현금 250만원을 받습니다.", "hooks": ["acquire"]},
-  {"id": "stealth", "name": "스텔스모드", "tier": "prism", "effect": "stealth", "power": 1, "description": "자신의 차례를 기다리는 동안 다른 플레이어의 증강 효과를 받지 않습니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "stealth", "name": "스텔스모드", "tier": "prism", "effect": "stealth", "power": 1, "description": "자신의 차례를 기다리는 동안 다른 플레이어의 일반 증강 효과를 받지 않습니다. 블랙 증강은 막을 수 없습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "tax_prism", "name": "조세회피", "tier": "prism", "effect": "tax", "power": 100, "description": "세금을 내지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "island_owner", "name": "김씨표류기", "tier": "gold", "effect": "island_owner", "power": 1, "description": "무인도를 매수할 수 있고 무인도에 갇히지 않습니다. 갇힌 상대가 나오지 못하고 차례를 쉬는 동안 돈을 강탈합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "realtor_prism", "name": "부동산의 왕", "tier": "prism", "effect": "realtor", "power": 50, "description": "지역 구매 비용을 50% 할인받습니다.", "hooks": ["before_move", "arrive"]},
@@ -172,8 +188,8 @@ export function publicAugmentState(state: AugmentState, seat: number): AugmentSt
 /** Separate from personal lap milestones; every survivor receives an offer at once. */
 export function openRoundPrismOffer(state:AugmentState,seat:number,random:()=>number,catalog:readonly AugmentDefinition[]=AUGMENT_CATALOG){
  const p=state.players[seat];if(p.offer)return false;
- const pool=catalog.filter(a=>a.tier==='prism'&&!p.owned.includes(a.id)).map(a=>a.id),cards:string[]=[];
+ const pool=catalog.filter(a=>a.tier==='black'&&!p.owned.includes(a.id)).map(a=>a.id),cards:string[]=[];
  for(let i=0;i<Math.min(3,pool.length);i++)cards.push(sample(pool.filter(id=>!cards.includes(id)),random));
  if(!cards.length)return false;
- p.offer={id:`round30:${seat}`,round:20,tier:'prism',bonus:true,cards,rerolled:cards.map(()=>pool.length<=cards.length),seen:[...cards]};return true;
+ p.offer={id:`round30:${seat}`,round:20,tier:'black',bonus:true,cards,rerolled:cards.map(()=>pool.length<=cards.length),seen:[...cards]};return true;
 }

@@ -17,6 +17,8 @@ export function planPresentation(previous: Game | undefined, next: Game, events:
   const move = next.abilities.lastMove, old = previous?.abilities.lastMove;
   const start = move && old?.id === move.id ? old.path.length - 1 : 0;
   const path = previous && move ? move.path.slice(start) : [];
+  const clone=next.black?.cloneMove;if(previous&&move&&clone?.id!==previous.black?.cloneMove?.id&&clone?.id===move.id&&clone.seat===move.seat&&clone.path.length>path.length){while(path.length<clone.path.length)path.push(path.at(-1)??move.path[0]);}
+
   const before = events.filter(e => e.stage === "before_move");
   const after = events.filter(e => e.stage !== "before_move");
   const steps: PresentationStep[] = [];

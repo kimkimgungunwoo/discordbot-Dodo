@@ -110,6 +110,8 @@ export function chooseBlackDice(roll: RollContext, useNew: boolean) {
 
 export type AbilityVisual = "steal" | "kick" | "trip" | "poison" | "trap" | "income" | "revive" | "dice" | "buff";
 export interface AbilityEvent {
+  targetEntity?:"main"|"clone";actorEntity?:"main"|"clone";
+  black?: { targets?:number[]; destinationTile?:number; territories?:{tile:number;owner:number}[] };
   id: number;
   actor: number;
   target?: number;
@@ -125,6 +127,7 @@ export interface AbilityEvent {
   move?: { id: number; step: number };
 }
 export interface AbilityRuntime {
+  movingEntity?:"main"|"clone";
   schemaVersion: 2;
   gambles: Record<number, number>[];
   throws: { seat: number; sum: number; turnId: number }[];
@@ -151,6 +154,6 @@ export function createAbilityRuntime(count: number): AbilityRuntime {
 /** Ordered, bounded public stream. Clients deduplicate IDs; reconnects do not replay old attacks. */
 export function emitAbility(runtime: AbilityRuntime, event: Omit<AbilityEvent, "id">) {
   const move = runtime.movement && runtime.lastMove && event.stage !== "before_move" ? { id: runtime.lastMove.id, step: runtime.lastMove.path.length - 1 } : undefined;
-  runtime.events.push({ ...event, ...(move ? { move } : {}), id: runtime.nextEventId++ });
+  runtime.events.push({ ...event, ...(runtime.movingEntity==='clone'&&runtime.movement?{...(event.actor===runtime.movement.seat?{actorEntity:"clone" as const}:{}),...(event.target===runtime.movement.seat?{targetEntity:"clone" as const}:{})}:{}), ...(move ? { move } : {}), id: runtime.nextEventId++ });
   if (runtime.events.length > 64) runtime.events.splice(0, runtime.events.length - 64);
 }

@@ -3,7 +3,7 @@ import { type AugmentDefinition, type EffectKind, TIER_LABELS } from "../../../s
 import { BOARD, SALARY, BONUS, rent, rentPayment, type Game } from "../../../shared/augment-marble";
 
 const timing: Partial<Record<EffectKind, string>> = {
-  force:"굴리기 전 선택", reroll:"굴린 뒤 · 이동 전", selective_double:"매 차례 첫 투척 전", double_lover:"투척 시 자동", mimic:"굴리기 대신 선택", subsidy:"이동 대신 월급 선택",
+  collector:"획득 시 · 자신의 강탈·통행료 정산 후",devour:"최종 도착 시",goblin:"주사위 이동 후",redistribution:"획득 즉시 · 1회",mind_control:"주사위 결과 확인 후",dirge:"최종 도착 시",leech:"자기 차례 시작 시",sniper:"자기 차례 시작 시",silent:"획득 후 경기 끝까지",shaco:"획득 시 분신 생성 · 이동·생존 선택",adamant:"보유 중 항상",landmark_takeover:"랜드마크 도착 후 인수 시",unfair_trade:"매 투척 결과 확인 후 · 선택 사용",direction:"굴린 뒤 · 이동 방향 선택", force:"굴리기 전 선택", reroll:"굴린 뒤 · 이동 전", selective_double:"매 차례 첫 투척 전", double_lover:"투척 시 자동", mimic:"굴리기 대신 선택", subsidy:"이동 대신 월급 선택",
   builder:"건설 시", realtor:"매입 시", negotiator:"인수 시", salary:"월급 수령 시", tax:"세금 정산 시", investor:"수입 발생 시", glass_cannon:"수입·지출 발생 시",
   steal:"첫 차례 이후 · 같은 칸", vladimir:"차례 시작 · 대상 선택", exploit:"차례 시작 · 같은 라인 · 15% ÷ 상대 수", jujitsu:"차례 시작 · 같은 칸",
   low_kick:"상대가 나를 통과할 때", calf_kick:"상대가 나를 통과할 때", drop_kick:"상대가 나를 통과할 때", trip:"상대가 나를 통과할 때", vendor:"상대가 나를 통과할 때", pickpocket:"상대를 통과할 때", robber:"상대를 통과할 때", singed:"이동 중 상대 통과 · 도착 시 독 설치",
@@ -11,6 +11,7 @@ const timing: Partial<Record<EffectKind, string>> = {
 };
 export function abilityTiming(a: AugmentDefinition) { return a.effect ? timing[a.effect] ?? "보유 중 적용" : "보유 중 적용"; }
 export function abilityNotes(a: AugmentDefinition): string[] {
+  if(a.tier==="black")return ["블랙 공통 규칙: 스텔스를 무시합니다."];
   const e=a.effect;
   if(e==="reroll") return [a.id==="suspicious_dice"?"도착 예정지를 확인한 뒤 사용 여부를 선택합니다. 추가 주사위는 1~3이며, 원래 두 주사위의 더블 판정은 유지됩니다.":"투척마다 한 번 사용할 수 있습니다.","합계 제한 상태에서는 주사위 능력을 사용할 수 없습니다. 다시 굴리거나 비교해도 제한 시간은 늘어나지 않습니다."];
   if(e==="selective_double") return ["매 차례 첫 투척에서만 선택할 수 있습니다. 더블 추가 투척에는 선택할 수 없습니다.","더블 확정에 따른 현금 보상은 없습니다."];
