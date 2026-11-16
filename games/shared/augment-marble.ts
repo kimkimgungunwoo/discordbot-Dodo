@@ -1,4 +1,5 @@
-import {captureCashTransfers,bankCashChange,type MoneyTransfer} from "./augment-marble-money.js";
+import {blackState,hasBlack,protectedBlack,blackTargets,resolveBlackAcquisition,processBlackContacts,blackTurnStart,blackArrival,blackMoveClone,blackChoice,blackAutoChoice,blackInsolvency,enterCloneVisit,leaveCloneVisit,queueTyphoonChoices,withCloneEntity,type BlackState} from "./augment-marble-black.js";
+import {captureCashTransfers,bankCashChange,withMoneyReason,type MoneyTransfer} from "./augment-marble-money.js";
 import { strategicBotAction } from "./augment-marble-bot.js";
 import { createEventState, drawEvent, eventDefinition, type EventId, type EventState } from "./augment-marble-events.js";
 import { incomeWithoutGlass,glassIncome,lossWithoutGlass,transferMoney,stealMoney,acquireEffect, capabilities, cashback, factor, incomeAmount, power, receiveIncome, spendCost, steal, reportDiscount, reportMoney, salaryAmount, receiveSalary, consumeLoss, lossAmount, immune, refreshGamble, revivePlayer, syncRevival, flushPendingAcquisitions } from "./augment-marble-effects.js";
@@ -23,13 +24,13 @@ export interface Player { liquidationRescueUsed?:boolean; name: string; cash: nu
 export interface Property { revisitBoost?:number; owner: number | null; buildings: number; landmark?: boolean; builtTurn?: number; purchasedTurn?:number; festival?: number; locust?: number }
 export type Phase = "portal" | "event" | "rent" | "augment" | "roll" | "dice" | "buy" | "build" | "takeover" | "debt" | "end" | "finished";
 export type WinReason = "bankruptcy" | "triple" | "line" | "assets";
-export interface Game { roundPrism?:{given:boolean;pending:number[]}; locustBatch?:{id:number;path:number[]}; landmarkVisit?:{seat:number;tile:number;turnId:number}; teleport?:{id:number;seat:number;from:number;to:number}; destructionBatch?:{id:number;revision:number;kind:"quake"|"missile";items:{tile:number;before:Property}[]}; flightBatch?:{id:number;items:{seat:number;from:number;to:number}[]}; turnOrder?:number[];orderDrawUntil?:number; moneyTransfers?:MoneyTransfer[]; world: EventState; abilities: AbilityRuntime; players: Player[]; properties: Property[]; turn: number; turnId: number; round: number; roundPending: number[]; revision: number; phase: Phase; dice: number[]; doubles: number; extraTurn: boolean; winner: number | null; reason: WinReason | null; debt: { amount: number; creditor: number | null; reason: "rent" | "land_tax"; principal?:number;receipt?:number; resume: "takeover" | "arrival" | "event" } | null; log: string[]; augments: AugmentState | null; augmentSeat: number | null; augmentResume: "start" | "arrive" | "round30" | null }
+export interface Game { diceComparison?:number[]|null; black?:BlackState; roundPrism?:{given:boolean;pending:number[]}; locustBatch?:{id:number;path:number[]}; landmarkVisit?:{seat:number;tile:number;turnId:number}; teleport?:{id:number;seat:number;from:number;to:number}; destructionBatch?:{id:number;revision:number;kind:"quake"|"missile";items:{tile:number;before:Property}[]}; flightBatch?:{id:number;items:{seat:number;from:number;to:number;entity?:"main"|"clone"}[]}; turnOrder?:number[];orderDrawUntil?:number; moneyTransfers?:MoneyTransfer[]; world: EventState; abilities: AbilityRuntime; players: Player[]; properties: Property[]; turn: number; turnId: number; round: number; roundPending: number[]; revision: number; phase: Phase; dice: number[]; doubles: number; extraTurn: boolean; winner: number | null; reason: WinReason | null; debt: { amount: number; creditor: number | null; reason: "rent" | "land_tax"; principal?:number;receipt?:number; resume: "takeover" | "arrival" | "event" } | null; log: string[]; augments: AugmentState | null; augmentSeat: number | null; augmentResume: "start" | "arrive" | "round30" | null }
 export interface Seat { userId: string | null; name: string; bot?: string }
 export interface View { presentationAt?:number; type: "MARBLE_STATE"; matchId: string; game: Game; seats: (Seat & { connected: boolean; ready?: boolean })[]; seat: number; started: boolean; deadline: number; serverNow: number; aborted?: string; rematch?: { matchId: string; votes: string[]; required: number; delivered: boolean } }
-export interface Action { action: "portal_move" | "roll" | "buy" | "build" | "takeover" | "skip" | "end" | "sell" | "bankrupt" | "augment_select" | "augment_reroll" | "dice_force" | "dice_double" | "dice_copy" | "dice_reroll" | "dice_choose" | "dice_confirm" | "subsidy" | "escape" | "landmark" | "ability_target" | "island_buy" | "event_resolve" | "rent_pay" | "coupon_pass" | "home_stone" | "extra_coupon"; eventSerial?: number; amount?: number; decline?: boolean; augmentId?: string; line?: number; steps?: number; target?: number; ability?: ForceAbility | RerollAbility; option?: number; die?: 0 | 1; useNew?: boolean; offerId?: string; slot?: number; buildings?:number[]; building?: number; tile?: number }
+export interface Action { action: "black_choice" | "black_trade" | "portal_move" | "roll" | "buy" | "build" | "takeover" | "skip" | "end" | "sell" | "bankrupt" | "augment_select" | "augment_reroll" | "dice_force" | "dice_double" | "dice_copy" | "dice_reroll" | "dice_choose" | "dice_confirm" | "subsidy" | "escape" | "landmark" | "ability_target" | "island_buy" | "event_resolve" | "rent_pay" | "coupon_pass" | "home_stone" | "extra_coupon"; entity?: "main"|"clone"; eventSerial?: number; amount?: number; decline?: boolean; augmentId?: string; line?: number; steps?: number; target?: number; ability?: ForceAbility | RerollAbility; option?: number; die?: 0 | 1; useNew?: boolean; offerId?: string; slot?: number; buildings?:number[]; building?: number; tile?: number }
 export interface AugmentOptions { catalog?: readonly AugmentDefinition[]; tierSequence?: readonly AugmentTier[]; random?: () => number }
-export function canAct(g:Game,seat:number){return g.phase==="augment"&&g.augmentResume==="round30"?!!g.roundPrism?.pending.includes(seat):seat===actingSeat(g);}
-export function actingSeat(g: Game) { return g.augmentSeat ?? g.turn; }
+export function canAct(g:Game,seat:number){if(g.black?.pending.length)return g.black.pending[0].seat===seat;return g.phase==="augment"&&g.augmentResume==="round30"?!!g.roundPrism?.pending.includes(seat):seat===actingSeat(g);}
+export function actingSeat(g: Game) { return g.black?.pending[0]?.seat ?? g.augmentSeat ?? g.turn; }
 export function createGame(names: string[], options?: AugmentOptions): Game {
   if (names.length < 2 || names.length > 4) throw new Error("2~4명이 필요합니다.");
   const catalog = options?.catalog ?? AUGMENT_CATALOG;
@@ -58,12 +59,12 @@ export function rent(g: Game, index: number, modifiers = true) {
   const t = BOARD[index], p = g.properties[index];
   if (t.kind !== "city" || p.owner === null) return 0;
   const monopoly = BOARD.filter(x => x.group === t.group).every(x => g.properties[x.index].owner === p.owner);
-  return Math.max(0, Math.ceil((baseRent(index) + BUILDINGS.reduce((sum, _, i) => sum + (p.buildings & (1 << i) ? construction(index, i).rent : 0), 0)) * (1+Math.max(0,p.revisitBoost??0)*REVISIT_BONUS_PERCENT/100) * (monopoly ? 2 : 1) * (p.landmark ? 2 : 1) * (g.abilities.gambles[p.owner]?.[index] !== undefined && modifiers && definitionsActive(g,p.owner) ? g.abilities.gambles[p.owner][index] : 1) * Math.pow(2,p.festival ?? 0) * Math.pow(.7,p.locust ?? 0) * (g.world?.famineUntil > g.round ? .5 : 1) - 1e-9));
+  return Math.max(0, Math.ceil((baseRent(index) + BUILDINGS.reduce((sum, _, i) => sum + (p.buildings & (1 << i) ? construction(index, i).rent : 0), 0)) * (1+Math.max(0,p.revisitBoost??0)*REVISIT_BONUS_PERCENT/100) * (monopoly ? 2 : 1) * (p.landmark ? 2 : 1) * (g.abilities.gambles[p.owner]?.[index] !== undefined && modifiers && definitionsActive(g,p.owner) ? g.abilities.gambles[p.owner][index] : 1) * Math.pow(2,p.festival ?? 0) * Math.pow(.7,p.locust ?? 0) * (g.world?.famineUntil > g.round && !protectedBlack(g,p.owner) ? .5 : 1) - 1e-9));
 }
 export function value(g: Game, index: number) { return (g.properties[index].landmark ? landmarkBase(index) : 0) + BOARD[index].price + BUILDINGS.reduce((sum, _, i) => sum + (g.properties[index].buildings & (1 << i) ? construction(index, i).cost : 0), 0); }
 export function assets(g: Game, owner: number) { return g.players[owner].cash + BOARD.reduce((sum, t) => sum + (g.properties[t.index].owner === owner ? incomeAmount(g, owner, Math.floor(value(g, t.index) / 2)) : 0), 0); }
 function win(g: Game, winner: number, reason: WinReason) { g.winner = winner; g.reason = reason; g.phase = "finished"; note(g, `${winner + 1}P ${reason === "triple" ? "컬러독점" : reason === "line" ? "라인 독점" : reason === "assets" ? "라운드 제한 · 자산승리" : "파산승리"}!`); }
-function checkWin(g: Game) {
+export function checkWin(g: Game) {
   const alive = g.players.map((p, i) => p.bankrupt ? -1 : i).filter(i => i >= 0);
   if (alive.length === 1) { win(g, alive[0], "bankruptcy"); return; }
   for (const owner of alive) {
@@ -73,12 +74,14 @@ function checkWin(g: Game) {
 }
 interface PaymentSplit {principal?:number;receipt?:number}
 function settlePayment(g:Game,payer:number,amount:number,creditor:number|null,split:PaymentSplit={}){
+ return withMoneyReason(g,creditor===null?"세금":"통행료",()=>{
  consumeLoss(g,payer,amount);
  if(creditor===null){bankCashChange(g,payer,-amount);return;}
  const principal=Math.min(amount,split.principal??amount),receipt=split.receipt===undefined?principal:principal===split.principal?split.receipt:split.receipt>(split.principal??0)?glassIncome(g,creditor,principal):principal;
- transferMoney(g,payer,creditor,amount,principal,receipt);
+ transferMoney(g,payer,creditor,amount,principal,receipt,true);
  if(amount>principal)note(g,`${payer+1}P 유리대포 · 추가 지출 ${amount-principal}만원 소멸`);
  if(receipt>principal)note(g,`${creditor+1}P 유리대포 · 추가 수입 ${receipt-principal}만원 은행 지급`);
+ });
 }
 function pay(g: Game, amount: number, creditor: number | null, resume: "takeover" | "arrival" | "event" = "takeover", reason: "rent" | "land_tax" = "rent",split:PaymentSplit={}) {
   if(assets(g,g.turn)<amount){
@@ -106,7 +109,9 @@ function rewardRevisit(g:Game,seat:number,tile:number){
  if(p.revisitBoost!==old){const after=incomeWithoutGlass(g,seat,rent(g,tile));note(g,`${seat+1}P ${BOARD[tile].name} 재방문 · 통행료 ${before} → ${after}만원 (누적 +${p.revisitBoost*REVISIT_BONUS_PERCENT}%)`);emitAbility(g.abilities,{actor:seat,tile,ability:"revisit",caption:`${BOARD[tile].name} 통행료 ${before} → ${after}만원`,amount:after-before,rentChange:{before,after,level:p.revisitBoost},visual:"buff"});}
 }
 
-function arrive(g: Game, random: () => number = Math.random) {
+export function arrive(g: Game, random: () => number = Math.random) {
+  if(g.players[g.turn].position!==9)g.players[g.turn].rest=0;
+  if(blackArrival(g,g.turn,false,random))return;if(g.players[g.turn].bankrupt){g.phase="end";return;}
   const player = g.players[g.turn], tile = BOARD[player.position], property = g.properties[player.position];
   delete g.landmarkVisit;
   if(property.owner===g.turn&&property.buildings===7&&!property.landmark)g.landmarkVisit={seat:g.turn,tile:player.position,turnId:g.turnId};
@@ -125,13 +130,13 @@ function arrive(g: Game, random: () => number = Math.random) {
     }
   } else {
     g.phase = "end";
-    if (tile.kind === "bonus") { const paid = receiveIncome(g, g.turn, BONUS); note(g, `보너스 ${paid}만원 수령`); }
-    else if (tile.kind === "rest" && !power(g, g.turn, "island_owner")) { player.rest = 3; g.extraTurn = false; note(g, "무인도 · 최대 3턴 구금 · 더블로 무료 탈출 가능합니다."); }
+    if (tile.kind === "bonus") { const paid = withMoneyReason(g,"보너스",()=>receiveIncome(g, g.turn, BONUS)); note(g, `보너스 ${paid}만원 수령`); }
+    else if (tile.kind === "rest" && !protectedBlack(g,g.turn) && !power(g, g.turn, "island_owner")) { player.rest = 3; g.extraTurn = false; note(g, "무인도 · 최대 3턴 구금 · 더블로 무료 탈출 가능합니다."); }
     else if(tile.kind==="portal"){g.phase="portal";note(g,"포탈 · 이동할 지역을 선택하세요.");}
     else if (tile.kind === "event") openEvent(g,g.turn,random);
   }
 }
-function end(g: Game,random:()=>number=Math.random,catalog:readonly AugmentDefinition[]=AUGMENT_CATALOG) {
+export function end(g: Game,random:()=>number=Math.random,catalog:readonly AugmentDefinition[]=AUGMENT_CATALOG) {
   if(!g.world?.interrupted && g.world?.deferred?.length){const visits=g.world.deferred;g.world.deferred=[];beginEventVisits(g,visits,random,catalog);return;}
   if(g.world?.interrupted){nextEventVisit(g,random,catalog);return;}
   if (g.extraTurn && !g.players[g.turn].bankrupt) {
@@ -157,14 +162,22 @@ function end(g: Game,random:()=>number=Math.random,catalog:readonly AugmentDefin
   if(g.round===20&&!g.roundPrism?.given&&g.augments){
    const pending=g.players.flatMap((p,i)=>!p.bankrupt&&openRoundPrismOffer(g.augments!,i,random,catalog)?[i]:[]);
    g.roundPrism={given:true,pending};
-   if(pending.length){g.phase="augment";g.augmentResume="round30";g.augmentSeat=pending[0];note(g,"20라운드 · 생존자 모두 프리즘 증강 선택");return;}
+   if(pending.length){g.phase="augment";g.augmentResume="round30";g.augmentSeat=pending[0];note(g,"20라운드 · 생존자 모두 블랙 증강 선택");return;}
   }
   startTurn(g);
 }
 function mutateAction(g: Game, input: Action, random: () => number = Math.random, catalog: readonly AugmentDefinition[] = AUGMENT_CATALOG): void {
   g.world ??= createEventState(g.players.length);
+  for(const p of g.players)if(p.position!==9)p.rest=0;
+  for(const clone of Object.values(g.black?.clones??{}))if(clone.position!==9)clone.rest=0;
   if (g.phase === "finished") throw new Error("종료된 경기입니다.");
-  if(g.phase==="roll"){startTurn(g);if(input.action!=="roll"&&(g.world.players[g.turn].sleepThisTurn||g.abilities.statuses[g.turn].skipTurns>0))throw new Error("수면·마비 중에는 행동할 수 없습니다.");}
+  if(g.black?.pending.length){if(input.action!=="black_choice")throw new Error("블랙 능력 선택을 먼저 완료해주세요.");blackChoice(g,input,random,catalog);g.revision++;return;}
+  if(input.action==="black_trade"){
+   const key=`${g.turnId}:${g.abilities.ordinal}`;if(g.phase!=="dice"||!hasBlack(g,g.turn,"unfair_trade")||blackState(g).tradeThrow===key||input.target===undefined||!blackTargets(g,g.turn).includes(input.target))throw new Error("영토를 교환할 수 없습니다.");
+   const target=input.target,territories:{tile:number;owner:number}[]=[];for(let tile=0;tile<g.properties.length;tile++){const p=g.properties[tile];if(p.owner===g.turn)p.owner=target;else if(p.owner===target)p.owner=g.turn;else continue;territories.push({tile,owner:p.owner});refreshGamble(g,p.owner,tile,random)}blackState(g).tradeThrow=key;emitAbility(g.abilities,{actor:g.turn,target,tile:g.players[g.turn].position,ability:"unfair_trade",caption:"전체 영토 교환",visual:"buff",black:{territories},stage:"before_move"});checkWin(g);g.revision++;return;
+  }
+
+  if(g.phase==="roll"){startTurn(g);if(g.black?.pending.length){g.revision++;return;}if(input.action!=="roll"&&(g.world.players[g.turn].sleepThisTurn||g.abilities.statuses[g.turn].skipTurns>0))throw new Error("수면·마비 중에는 행동할 수 없습니다.");}
   if(input.action==="event_resolve"){resolveEvent(g,input,random,catalog);g.revision++;return;}
   if(g.phase==="event")throw new Error("이벤트 처리를 먼저 마쳐주세요.");
   if(input.action==="rent_pay" || input.action==="coupon_pass"){
@@ -198,14 +211,15 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
     else {
       const id = selectAugment(g.augments, seat, input.offerId, input.slot!);
       const firstEffect = g.abilities.nextEventId;
-      acquireEffect(g, seat, id, random, catalog);
+      if(catalog.find(a=>a.id===id)?.tier!=="black")acquireEffect(g, seat, id, random, catalog);
       for (const event of g.abilities.events) if (event.id >= firstEffect) { event.stage = "before_move"; delete event.move; }
       note(g, `${seat + 1}P 증강 선택 · ${catalog.find(a => a.id === id)?.name ?? id}`);
+      if(catalog.find(a=>a.id===id)?.tier!=="black")
       emitAbility(g.abilities, { actor: seat, tile: g.players[seat].position, ability: id, stage: "before_move", caption: `${catalog.find(a => a.id === id)?.name ?? id}${catalog.find(a => a.id === id)?.effect === "conversion" ? " 사용 완료" : " 획득"}`, visual: "buff" });
       if(g.augmentResume==="round30"){
         g.roundPrism!.pending=g.roundPrism!.pending.filter(i=>i!==seat);
         g.augmentSeat=g.roundPrism!.pending[0]??null;
-        if(g.augmentSeat===null){g.augmentResume=null;g.phase="roll";startTurn(g);}
+        if(g.augmentSeat===null){g.augmentResume=null;g.phase="roll";resolveBlackAcquisition(g,random);if(!g.black?.pending.length&&(g.phase as Phase)!=="finished")startTurn(g);}
       } else if (g.augmentResume === "start") {
         const next = (g.turnOrder??g.players.map((_,i)=>i)).find(i=>g.augments!.players[i].offer!==null)??-1;
         g.augmentSeat = next < 0 ? null : next;
@@ -241,7 +255,13 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
   } else if (input.action === "roll") {
     requirePhase("roll");
     startTurn(g);
-    if(g.world.players[g.turn].sleepThisTurn){g.world.players[g.turn].sleepThisTurn=false;g.world.players[g.turn].sleep--;g.extraTurn=false;note(g,"수면 · 차례를 쉽니다.");end(g,random,catalog);}
+    const clone=blackState(g).clones[g.turn],status=g.abilities.statuses[g.turn];
+    if(clone&&(player.rest>0||status.skipTurns>0||g.world.players[g.turn].sleepThisTurn)&&!clone.skip&&!clone.rest){
+      if(player.rest>0)player.rest--;if(status.skipTurns>0)status.skipTurns--;if(g.world.players[g.turn].sleepThisTurn){g.world.players[g.turn].sleepThisTurn=false;g.world.players[g.turn].sleep--;}
+      blackState(g).cloneOnly=true;const roll=createRoll(g.turn,g.abilities.ordinal,clone.restricted>0);g.abilities.roll=roll;g.dice=[...throwDice(roll,capabilities(g),random)];g.abilities.lastThrow={id:(g.abilities.lastThrow?.id??0)+1,seat:g.turn,kind:"roll",dice:[...g.dice]};
+      if(diceChoices(roll,capabilities(g),g.abilities.history).rerolls.length||power(g,g.turn,"direction"))g.phase="dice";else finishDice(g,random,catalog);
+    }
+    else if(g.world.players[g.turn].sleepThisTurn){g.world.players[g.turn].sleepThisTurn=false;g.world.players[g.turn].sleep--;g.extraTurn=false;note(g,"수면 · 차례를 쉽니다.");end(g,random,catalog);}
     else if(g.abilities.statuses[g.turn].skipTurns>0){g.abilities.statuses[g.turn].skipTurns--;g.extraTurn=false;note(g,"마비 · 차례를 쉽니다.");end(g,random,catalog);}
     else if (player.rest) {
       const state=g.world.players[g.turn],restricted=g.abilities.statuses[g.turn].restrictedRolls>0||g.abilities.statuses[g.turn].restrictWholeTurn;
@@ -261,10 +281,10 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
       {
         const roll = prepareRoll(g), c = capabilities(g);
         if(g.abilities.ordinal===0 && g.world.players[g.turn].lostThisTurn && g.world.players[g.turn].lostDice>0)g.world.players[g.turn].lostDice--;
-        g.dice = g.world.players[g.turn].lostThisTurn ? [1+Math.floor(random()*6),0] : [...throwDice(roll,c,random)];
+        g.diceComparison=null;g.dice = g.world.players[g.turn].lostThisTurn ? [1+Math.floor(random()*6),0] : [...throwDice(roll,c,random)];
         if(g.world.players[g.turn].lostThisTurn)roll.result=[g.dice[0],0];
         g.abilities.lastThrow = { id: (g.abilities.lastThrow?.id ?? 0) + 1, seat: g.turn, kind: "roll", dice: [...g.dice] };
-        if (diceChoices(roll, c, g.abilities.history).rerolls.length) g.phase = "dice";
+        if (diceChoices(roll, c, g.abilities.history).rerolls.length || !roll.restricted&&power(g,g.turn,"direction") || hasBlack(g,g.turn,"mind_control") || hasBlack(g,g.turn,"unfair_trade")) g.phase = "dice";
         else finishDice(g, random, catalog);
       }
     }
@@ -279,7 +299,7 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
     for(const b of selected){const cost=buildCost(g,index,b);consumeLoss(g,g.turn,cost);player.cash-=cost;reportDiscount(g,g.turn,"builder",construction(index,b).cost,cost);cashback(g,g.turn,cost);property.buildings|=1<<b;note(g,`${BOARD[index].name} ${construction(index,b).name} 건설`);}property.builtTurn=g.turnId;delete g.landmarkVisit;
   } else if (input.action === "takeover") {
     requirePhase("takeover"); const cost = takeoverCost(g, index);
-    if (property.landmark || property.owner === null || property.owner === g.turn || player.cash < cost) throw new Error("인수할 현금이 부족합니다.");
+    if (property.landmark&&!hasBlack(g,g.turn,"landmark_takeover") || property.owner === null || property.owner === g.turn || player.cash < cost) throw new Error("인수할 현금이 부족합니다.");
     const principal=power(g,g.turn,"glass_cannon")?cost/2:cost;
     reportDiscount(g,g.turn,"negotiator",takeoverBase(g,index),cost);
     const receipt=incomeAmount(g,property.owner,principal);
@@ -304,6 +324,7 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
 }
 /** Only automatic when no legal optional arrival action remains. */
 export function automaticContinuation(g:Game):Action|null {
+ if(g.black?.pending.length)return null;
  if(!["buy","build","takeover","end"].includes(g.phase))return null;
  const seat=g.turn,p=g.players[seat],tile=p.position,property=g.properties[tile],state=g.world.players[seat];
  const coupon=!g.world.interrupted&&!g.extraTurn&&!p.rest&&!g.abilities.statuses[seat].skipTurns&&!state.endLocked&&state.extraCoupons>0;
@@ -318,6 +339,7 @@ export function automaticContinuation(g:Game):Action|null {
  return {action:"end"};
 }
 export function autoAction(g:Game,bot=false):Action {
+  const blackAction=blackAutoChoice(g);if(blackAction)return blackAction;
   const snapshot=structuredClone(g);const fallback=chooseAutoAction(snapshot,bot);
   return bot?strategicBotAction(snapshot,fallback):fallback;
 }
@@ -395,13 +417,14 @@ export function turnTargets(g: Game) {
   return g.players.flatMap((p, i) => i !== g.turn && !p.bankrupt && !immune(g, i) && sameLine(p.position,g.players[g.turn].position) ? [i] : []);
 }
 function targetWealth(g: Game, seat: number) { return g.players[seat].cash; }
-function startTurn(g: Game) {
+export function startTurn(g: Game) {
   if (g.abilities.startedTurn === g.turnId) return;
   g.abilities.startedTurn = g.turnId; g.abilities.ownerTurns[g.turn]++;
   const eventStatus=g.world?.players[g.turn];
   if(eventStatus){eventStatus.sleepThisTurn=eventStatus.sleep>0;eventStatus.endLocked=false;eventStatus.lostThisTurn=eventStatus.lostDice>0;eventStatus.reverseThisTurn=eventStatus.reverseMoves>0;}
   const status=g.abilities.statuses[g.turn];if(status.nextTurnRestricted){status.nextTurnRestricted=false;status.restrictWholeTurn=true;status.restrictedBy="신지드";}
   g.abilities.marks = g.abilities.marks.filter(m => (m.expiresRound ?? Infinity) > g.round);
+  blackTurnStart(g);
   if(g.world?.players[g.turn].sleepThisTurn||g.abilities.statuses[g.turn].skipTurns>0){g.abilities.pendingTarget=false;return;}
   const position = g.players[g.turn].position;
   if (power(g, g.turn, "steal") && g.abilities.ownerTurns[g.turn] > 1) g.players.forEach((p, i) => { if (i !== g.turn && !p.bankrupt && p.position === position) steal(g, g.turn, i, Math.floor(p.cash * .1), "mosquito"); });
@@ -443,18 +466,34 @@ function diceAction(g: Game, input: Action, random: () => number, catalog: reado
     g.abilities.lastThrow = { id: (g.abilities.lastThrow?.id ?? 0) + 1, seat: g.turn, kind: "copy", dice: [...g.dice] }; finishDice(g, random, catalog);
   } else if (input.action === "subsidy") {
     if (!choices.workSubsidy) throw new Error("근로장려금을 받을 수 없습니다.");
-    const paid = receiveSalary(g,g.turn);
+    const paid = receiveSalary(g,g.turn,"근로장려금");
     emitAbility(g.abilities, { actor: g.turn, tile: g.players[g.turn].position, ability: "subsidy", caption: `근로장려금 ${paid}만원`, visual: "income" });
     g.extraTurn = false; end(g,random,catalog);
   } else if (input.action === "dice_reroll") {
-    rerollDice(roll, c, input.ability as RerollAbility, random, input.die); g.dice = [...roll.result!,...(roll.bonus?[roll.bonus]:[])];
+    rerollDice(roll, c, input.ability as RerollAbility, random, input.die);g.diceComparison=roll.comparison?[...roll.comparison]:null; g.dice = [...roll.result!,...(roll.bonus?[roll.bonus]:[])];
     emitAbility(g.abilities,{actor:g.turn,tile:g.players[g.turn].position,ability:input.ability!,stage:"before_move",caption:input.ability === "suspicious_dice" ? `에디셔널 다이스 · +${roll.bonus}칸` : `${AUGMENT_CATALOG.find(a=>a.id===input.ability)?.name??"주사위 능력"} · 다시 던지기`,visual:"dice"});
     g.abilities.lastThrow = { id: (g.abilities.lastThrow?.id ?? 0) + 1, seat: g.turn, kind: "reroll", additional: input.ability === "suspicious_dice", dice: input.ability === "suspicious_dice" ? [roll.bonus!] : [...(roll.comparison ?? roll.result!)], ...(input.ability === "suspicious_dice" ? { die: input.die } : {}) };
   } else if (input.action === "dice_choose") {
     if (typeof input.useNew !== "boolean") throw new Error("주사위 결과를 선택해주세요.");
-    chooseBlackDice(roll, input.useNew); g.dice = [...roll.result!,...(roll.bonus?[roll.bonus]:[])];
+    chooseBlackDice(roll, input.useNew);g.diceComparison=null; g.dice = [...roll.result!,...(roll.bonus?[roll.bonus]:[])];
   } else {
     if (!roll.result || roll.comparison) throw new Error("비교 결과를 먼저 선택해주세요.");
+    if(input.option!==undefined){
+      if(!power(g,g.turn,"direction")||roll.restricted||![1,-1].includes(input.option))throw new Error("이동 방향을 선택할 수 없습니다.");
+      g.world.players[g.turn].reverseThisTurn=input.option===-1;
+      emitAbility(g.abilities,{actor:g.turn,tile:g.players[g.turn].position,ability:"yin_yang",stage:"before_move",caption:`음과 양 · ${input.option===-1?"뒤로":"앞으로"} 이동`,visual:"dice"});
+    }
+    if(hasBlack(g,g.turn,"mind_control")&&input.target!==undefined){
+      if(!blackTargets(g,g.turn).includes(input.target))throw new Error("강제 이동 대상을 선택해주세요.");
+      const target=input.target,clone=blackState(g).clones[target],from=input.entity==="clone"&&clone?clone.position:g.players[target].position,direction=g.world.players[g.turn].reverseThisTurn?-1:1,steps=g.dice.reduce((n,x)=>n+x,0),to=(from+direction*steps+3600)%36;
+      g.abilities.history.push(steps);if(g.abilities.history.length>12)g.abilities.history.shift();g.abilities.throws.push({seat:g.turn,sum:steps,turnId:g.turnId});if(roll.restricted&&g.abilities.statuses[g.turn].restrictedRolls>0)g.abilities.statuses[g.turn].restrictedRolls--;g.abilities.copied=false;
+      const double=g.dice[0]===g.dice[1]&&!g.world.players[g.turn].lostThisTurn;g.extraTurn=double;g.doubles=double?g.doubles+1:0;g.abilities.roll=null;g.phase="end";
+      if(g.doubles>=3&&!power(g,g.turn,"no_island")&&!power(g,g.turn,"island_owner")){g.players[g.turn].position=9;g.players[g.turn].rest=3;g.extraTurn=false;return;}
+      emitAbility(g.abilities,{actor:g.turn,target,tile:from,ability:"mind_control",targetEntity:input.entity,caption:"정신조종 · 강제 이동",visual:"buff",stage:"before_move"});
+      if(input.entity==="clone"&&clone){const id=(g.abilities.lastMove?.id??0)+1;g.abilities.lastMove={id,seat:target,path:[g.players[target].position]};blackState(g).cloneMove={id,seat:target,path:Array.from({length:steps+1},(_,i)=>(from+direction*i+3600)%36)};clone.position=to;beginEventVisits(g,[{seat:target,tile:to,effects:true,entity:"clone"}],random,catalog);}
+      else{g.players[target].position=to;g.abilities.lastMove={id:(g.abilities.lastMove?.id??0)+1,seat:target,path:Array.from({length:steps+1},(_,i)=>(from+direction*i+3600)%36)};beginEventVisits(g,[{seat:target,tile:to,effects:true,arrived:true}],random,catalog)}
+      return;
+    }
     finishDice(g, random, catalog);
   }
 }
@@ -470,12 +509,23 @@ function finishDice(g: Game, random: () => number, catalog: readonly AugmentDefi
   note(g, `${g.turn + 1}P 주사위 ${g.dice.join(" + ")}${double ? " · 더블" : copied ? " · 복사" : ""}`);
   for (const event of g.abilities.events) if (event.id >= firstEffect) event.stage = "before_move";
   g.abilities.roll = null; g.abilities.copied = false;
-  g.abilities.lastMove = { id: (g.abilities.lastMove?.id ?? 0) + 1, seat: g.turn, path: [player.position] };
+  g.abilities.lastMove = { id: (g.abilities.lastMove?.id ?? 0) + 1, seat: g.turn, path: [player.position] };blackState(g).normalMoveId=g.abilities.lastMove.id;
   if (g.doubles >= 3 && (power(g, g.turn, "no_island") || power(g, g.turn, "island_owner"))) g.extraTurn = false;
   if (g.doubles >= 3 && !power(g, g.turn, "no_island") && !power(g, g.turn, "island_owner")) { g.abilities.lastMove.path.push(9); player.position = 9; player.rest = 3; g.extraTurn = false; g.phase = "end"; note(g, "3연속 더블 · 무인도로 이동합니다."); return; }
   if(g.abilities.ordinal===0 && g.world.players[g.turn].reverseThisTurn && g.world.players[g.turn].reverseMoves>0)g.world.players[g.turn].reverseMoves--;
+  if(blackState(g).cloneOnly){blackState(g).cloneOnly=false;const clone=blackState(g).clones[g.turn];if(clone){const from=clone.position;blackMoveClone(g,g.dice.reduce((n,x)=>n+x,0),g.world.players[g.turn].reverseThisTurn?-1:1,random);g.phase="end";blackState(g).pending.push({kind:"shaco_arrival",seat:g.turn,options:[1]});}return;}
+  blackMoveClone(g,g.dice.reduce((n,x)=>n+x,0),g.world.players[g.turn].reverseThisTurn?-1:1,random);
+  if(player.bankrupt){g.phase="end";g.extraTurn=false;g.abilities.movement=null;return;}
   g.abilities.movement = { seat: g.turn, remaining: g.dice.reduce((sum,n)=>sum+n,0), visited: [], resume: "step" };
   advanceMovement(g, random, catalog);
+}
+export function moveCloneAlongBoard(g:Game,steps:number,direction:number,random:()=>number){
+ const state=blackState(g),clone=state.clones[g.turn],record=state.cloneMove;if(!clone||!record)return;
+ const oldMove=g.abilities.movement,oldLast=g.abilities.lastMove,oldPhase=g.phase,oldEntity=g.abilities.movingEntity;
+ withCloneEntity(g,g.turn,()=>{const p=g.players[g.turn];g.abilities.movement={seat:g.turn,remaining:steps,visited:[],resume:"step"};g.abilities.lastMove=record;g.abilities.movingEntity="clone";
+  try{const move=g.abilities.movement;while(move.remaining>0&&!p.bankrupt){const boundary=direction===1?p.position:(p.position+35)%36;if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);record.wall={boundary,tile:p.position,next:(p.position+direction+36)%36};break;}p.position=(p.position+direction+36)%36;move.remaining--;move.visited.push(p.position);record.path.push(p.position);passingEffects(g,random);if(p.position===0&&direction===1){receiveSalary(g,g.turn);settleForcedPayment(g,g.turn,landTax(g,g.turn),null);}if(g.phase==='finished')break;}}
+  finally{g.abilities.movement=oldMove;g.abilities.lastMove=oldLast;g.abilities.movingEntity=oldEntity;if(g.phase!=='finished')g.phase=oldPhase;}
+ });
 }
 function advanceMovement(g: Game, random: () => number, catalog: readonly AugmentDefinition[]) {
   const move = g.abilities.movement;
@@ -484,7 +534,7 @@ function advanceMovement(g: Game, random: () => number, catalog: readonly Augmen
   while (move.remaining > 0) {
     const direction=g.world.players[g.turn].reverseThisTurn?-1:1;
     const boundary=direction===1?player.position:(player.position+BOARD.length-1)%BOARD.length;
-    if(g.world.walls.includes(boundary)){g.world.walls=g.world.walls.filter(b=>b!==boundary);move.remaining=0;g.abilities.lastMove!.wall={boundary,tile:player.position,next:(player.position+direction+36)%36};note(g,"벽 충돌 · 직전 칸에서 정지");break;}
+    if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);move.remaining=0;g.abilities.lastMove!.wall={boundary,tile:player.position,next:(player.position+direction+36)%36};note(g,"벽 충돌 · 직전 칸에서 정지");break;}
     player.position = (player.position + direction + BOARD.length) % BOARD.length; move.remaining--; move.visited.push(player.position); g.abilities.lastMove?.path.push(player.position);
     passingEffects(g, random);
     if (g.phase === "finished") { g.abilities.movement = null; return; }
@@ -543,11 +593,14 @@ function passingEffects(g: Game, random: () => number) {
   // Final landing is not passing through another token.
   const passing = move.remaining > 0;
   for (let other = 0; other < g.players.length; other++) {
-    if (other === actor || g.players[other].bankrupt || g.players[other].position !== tile) continue;
+    if (other === actor || g.players[other].bankrupt || (g.players[other].position !== tile&&g.black?.clones[other]?.position!==tile)) continue;
     if (!immune(g, other)) {
       if (passing && power(g, actor, "pickpocket") && random() < .3) steal(g,actor,other,power(g,actor,"pickpocket"),"pickpocket");
       if (passing && power(g, actor, "robber") && random() < .25) steal(g,actor,other,power(g,actor,"robber"),"robber");
-      if (power(g, actor, "singed")) { g.players[other].position = (tile + BOARD.length - 2) % BOARD.length; emitAbility(g.abilities,{actor,target:other,tile,ability:"singed",caption:"신지드 · 뒤로 2칸",visual:"poison",flight:{seat:other,from:tile,to:(tile+BOARD.length-2)%BOARD.length}});forcedArrival(g,other,random); }
+      if (power(g, actor, "singed")) {const cloneHit=g.players[other].position!==tile&&g.black?.clones[other]?.position===tile;const to=(tile+BOARD.length-2)%BOARD.length;
+        if(cloneHit){blackState(g).clones[other].position=to;emitAbility(g.abilities,{actor,target:other,targetEntity:"clone",tile,ability:"singed",caption:"신지드 · 분신 뒤로 2칸",visual:"poison",flight:{seat:other,from:tile,to}});withCloneEntity(g,other,()=>forcedArrival(g,other,random));}
+        else{g.players[other].position=to;emitAbility(g.abilities,{actor,target:other,tile,ability:"singed",caption:"신지드 · 뒤로 2칸",visual:"poison",flight:{seat:other,from:tile,to}});forcedArrival(g,other,random);}
+      }
     }
     if (!passing || immune(g, actor)) continue;
     const vendor = power(g, other, "vendor"); if (vendor) steal(g,other,actor,vendor,"vendor");
@@ -559,12 +612,15 @@ function passingEffects(g: Game, random: () => number) {
     // Every defender on this contact tile was passed at contact time, even if an earlier kick stops movement.
   }
 }
-function forcedArrival(g: Game, seat: number, random: () => number) {
+export function forcedArrival(g: Game, seat: number, random: () => number) {
+  if(g.players[seat].position!==9)g.players[seat].rest=0;
   const p=g.players[seat],tile=BOARD[p.position],property=g.properties[p.position];
+  if(protectedBlack(g,seat)){}
+  blackArrival(g,seat,true,random);if(p.bankrupt)return;
   applyMarks(g,seat);rewardRevisit(g,seat,tile.index);
   if(tile.kind==="event"||tile.kind==="portal"){g.world.deferred??=[];g.world.deferred.push({seat,tile:tile.index,effects:true,arrived:true,settled:true});note(g,"강제 이동 · 도착 이벤트 대기");}
-  else if(tile.kind==="bonus") receiveIncome(g,seat,BONUS);
-  else if(tile.kind==="rest" && !power(g,seat,"island_owner")) p.rest=3;
+  else if(tile.kind==="bonus") withMoneyReason(g,"보너스",()=>receiveIncome(g,seat,BONUS));
+  else if(tile.kind==="rest" && !protectedBlack(g,seat) && !power(g,seat,"island_owner")) p.rest=3;
   else if(tile.kind==="city" && property.owner!==null && property.owner!==seat) {
     const quote=rentQuote(g,tile.index,seat),amount=quote.amount;property.festival=0;
     if(amount>0&&g.world.players[seat].autoPass>0){g.world.players[seat].autoPass--;note(g,`${seat+1}P 하이패스 · 강제 이동 통행료 면제`);}
@@ -586,6 +642,7 @@ function settleForcedPayment(g: Game, seat: number, amount: number, creditor: nu
 }
 /** One liquidation rescue per player, independent of owned revival charges. */
 function resolveInsolvency(g:Game,seat:number,creditor:number|null,split:PaymentSplit={}){
+ if(blackInsolvency(g,seat,creditor))return true;
  const p=g.players[seat];
  const clearAssets=()=>{g.properties.forEach((prop,i)=>{if(prop.owner===seat)g.properties[i]={owner:null,buildings:0,locust:prop.locust};});};
  if(!p.liquidationRescueUsed){
@@ -606,7 +663,9 @@ function salePriority(g: Game, index: number) { return value(g, index) + (critic
 /** Commit only fully validated transitions; rejected commands leave state untouched. */
 export function applyAction(g: Game, input: Action, random: () => number = Math.random, catalog: readonly AugmentDefinition[] = AUGMENT_CATALOG): void {
   const next = structuredClone(g);
-  const transfers=captureCashTransfers(next,()=>mutateAction(next,input,random,catalog));
+  const names:Partial<Record<Action['action'],string>>={buy:'지역 매입',build:'건물 건설',landmark:'랜드마크 건설',takeover:'지역 인수',sell:'지역 매각',bankrupt:'파산 정산',escape:'무인도 탈출',island_buy:'무인도 매수',subsidy:'근로장려금',home_stone:'귀환석',black_choice:'블랙 능력 정산'};
+  const reason=input.action==='event_resolve'&&g.world.current?eventDefinition(g.world.current.id).name:input.action==='augment_select'&&input.offerId&&g.augments?catalog.find(a=>a.id===g.augments!.players[actingSeat(g)].offer?.cards[input.slot??0])?.name??'증강 획득':names[input.action]??'이동 정산';
+  const transfers=captureCashTransfers(next,()=>withMoneyReason(next,reason,()=>{mutateAction(next,input,random,catalog);for(const p of next.players)if(p.position!==9)p.rest=0;for(const clone of Object.values(next.black?.clones??{}))if(clone.position!==9)clone.rest=0;processBlackContacts(next);}),true);
   let id=next.moneyTransfers?.at(-1)?.id??0;
   if(transfers.length)next.moneyTransfers=[...(next.moneyTransfers??[]),...transfers.map(t=>({...t,id:++id}))].slice(-96);
   Object.assign(g, next);
@@ -632,32 +691,35 @@ export function netWorth(g: Game, seat: number) { return g.players[seat].cash + 
 
 export function saleProceeds(g: Game, index: number, seat = g.turn) { return incomeAmount(g, seat, Math.floor(value(g, index) / 2)); }
 
-export function definitionsActive(g:Game,seat:number){return (g.world?.players[seat].disabledUntil ?? 0)<=g.round;}
+export function definitionsActive(g:Game,seat:number){return protectedBlack(g,seat)||((g.world?.players[seat].disabledUntil ?? 0)<=g.round&&(!g.black?.silenced||hasBlack(g,seat,"silent")));}
 export function openEvent(g:Game,seat:number,random:()=>number=Math.random,id?:EventId){
- const event={id:id ?? drawEvent(random,power(g,seat,"luck")),seat,serial:g.world.nextSerial++};
+ const event={id:id ?? drawEvent(random,protectedBlack(g,seat)?100:power(g,seat,"luck")),seat,serial:g.world.nextSerial++};
  g.world.current=event;g.world.history.push(event);if(g.world.history.length>60)g.world.history.shift();g.phase="event";
  note(g,`${seat+1}P 이벤트 · ${eventDefinition(event.id).name}`);
 }
-export function eventTargets(g:Game){return g.players.flatMap((p,i)=>i!==g.turn&&!p.bankrupt?[i]:[]);}
+export function eventTargets(g:Game){return g.players.flatMap((p,i)=>i!==g.turn&&!p.bankrupt&&!protectedBlack(g,i)?[i]:[]);}
 export function eventOwnedTiles(g:Game){return BOARD.filter(t=>t.kind==="city"&&g.properties[t.index].owner===g.turn).map(t=>t.index);}
 function eventSample<T>(pool:readonly T[],random:()=>number):T|undefined{return pool.length?pool[Math.min(pool.length-1,Math.floor(random()*pool.length))]:undefined;}
 function eventShuffle<T>(pool:readonly T[],random:()=>number){const a=[...pool];for(let i=a.length-1;i>0;i--){const j=Math.min(i,Math.floor(random()*(i+1)));[a[i],a[j]]=[a[j],a[i]];}return a;}
 export function destroyTopBuilding(g:Game,tile:number,loseEmpty=false,kind:"quake"|"missile"="quake"){
  const p=g.properties[tile],before={...p};
+ if(p.owner!==null&&protectedBlack(g,p.owner))return;
  const record=()=>{if(g.destructionBatch?.revision!==g.revision)g.destructionBatch={id:(g.destructionBatch?.id??0)+1,revision:g.revision,kind,items:[]};g.destructionBatch!.items.push({tile,before});};
  if(p.landmark){p.landmark=false;record();note(g,`${BOARD[tile].name} 랜드마크 붕괴`);return;}
  for(let i=BUILDINGS.length-1;i>=0;i--)if(p.buildings&(1<<i)){p.buildings&=~(1<<i);record();note(g,`${BOARD[tile].name} ${BUILDINGS[i].name} 붕괴`);return;}
  if(loseEmpty&&p.owner!==null){p.owner=null;p.festival=0;record();note(g,`${BOARD[tile].name} 소유권 소멸`);}
 }
 
-function beginEventVisits(g:Game,visits:EventState["visits"],random:()=>number,catalog:readonly AugmentDefinition[]){
+export function beginEventVisits(g:Game,visits:EventState["visits"],random:()=>number,catalog:readonly AugmentDefinition[]){
  if(!g.world.interrupted)g.world.interrupted={turn:g.turn,extraTurn:g.extraTurn,doubles:g.doubles,ordinal:g.abilities.ordinal,phase:"end",sleepAtStart:g.players[g.turn].rest};
  // A nested displacement resolves ahead of the remaining visitors.
  g.world.visits.unshift(...visits);nextEventVisit(g,random,catalog);
 }
 function nextEventVisit(g:Game,random:()=>number=Math.random,catalog:readonly AugmentDefinition[]=AUGMENT_CATALOG){
+ leaveCloneVisit(g);
  while(g.world.visits.length){
   const visit=g.world.visits.shift()!;if(g.players[visit.seat].bankrupt||(visit.arrived&&g.players[visit.seat].position!==visit.tile))continue;
+  if(visit.entity==="clone"&&!enterCloneVisit(g,visit.seat))continue;
   g.world.noPurchase=!!visit.noPurchase;
   g.turn=visit.seat;g.extraTurn=false;g.doubles=0;g.abilities.ordinal=0;g.abilities.roll=null;g.abilities.movement=null;
   const previous=g.players[g.turn].position;g.players[g.turn].position=visit.tile;
@@ -684,6 +746,7 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
  if(input.decline && id!=="hero"&&id!=="change_augment")throw new Error("이 이벤트는 거부할 수 없습니다.");
  // The atomic applyAction clone prevents failed choices from consuming the event.
  g.world.current=null;g.phase="end";
+ if(protectedBlack(g,seat)&&eventDefinition(id).category==="negative"){note(g,"금강불괴 · 부정 이벤트 무시");return;}
  if(input.decline){note(g,`${eventDefinition(id).name} · 사용 포기`);return;}
  switch(id){
   case "salary_again":{const paid=receiveSalary(g,seat);note(g,`월급 한번더! · ${paid}만원`);break;}
@@ -695,14 +758,15 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
   case "home_stone":status.homeStones++;break;
   case "wall":{const free=BOARD.map(t=>t.index).filter(i=>!g.world.walls.includes(i));if(!free.length)break;if(!Number.isInteger(input.tile)||!free.includes(input.tile!))throw new Error("벽이 없는 경계를 선택해주세요.");g.world.walls.push(input.tile!);break;}
   case "hero":{const other=target();beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true,startEffects:true}],random,catalog);break;}
-  case "tranquilizer":tranquilize(g,seat,target());break;
+  case "tranquilizer":{const other=target();if(input.entity==="clone"&&blackState(g).clones[other]){blackState(g).clones[other].skip++;emitAbility(g.abilities,{actor:seat,target:other,tile:blackState(g).clones[other].position,ability:"tranquilizer",caption:"분신 · 다음 차례 수면",targetEntity:"clone",visual:"trap"});}else tranquilize(g,seat,other);break;}
   case "extra_coupon":status.extraCoupons++;break;
   case "typhoon":{
-   const items=playerDisplayOrder(g).filter(i=>!g.players[i].bankrupt).map(seat=>({seat,from:g.players[seat].position,to:(g.players[seat].position+34)%36}));
+   if(queueTyphoonChoices(g))break;
+   const items=playerDisplayOrder(g).filter(i=>!g.players[i].bankrupt&&!protectedBlack(g,i)).map(seat=>({seat,from:g.players[seat].position,to:(g.players[seat].position+34)%36}));
    g.flightBatch={id:(g.flightBatch?.id??0)+1,items};for(const item of items)g.players[item.seat].position=item.to;
    beginEventVisits(g,items.map(item=>({seat:item.seat,tile:item.to,effects:true,arrived:true,forced:true})),random,catalog);break;
   }
-  case "locust":{const start=Math.min(35,Math.floor(random()*36));g.locustBatch={id:(g.locustBatch?.id??0)+1,path:Array.from({length:6},(_,i)=>(start+i)%36)};for(let step=1;step<=5;step++){const tile=(start+step)%36;if(BOARD[tile].kind==="city")g.properties[tile].locust=(g.properties[tile].locust??0)+1;}note(g,`메뚜기떼 · ${BOARD[start].name}에서 5칸 이동`);break;}
+  case "locust":{const start=Math.min(35,Math.floor(random()*36));g.locustBatch={id:(g.locustBatch?.id??0)+1,path:Array.from({length:6},(_,i)=>(start+i)%36)};for(let step=1;step<=5;step++){const tile=(start+step)%36;if(BOARD[tile].kind==="city"&&(g.properties[tile].owner===null||!protectedBlack(g,g.properties[tile].owner!)))g.properties[tile].locust=(g.properties[tile].locust??0)+1;}note(g,`메뚜기떼 · ${BOARD[start].name}에서 5칸 이동`);break;}
   case "change_augment":{
    const owned=g.augments?.players[seat].owned??[];if(!owned.length){note(g,"보유 증강이 없어 교체 종료");break;}
    const old=catalog.find(a=>a.id===input.augmentId&&owned.includes(a.id));if(!old)throw new Error("교체할 증강을 선택해주세요.");
@@ -721,7 +785,7 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
   case "fool":{const other=eventSample(eventTargets(g),random);if(other!==undefined)beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true}],random,catalog);break;}
   case "reverse_order":g.world.direction=g.world.direction===1?-1:1;break;
   case "bet":{if(!Number.isSafeInteger(input.amount)||input.amount!<0||input.amount!>g.players[seat].cash)throw new Error("보유 현금 이하의 정수 금액을 입력해주세요.");const amount=input.amount!;if(random()<.5){const profit=receiveIncome(g,seat,amount);note(g,`도박 성공 · 원금 유지 · 수익 ${profit}만원`);}else{const loss=Math.min(g.players[seat].cash,lossAmount(g,seat,amount));consumeLoss(g,seat,loss);g.players[seat].cash-=loss;note(g,`도박 실패 · ${loss}만원 손실`);}break;}
-  case "depression":for(const s of g.world.players)s.halfSalary++;break;
+  case "depression":for(const [i,s]of g.world.players.entries())if(!protectedBlack(g,i))s.halfSalary++;break;
   case "sleep":status.sleep++;cancelExtraTurn(g,seat);status.endLocked=true;break;
   case "vacation":beginEventVisits(g,[{seat,tile:9,effects:true}],random,catalog);break;
   case "unpaid":status.unpaidSalary++;break;

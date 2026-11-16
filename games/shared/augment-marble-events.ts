@@ -45,7 +45,7 @@ export interface EventPlayer {
  vulnerable:number; disabledUntil:number; overspendUntil:number;
  lostThisTurn:boolean; reverseThisTurn:boolean; endLocked?:boolean; pendingAcquisitions?:string[];
 }
-export interface EventVisit {settled?:boolean;startEffects?:boolean;forced?:boolean;arrived?:boolean;flight?:boolean;seat:number;tile:number;effects:boolean;noPurchase?:boolean;rentAmount?:number;principal?:number;receipt?:number;creditor?:number}
+export interface EventVisit { entity?:"main"|"clone";settled?:boolean;startEffects?:boolean;forced?:boolean;arrived?:boolean;flight?:boolean;seat:number;tile:number;effects:boolean;noPurchase?:boolean;rentAmount?:number;principal?:number;receipt?:number;creditor?:number}
 export interface EventState {
  version:1; players:EventPlayer[]; direction:1|-1; famineUntil:number; walls:number[];
  current:{id:EventId;seat:number;serial:number}|null; nextSerial:number;

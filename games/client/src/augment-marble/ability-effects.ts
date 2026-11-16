@@ -1,3 +1,4 @@
+import { isBlackEffect, playBlackEffect } from "./black-effects";
 import { effectStart, effectRemaining } from "./presentation-clock";
 import { statusEffect } from "./status-effect";
 import { bloodDrain } from "./drain-effect";
@@ -19,15 +20,18 @@ export class AbilityEffects {
   private match = "";
   private cursor = 0;
   private layers = new Set<HTMLElement>();
+  private blackControllers=new Set<AbortController>();
   constructor(private readonly root: HTMLElement) {}
   baseline(match: string, events: readonly AbilityEvent[]) { this.clear(); this.match=match;this.cursor=events.at(-1)?.id??0; }
   take(match:string,events:readonly AbilityEvent[]){if(match!==this.match){this.baseline(match,events);return []}const fresh=events.filter(e=>e.id>this.cursor&&e.ability!=="dice");this.cursor=Math.max(this.cursor,events.at(-1)?.id??0);return fresh;}
-  clear(){for(const layer of this.layers)layer.remove();this.layers.clear();}
+  clear(){for(const controller of this.blackControllers)controller.abort();this.blackControllers.clear();for(const layer of this.layers)layer.remove();this.layers.clear();}
   async play(event:AbilityEvent,signal:AbortSignal,names:readonly string[]=[],autoScroll=true,captionLane=0,sharedStart?:number){
     if(signal.aborted||event.ability==="dice")return;
+    if(isBlackEffect(event.ability)){const controller=new AbortController();this.blackControllers.add(controller);try{await playBlackEffect(this.root,event,AbortSignal.any([signal,controller.signal]));}finally{this.blackControllers.delete(controller);}return;}
+
     const definition=AUGMENT_CATALOG.find(a=>a.id===event.ability),label=definition?abilityLabel(definition):({revisit:"재방문 특혜",tranquilizer:"마취총",steal:"모기",gas:"방귀쟁이",revival:"부활",subsidy:"근로장려금",trap:"덫",poison:"신지드"} as Record<string,string>)[event.ability]??"능력 발동";
     const seat=captionSeat(event),harmful=seat!==event.actor;
-    const anchor=(seat:number)=>document.querySelector<HTMLElement>(`[data-moving-seat="${seat}"],[data-flying-seat="${seat}"],[data-portal-seat="${seat}"]`)??this.root.querySelector<SVGImageElement>(`[data-token="${seat}"]`);
+    const anchor=(seat:number)=>((seat===event.target&&event.targetEntity==='clone'||seat===event.actor&&event.actorEntity==='clone')?this.root.querySelector<SVGImageElement>(`[data-clone-token="${seat}"]`):null)??document.querySelector<HTMLElement>(`[data-moving-seat="${seat}"],[data-flying-seat="${seat}"],[data-portal-seat="${seat}"]`)??this.root.querySelector<SVGImageElement>(`[data-token="${seat}"]`);
     const stage=this.root.querySelector<HTMLElement>(".m-board-stage"),subject=anchor(seat);
     if(autoScroll&&stage&&subject){const rect=subject.getBoundingClientRect(),box=stage.getBoundingClientRect();if(subject.hasAttribute('data-token')&&(rect.left<box.left+25||rect.right>box.right-25))stage.scrollLeft+=rect.left+rect.width/2-(box.left+box.width/2);}
     const duration=event.ability==="exploit"?1500:Math.min(1700,Math.max(1100,650+event.caption.length*20));
