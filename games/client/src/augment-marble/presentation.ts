@@ -24,7 +24,7 @@ export function planPresentation(previous: Game | undefined, next: Game, events:
   const steps: PresentationStep[] = [];
   let from = 0;
   for (let at = 0; at < path.length; at++) {
-    const onStep = after.filter(e => e.move?.id === move?.id && e.move?.step === at + start);
+    const onStep = after.filter(e => !["collector","devour"].includes(e.ability) && e.move?.id === move?.id && e.move?.step === at + start);
     if (onStep.length) { steps.push({ path: path.slice(from, at + 1), events: onStep }); from = at; }
   }
   if (path.length > from + 1) steps.push({ path: path.slice(from), events: [] });

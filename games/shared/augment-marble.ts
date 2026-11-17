@@ -1,4 +1,4 @@
-import {blackState,hasBlack,protectedBlack,reportAdamantBlock,blackTargets,resolveBlackAcquisition,processBlackContacts,blackTurnStart,blackArrival,blackMoveClone,blackChoice,blackAutoChoice,blackInsolvency,enterCloneVisit,leaveCloneVisit,queueTyphoonChoices,withCloneEntity,type BlackState} from "./augment-marble-black.js";
+import {blackStartContact,blackState,hasBlack,protectedBlack,reportAdamantBlock,blackTargets,resolveBlackAcquisition,processBlackContacts,blackTurnStart,blackArrival,blackMoveClone,blackChoice,blackAutoChoice,blackInsolvency,enterCloneVisit,leaveCloneVisit,queueTyphoonChoices,withCloneEntity,type BlackState} from "./augment-marble-black.js";
 import {captureCashTransfers,bankCashChange,withMoneyReason,type MoneyTransfer} from "./augment-marble-money.js";
 import { strategicBotAction } from "./augment-marble-bot.js";
 import { createEventState, drawEvent, eventDefinition, type EventId, type EventState } from "./augment-marble-events.js";
@@ -201,7 +201,7 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
   if(input.action==="home_stone"){
     if(g.phase!=="roll"||g.abilities.roll||g.world.interrupted||g.players[g.turn].rest||g.abilities.statuses[g.turn].skipTurns||g.world.players[g.turn].sleepThisTurn||!g.world.players[g.turn].homeStones)throw new Error("지금 귀환석을 사용할 수 없습니다.");
     startTurn(g);if(g.abilities.pendingTarget)throw new Error("대상을 먼저 선택해주세요.");
-    g.world.players[g.turn].homeStones--;g.world.players[g.turn].endLocked=true;g.teleport={id:(g.teleport?.id??0)+1,seat:g.turn,from:g.players[g.turn].position,to:0};g.players[g.turn].position=0;const paid=receiveSalary(g,g.turn);note(g,`귀환석 · 출발 이동 · 월급 ${paid}만원`);g.extraTurn=false;g.phase="end";g.revision++;return;
+    g.world.players[g.turn].homeStones--;g.world.players[g.turn].endLocked=true;g.teleport={id:(g.teleport?.id??0)+1,seat:g.turn,from:g.players[g.turn].position,to:0};g.players[g.turn].position=0;blackStartContact(g,g.turn);const paid=receiveSalary(g,g.turn);note(g,`귀환석 · 출발 이동 · 월급 ${paid}만원`);g.extraTurn=false;g.phase="end";g.revision++;return;
   }
   if(input.action==="extra_coupon"){
     if(!["buy","build","takeover","end"].includes(g.phase)||g.world.interrupted||g.extraTurn||g.players[g.turn].rest||g.abilities.statuses[g.turn].skipTurns||g.world.players[g.turn].endLocked||!g.world.players[g.turn].extraCoupons)throw new Error("지금 한번더 쿠폰을 사용할 수 없습니다.");
@@ -535,7 +535,7 @@ export function moveCloneAlongBoard(g:Game,steps:number,direction:number,random:
  const state=blackState(g),clone=state.clones[g.turn],record=state.cloneMove;if(!clone||!record)return;
  const oldMove=g.abilities.movement,oldLast=g.abilities.lastMove,oldPhase=g.phase,oldEntity=g.abilities.movingEntity;
  withCloneEntity(g,g.turn,()=>{const p=g.players[g.turn];g.abilities.movement={seat:g.turn,remaining:steps,visited:[],resume:"step"};g.abilities.lastMove=record;g.abilities.movingEntity="clone";
-  try{const move=g.abilities.movement;while(move.remaining>0&&!p.bankrupt){const boundary=direction===1?p.position:(p.position+35)%36;if(g.world.walls.includes(boundary)&&protectedBlack(g,g.turn))reportAdamantBlock(g,g.turn,"벽 · 이동 정지");if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);record.wall={boundary,tile:p.position,next:(p.position+direction+36)%36};break;}p.position=(p.position+direction+36)%36;move.remaining--;move.visited.push(p.position);record.path.push(p.position);passingEffects(g,random);if(p.position===0&&direction===1){receiveSalary(g,g.turn);settleForcedPayment(g,g.turn,landTax(g,g.turn),null);}if(g.phase==='finished')break;}}
+  try{const move=g.abilities.movement;while(move.remaining>0&&!p.bankrupt){const boundary=direction===1?p.position:(p.position+35)%36;if(g.world.walls.includes(boundary)&&protectedBlack(g,g.turn))reportAdamantBlock(g,g.turn,"벽 · 이동 정지");if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);record.wall={boundary,tile:p.position,next:(p.position+direction+36)%36};break;}p.position=(p.position+direction+36)%36;move.remaining--;move.visited.push(p.position);record.path.push(p.position);passingEffects(g,random);if(p.position===0&&move.remaining>0)blackStartContact(g,g.turn);if(p.position===0&&direction===1){receiveSalary(g,g.turn);settleForcedPayment(g,g.turn,landTax(g,g.turn),null);}if(g.phase==='finished')break;}}
   finally{g.abilities.movement=oldMove;g.abilities.lastMove=oldLast;g.abilities.movingEntity=oldEntity;if(g.phase!=='finished')g.phase=oldPhase;}
  });
 }
@@ -549,6 +549,7 @@ function advanceMovement(g: Game, random: () => number, catalog: readonly Augmen
     if(g.world.walls.includes(boundary)&&protectedBlack(g,g.turn))reportAdamantBlock(g,g.turn,"벽 · 이동 정지");if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);move.remaining=0;g.abilities.lastMove!.wall={boundary,tile:player.position,next:(player.position+direction+36)%36};note(g,"벽 충돌 · 직전 칸에서 정지");break;}
     player.position = (player.position + direction + BOARD.length) % BOARD.length; move.remaining--; move.visited.push(player.position); g.abilities.lastMove?.path.push(player.position);
     passingEffects(g, random);
+    if(player.position===0&&move.remaining>0)blackStartContact(g,g.turn);
     if (g.phase === "finished") { g.abilities.movement = null; return; }
     if (player.position === 0 && direction===1) {
       player.laps++; if (g.augments) g.augments.players[g.turn].laps = player.laps;
@@ -799,7 +800,7 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
   }
   case "quake":for(const tile of eventShuffle(BOARD.filter(t=>g.properties[t.index].buildings||g.properties[t.index].landmark).map(t=>t.index),random).slice(0,3))destroyTopBuilding(g,tile);break;
   case "wormhole":{const tile=eventSample(BOARD.filter(t=>t.kind==="event"&&t.index!==g.players[seat].position),random);if(tile)beginEventVisits(g,[{seat,tile:tile.index,effects:false,entity}],random,catalog);break;}
-  case "homing":{g.teleport={id:(g.teleport?.id??0)+1,seat,from:g.players[seat].position,to:0,entity};g.players[seat].position=0;if(entity==="clone")blackState(g).clones[seat].position=0;const salary=receiveSalary(g,seat);note(g,`귀소본능 · 월급 ${salary}만원`);pay(g,landTax(g,seat),null,"event","land_tax");break;}
+  case "homing":{g.teleport={id:(g.teleport?.id??0)+1,seat,from:g.players[seat].position,to:0,entity};g.players[seat].position=0;if(entity==="clone")blackState(g).clones[seat].position=0;blackStartContact(g,seat);const salary=receiveSalary(g,seat);note(g,`귀소본능 · 월급 ${salary}만원`);pay(g,landTax(g,seat),null,"event","land_tax");break;}
   case "random_wall":{const tile=eventSample(BOARD.map(t=>t.index).filter(i=>!g.world.walls.includes(i)),random);if(tile!==undefined)g.world.walls.push(tile);break;}
   case "auto_pass":status.autoPass++;break;
   case "fool":{const other=eventSample(g.players.flatMap((p,i)=>i!==seat&&!p.bankrupt?[i]:[]),random);if(other!==undefined)beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true,entity}],random,catalog);break;}

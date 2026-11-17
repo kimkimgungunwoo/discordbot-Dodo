@@ -71,6 +71,7 @@ export async function playBlackEffect(root:HTMLElement,event:AbilityEvent,signal
  }else if(key==='unfair_trade'){
  ctx.save();ctx.translate(center.x,center.y);ctx.scale(unit,unit);for(const sign of [1,-1]){ctx.save();ctx.scale(sign,sign);ctx.translate(0,-12);ctx.fillStyle=COLORS[sign===1?event.actor:target];ctx.strokeStyle='#303b2e';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-45,-6);ctx.lineTo(20,-6);ctx.lineTo(20,-18);ctx.lineTo(45,2);ctx.lineTo(20,22);ctx.lineTo(20,10);ctx.lineTo(-45,10);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore()}ctx.restore();for(const item of event.black?.territories??[]){const cell=root.querySelector(`[data-inspect="${item.tile}"]`),box=cell?.getBoundingClientRect();if(!box)continue;ctx.fillStyle=t<1.4?(Math.floor(t*6)%2?'#fff8ddaa':'#fff8dd22'):COLORS[item.owner]+'77';ctx.fillRect(box.x+2,box.y+2,box.width-4,box.height-4)}
  }
+ if(!cinematic&&!["collector","devour"].includes(key)){const x=Math.max(120,Math.min(innerWidth-120,center.x)),y=Math.max(70,Math.min(innerHeight-100,center.y));label(`${event.actor+1}P · ${BLACK_EFFECTS[key]}`,{x,y:y-14},Math.min(28,innerWidth*.055));label(event.caption,{x,y:y+18},Math.min(16,innerWidth*.027));}
  ctx.restore();raf=requestAnimationFrame(frame)};
  frame(performance.now());
  });
