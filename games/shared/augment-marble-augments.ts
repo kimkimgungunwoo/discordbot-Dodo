@@ -32,7 +32,7 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "sniper", "name": "저격수", "tier": "black", "effect": "sniper", "power": 1, "description": "매 자기 차례 시작, 자신의 라인과 모든 모서리를 제외한 위치의 상대를 선택해 현금 10%를 강탈합니다. 대상의 다음 주사위는 합계 10 이하로 제한되고 주사위 능력을 사용할 수 없습니다.", "hooks": ["acquire", "before_move", "arrive"]},
   {"id": "silent", "name": "사일런트", "tier": "black", "effect": "silent", "power": 1, "description": "자신을 제외한 플레이어의 블랙 이외 증강을 무효화합니다. 자신이 탈락해도 유지됩니다. 이 능력 소유자들은 자신의 일반 증강을 보호합니다.", "hooks": ["acquire", "before_move", "arrive"]},
   {"id": "shaco", "name": "샤코", "tier": "black", "effect": "shaco", "power": 1, "description": "무작위 칸에 자원을 공유하는 분신을 만듭니다. 함께 이동하고 도착 효과는 본체·분신·둘 다 중 선택합니다. 선택한 효과의 비용과 불이익도 모두 적용합니다. 개체 하나를 희생해 처형·파산을 막을 수 있으며 희생한 개체는 재생성되지 않습니다.", "hooks": ["acquire", "before_move", "arrive"]},
-  {"id": "adamant", "name": "금강불괴", "tier": "black", "effect": "adamant", "power": 1, "description": "이동·대기 중 상대의 블랙을 포함한 증강, 부정 이벤트, 이동 제한과 강제 이동을 무시합니다. 일반 통행료·세금·자발적 지출은 정상 적용됩니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "adamant", "name": "금강불괴", "tier": "black", "effect": "adamant", "power": 1, "description": "불리한 증강·이벤트·방해 효과에 무적입니다. 유리한 효과는 그대로 적용되며, 일반 통행료·세금·자발적 지출은 정상 적용됩니다.", "hooks": ["acquire", "before_move", "arrive"]},
   {"id": "landmark_takeover", "name": "랜드마크 인수", "tier": "black", "effect": "landmark_takeover", "power": 1, "description": "다른 플레이어의 랜드마크를 인수할 수 있습니다. 토지·건물·랜드마크 정가를 포함한 기본 인수 비용에 할인과 지출 효과를 적용합니다.", "hooks": ["acquire", "before_move", "arrive"]},
   {"id": "unfair_trade", "name": "부당거래", "tier": "black", "effect": "unfair_trade", "power": 1, "description": "매 투척 결과를 확인한 뒤 선택적으로 상대 한 명과 소유 지역 전체를 교환합니다. 건물·랜드마크·재방문 가산 등 땅의 상태는 유지됩니다.", "hooks": ["acquire", "before_move", "arrive"]},
 

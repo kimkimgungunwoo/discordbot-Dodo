@@ -11,7 +11,7 @@ const timing: Partial<Record<EffectKind, string>> = {
 };
 export function abilityTiming(a: AugmentDefinition) { return a.effect ? timing[a.effect] ?? "보유 중 적용" : "보유 중 적용"; }
 export function abilityNotes(a: AugmentDefinition): string[] {
-  if(a.tier==="black")return ["블랙 공통 규칙: 스텔스를 무시합니다."];
+  if(a.tier==="black")return [];
   const e=a.effect;
   if(e==="reroll") return [a.id==="suspicious_dice"?"도착 예정지를 확인한 뒤 사용 여부를 선택합니다. 추가 주사위는 1~3이며, 원래 두 주사위의 더블 판정은 유지됩니다.":"투척마다 한 번 사용할 수 있습니다.","합계 제한 상태에서는 주사위 능력을 사용할 수 없습니다. 다시 굴리거나 비교해도 제한 시간은 늘어나지 않습니다."];
   if(e==="selective_double") return ["매 차례 첫 투척에서만 선택할 수 있습니다. 더블 추가 투척에는 선택할 수 없습니다.","더블 확정에 따른 현금 보상은 없습니다."];

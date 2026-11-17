@@ -27,7 +27,7 @@ export class AbilityEffects {
   clear(){for(const controller of this.blackControllers)controller.abort();this.blackControllers.clear();for(const layer of this.layers)layer.remove();this.layers.clear();}
   async play(event:AbilityEvent,signal:AbortSignal,names:readonly string[]=[],autoScroll=true,captionLane=0,sharedStart?:number){
     if(signal.aborted||event.ability==="dice")return;
-    if(isBlackEffect(event.ability)){const controller=new AbortController();this.blackControllers.add(controller);try{await playBlackEffect(this.root,event,AbortSignal.any([signal,controller.signal]));}finally{this.blackControllers.delete(controller);}return;}
+    if(isBlackEffect(event.ability)&&!event.blocked){const controller=new AbortController();this.blackControllers.add(controller);try{await playBlackEffect(this.root,event,AbortSignal.any([signal,controller.signal]));}finally{this.blackControllers.delete(controller);}return;}
 
     const definition=AUGMENT_CATALOG.find(a=>a.id===event.ability),label=definition?abilityLabel(definition):({revisit:"재방문 특혜",tranquilizer:"마취총",steal:"모기",gas:"방귀쟁이",revival:"부활",subsidy:"근로장려금",trap:"덫",poison:"신지드"} as Record<string,string>)[event.ability]??"능력 발동";
     const seat=captionSeat(event),harmful=seat!==event.actor;
