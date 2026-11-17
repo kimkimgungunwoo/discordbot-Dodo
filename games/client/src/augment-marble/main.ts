@@ -167,7 +167,7 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
   animating = !!(plan.dice || plan.steps.some(s => s.path.length > 1) || events.length || transfers.length || heldWall!==undefined || batch?.length || destruction?.items.length || teleport || takeovers.length || locust);
   if(previous&&next.game.players.some((p,i)=>p.bankrupt&&!previous.players[i].bankrupt))animating=true;
   presentationStage = animating ? "발동 효과를 확인하고 있습니다" : "";
-  if (["augment","event","rent","debt"].includes(next.game.phase) && actingSeat(next.game) === next.seat && (previous?.phase !== next.game.phase || next.game.world.current?.serial !== previous?.world.current?.serial)) info = null;
+  if (["augment","event","rent","debt"].includes(next.game.phase) && actingSeat(next.game) === next.seat && (previous?.phase !== next.game.phase || next.game.world.current?.serial !== previous?.world.current?.serial)) { if(info?.kind!=="rules")info = null; }
   displayedLog = animating ? previous?.log : undefined;
   render();
   const cues=previous?stateSounds(previous,next.game):[];
@@ -482,20 +482,27 @@ function render() {
   const previousEvent = root.querySelector<HTMLElement>("[data-event-key]");
   const eventValues = new Map([...previousEvent?.querySelectorAll<HTMLInputElement|HTMLSelectElement>("input,select") ?? []].map(el=>[el.dataset.focus,el.value]));
   const focus = (document.activeElement as HTMLElement | null)?.dataset.focus;
-  const oldScroll = root.querySelector<HTMLElement>("[role=dialog]")?.scrollTop ?? 0;
-  const oldModal = root.querySelector<HTMLElement>("[role=dialog]")?.dataset.dialogKey;
+  const priorDialog=(info?.kind==="rules"?root.querySelector<HTMLElement>(".m-rules-dialog"):null)??root.querySelector<HTMLElement>("[role=dialog]");
+  const oldScroll = priorDialog?.scrollTop ?? 0;
+  const oldModal = priorDialog?.dataset.dialogKey;
   const openDetails = new Set([...root.querySelectorAll<HTMLDetailsElement>("details[open][data-details]")].map(el => el.dataset.details));
   const v = view, g = v.game, actor = actingSeat(g), finished = g.phase === "finished" || !!v.aborted;
   turnPointer.set(!v.started||finished||drawingOrder?null:actor);
   sound.setActive(!finished);
-  root.innerHTML = `<main class="m-shell"><header class="heading"><div><h1>증강마블</h1></div><div class="m-header-tools"><span class="m-mode">${online ? v.seat < 0 ? "온라인 · 관전" : "온라인 대전" : "도도봇과 연습"}</span>${soundMarkup()}<button data-rules data-focus="rules">규칙 보기</button></div></header>
+  const markup = `<main class="m-shell"><header class="heading"><div><h1>증강마블</h1></div><div class="m-header-tools"><span class="m-mode">${online ? v.seat < 0 ? "온라인 · 관전" : "온라인 대전" : "도도봇과 연습"}</span>${soundMarkup()}<button data-rules data-focus="rules">규칙 보기</button></div></header>
   ${!v.started&&!finished?lobbyMarkup():`<div class="m-layout"><section class="m-play"><div class="m-turnbar" style="--seat:${COLORS[actor]}"><span class="m-live"></span><strong>${finished ? "경기 종료" : !connected ? "연결 복구 중" : !v.started ? "접속 대기" : `${g.augmentResume==="round30"?`20라운드 · 블랙 선택 (${g.roundPrism?.pending.length??0}명 남음)`:`${actor + 1}P ${escape(g.players[actor].name)}${actor === v.seat ? " · 내 차례" : "의 차례"}`}`}</strong><span class="m-turn-number">${g.round}라운드 · ${g.turnId}턴</span><b class="m-clock" aria-label="남은 행동 시간">--</b></div>${boardMarkup()}<p class="m-board-caption">지역을 누르면 내 증강을 반영한 가격과 설치물을 확인할 수 있습니다.</p>
   <section class="m-history"><div><h2>진행 기록</h2><span>최근5개</span></div><ol>${(displayedLog ?? g.log).slice(-5).reverse().map((text, i) => `<li class="${i ? "" : "latest"}"><span>${i ? "·" : "최근"}</span>${escape(text)}</li>`).join("")}</ol></section></section>
   <aside class="m-sidebar">${playersMarkup()}${inspectorMarkup()}${moneyHistoryMarkup()}</aside></div>`}</main>${infoMarkup() || (blackPromptMarkup()?"":augmentMarkup() || eventMarkup() || resultMarkup())}`;
+  // Keep the open guide connected: game updates must not reset its focus or paint.
+  const retainedGuide=info?.kind==="rules"?root.querySelector<HTMLElement>(".m-rules-dialog"):null;
+  if(retainedGuide){
+    const template=document.createElement("template");template.innerHTML=markup;
+    root.querySelector(".m-shell")!.replaceWith(template.content.querySelector(".m-shell")!);
+  }else root.innerHTML=markup;
   const activeDialog=root.querySelector<HTMLElement>("[role=dialog]");if(activeDialog&&!info){const rules=document.createElement("button");rules.dataset.rules="";rules.textContent="규칙 보기";activeDialog.prepend(rules);}
   root.querySelectorAll<HTMLCanvasElement>("canvas[data-profile], canvas[data-mascot], canvas[data-winner]").forEach(canvas => { const i = Number(canvas.dataset.profile ?? canvas.dataset.token ?? canvas.dataset.mascot ?? canvas.dataset.winner ?? 0), ctx = canvas.getContext("2d")!; ctx.imageSmoothingEnabled = false; ctx.drawImage(profiles[i], 0, 0, canvas.width, canvas.height); });
   root.querySelectorAll<HTMLDetailsElement>("details[data-details]").forEach(el => { if (openDetails.has(el.dataset.details)) el.open = true; });
-  const modal = root.querySelector<HTMLElement>("[role=dialog]"); root.querySelector<HTMLElement>(".m-shell")!.inert = !!modal&&!modal.classList.contains("m-board-choice");
+  const modal = (info?.kind==="rules"?root.querySelector<HTMLElement>(".m-rules-dialog"):null)??root.querySelector<HTMLElement>("[role=dialog]"); root.querySelector<HTMLElement>(".m-shell")!.inert = !!modal&&!modal.classList.contains("m-board-choice");
   document.body.style.overflow = modal&&!modal.classList.contains("m-board-choice") ? "hidden" : "";
   if (modal && modal.dataset.dialogKey === oldModal) modal.scrollTop = oldScroll;
   if(previousBuildKey===root.querySelector<HTMLElement>("[data-build-key]")?.dataset.buildKey)for(const el of root.querySelectorAll<HTMLInputElement>("[data-build-choice]:not(:disabled)"))el.checked=checkedBuilds.has(el.value);
@@ -551,7 +558,7 @@ root.addEventListener("click", event => {
 root.addEventListener("keydown", event => {
  if(event.key==="Enter"||event.key===" "){const el=event.target as HTMLElement;if(el.hasAttribute("data-pick-boundary")){event.preventDefault();pickBoundary(Number(el.dataset.pickBoundary));return;}if(el.hasAttribute("data-pick-player")){event.preventDefault();pickPlayer(Number(el.dataset.pickPlayer));return;}if(el.hasAttribute("data-pick-line")){event.preventDefault();pickLine(Number(el.dataset.pickLine));return;}}
 
-  const modal = root.querySelector<HTMLElement>("[role=dialog]"); if (!modal) return;
+  const modal = (info?.kind==="rules"?root.querySelector<HTMLElement>(".m-rules-dialog"):null)??root.querySelector<HTMLElement>("[role=dialog]"); if (!modal) return;
   if (event.key === "Escape" && info) { event.preventDefault(); info = null; render(); return; }
   if (event.key !== "Tab") return;
   const nodes = [...modal.querySelectorAll<HTMLElement>("button:not(:disabled),input:not(:disabled),select:not(:disabled),summary,[tabindex='0']")].filter(el => el.getClientRects().length && !el.closest("details:not([open]) :not(summary)"));

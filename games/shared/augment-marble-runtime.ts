@@ -41,7 +41,8 @@ export function diceChoices(roll: RollContext, capabilities: DiceCapabilities, h
     selectiveDouble: before && capabilities.selectiveDouble,
     forces: before ? [...capabilities.forces] : [],
     copies: before && capabilities.mimic ? [...new Set(history)] : [],
-    workSubsidy: before && roll.ordinal === 0 && capabilities.workSubsidy,
+    // Taking salary replaces movement; dice restrictions do not disable it.
+    workSubsidy: canAct && roll.result === null && roll.ordinal === 0 && capabilities.workSubsidy,
     rerolls: available && roll.result !== null && roll.comparison === null ? capabilities.rerolls.filter(id => !roll.used.includes(id) && true) : [],
   };
 }
