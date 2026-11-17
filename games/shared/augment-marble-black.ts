@@ -65,9 +65,15 @@ export function blackArrival(g:Game,seat:number,forced=false,random:()=>number=M
  }
  if(state.arrivalBypass===seat)delete state.arrivalBypass;
  if(hasBlack(g,seat,'devour')){for(const target of g.players.flatMap((p,i)=>i!==seat&&!p.bankrupt?[i]:[])){const clone=state.clones[target];if((state.entityFrame?.seat===target?state.entityFrame.position:g.players[target].position)===g.players[seat].position||(state.entityFrame?.seat===target?g.players[target].position:clone?.position)===g.players[seat].position)requestExecution(g,seat,target,'devour')}}
- if(hasBlack(g,seat,'dirge')){for(let i=0;i<g.players.length;i++)if(i!==seat&&g.players[i].cash>0&&protectedBlack(g,i))reportAdamantBlock(g,i,'진흔곡 · 현금 강탈',seat);const targets=blackTargets(g,seat),first=g.abilities.nextEventId;let total=0;for(const target of targets){const before=g.players[target].cash;blackSteal(g,seat,target,.15,'dirge');total+=before-g.players[target].cash;}g.abilities.events=g.abilities.events.filter(e=>e.id<first||e.ability!=='dirge');if(total){blackEmit(g,seat,'dirge',`상대 ${targets.length}명 현금 15% 동시 강탈`,undefined,total);g.abilities.events.at(-1)!.black={targets};}}
+ if(g.players[seat].position===0)blackStartContact(g,seat);
  return false;
 }
+/** Called once per start arrival or intermediate movement checkpoint. */
+export function blackStartContact(g:Game,seat:number){
+ if(!g.black?.active||g.players[seat].bankrupt)return;
+ if(hasBlack(g,seat,'dirge')){for(let i=0;i<g.players.length;i++)if(i!==seat&&g.players[i].cash>0&&protectedBlack(g,i))reportAdamantBlock(g,i,'진흔곡 · 현금 강탈',seat);const targets=blackTargets(g,seat),first=g.abilities.nextEventId;let total=0;for(const target of targets){const before=g.players[target].cash;blackSteal(g,seat,target,.15,'dirge');total+=before-g.players[target].cash;}g.abilities.events=g.abilities.events.filter(e=>e.id<first||e.ability!=='dirge');if(total){blackEmit(g,seat,'dirge',`상대 ${targets.length}명 현금 15% 동시 강탈`,undefined,total);g.abilities.events.at(-1)!.black={targets};}}
+}
+
 export function blackMoveClone(g:Game,steps:number,direction:number,random:()=>number=Math.random){const seat=g.turn,state=blackState(g),clone=state.clones[seat];if(!clone)return;const key=`${g.turnId}:${g.abilities.ordinal}`;if(state.cloneMoved===key)return;state.cloneMoved=key;state.cloneMove={id:g.abilities.lastMove?.id??((state.cloneMove?.id??0)+1),seat,path:[clone.position]};if(clone.skip>0){clone.skip--;return}if(clone.rest>0){clone.rest--;return}const n=clone.restricted?Math.min(10,steps):steps;clone.restricted=Math.max(0,clone.restricted-1);moveCloneAlongBoard(g,n,direction,random);}
 
 export function blackChoice(g:Game,input:Action,random:()=>number,catalog:readonly AugmentDefinition[]){
