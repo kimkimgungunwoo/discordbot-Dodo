@@ -1,4 +1,4 @@
-import { hasBlack,protectedBlack,blackState } from "./augment-marble-black.js";
+import { hasBlack,protectedBlack,blackState,reportAdamantBlock } from "./augment-marble-black.js";
 import { bankCashChange,withMoneyReason } from "./augment-marble-money.js";
 import { SALARY } from "./augment-marble-economy.js";
 import { AUGMENT_CATALOG, AUGMENT_TIERS, type AugmentDefinition, type EffectKind } from "./augment-marble-augments.js";
@@ -50,7 +50,8 @@ export function spendCost(g: Game, seat: number, amount: number, kind: "builder"
 // Original cashback applies only to money taken by another player's augment.
 export function cashback(_g: Game, _seat: number, _amount: number) {}
 export function steal(g: Game, actor: number, target: number, amount: number, ability: string) {
-  if (immune(g, target) || g.players[target].bankrupt) return;
+  if(g.players[target].bankrupt)return;
+  if(immune(g,target)){if(amount>0)reportAdamantBlock(g,target,`${AUGMENT_CATALOG.find(a=>a.id===ability||a.effect===ability)?.name??ability} · 현금 강탈`,actor);return;}
   const {paid,principal,received}=withMoneyReason(g,AUGMENT_CATALOG.find(a=>a.id===ability)?.name??"능력 강탈",()=>stealMoney(g,actor,target,amount));
   if (power(g, target, "cashback")) withMoneyReason(g,"페이백",()=>receiveIncome(g, target, Math.floor(paid / 2)));
   const card = definitions(g,actor).find(a => a.id === ability || a.effect === ability);

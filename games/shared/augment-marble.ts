@@ -1,4 +1,4 @@
-import {blackState,hasBlack,protectedBlack,blackTargets,resolveBlackAcquisition,processBlackContacts,blackTurnStart,blackArrival,blackMoveClone,blackChoice,blackAutoChoice,blackInsolvency,enterCloneVisit,leaveCloneVisit,queueTyphoonChoices,withCloneEntity,type BlackState} from "./augment-marble-black.js";
+import {blackState,hasBlack,protectedBlack,reportAdamantBlock,blackTargets,resolveBlackAcquisition,processBlackContacts,blackTurnStart,blackArrival,blackMoveClone,blackChoice,blackAutoChoice,blackInsolvency,enterCloneVisit,leaveCloneVisit,queueTyphoonChoices,withCloneEntity,type BlackState} from "./augment-marble-black.js";
 import {captureCashTransfers,bankCashChange,withMoneyReason,type MoneyTransfer} from "./augment-marble-money.js";
 import { strategicBotAction } from "./augment-marble-bot.js";
 import { createEventState, drawEvent, eventDefinition, type EventId, type EventState } from "./augment-marble-events.js";
@@ -119,12 +119,13 @@ export function arrive(g: Game, random: () => number = Math.random) {
   delete g.landmarkVisit;
   if(property.owner===g.turn&&property.buildings===7&&!property.landmark)g.landmarkVisit={seat:g.turn,tile:player.position,turnId:g.turnId};
   landEffects(g);rewardRevisit(g,g.turn,player.position);
+  if(tile.kind==="rest"&&protectedBlack(g,g.turn))reportAdamantBlock(g,g.turn,"무인도 · 구금");
   note(g, `${g.turn + 1}P ${tile.name} 도착`);
   if (tile.kind === "city") {
     if (property.owner === null) g.phase = "buy";
     else if (property.owner === g.turn) g.phase = property.purchasedTurn===g.turnId&&player.laps<2?"end":"build";
     else {
-      const quote = rentQuote(g,tile.index,g.turn),toll=quote.amount;
+      const quote = rentQuote(g,tile.index,g.turn),toll=quote.amount;reportTollProtection(g,tile.index,g.turn,toll);
       property.festival=0;
       if(toll>0 && g.world.players[g.turn].autoPass>0){g.world.players[g.turn].autoPass--;note(g,"하이패스 · 통행료 자동 면제");g.phase="takeover";}
       else if(toll>0 && g.world.players[g.turn].passCoupons>0){g.world.rent={...quote,creditor:property.owner,tile:tile.index};g.phase="rent";}
@@ -412,6 +413,13 @@ export function rentQuote(g:Game,index:number,seat:number){
  const amount=lossAmount(g,seat,base),principal=lossWithoutGlass(g,seat,base),receipt=glassIncome(g,owner,principal);
  return {amount,principal,receipt};
 }
+function reportTollProtection(g:Game,index:number,seat:number,paid:number){
+ const owner=g.properties[index].owner;if(owner===null||!protectedBlack(g,seat))return;
+ const ordinary=incomeWithoutGlass(g,owner,rent(g,index))*((g.world.players[seat].overspendUntil??0)>=g.abilities.ownerTurns[seat]&&(g.world.players[seat].overspendUntil??0)>0?1.5:1);
+ if(ordinary<=paid)return;
+ const reasons:string[]=[];if((g.abilities.gambles[owner]?.[index]??1)>1&&definitionsActive(g,owner))reasons.push('도박사');if(g.properties[index].festival)reasons.push('축제');if(power(g,owner,'investor'))reasons.push('수입 증강');if(g.world.players[seat].overspendUntil>0&&g.world.players[seat].overspendUntil>=g.abilities.ownerTurns[seat])reasons.push('과소비');
+ reportAdamantBlock(g,seat,`${reasons.join('·')||'통행료 효과'} · ${Math.ceil(ordinary)-paid}만원 추가 지출`,owner);
+}
 export function rentPayment(g:Game,index:number,seat:number){return rentQuote(g,index,seat).amount;}
 
 export const ISLAND_COST = 300;
@@ -430,6 +438,7 @@ export function startTurn(g: Game) {
   blackTurnStart(g);
   if(g.world?.players[g.turn].sleepThisTurn||g.abilities.statuses[g.turn].skipTurns>0){g.abilities.pendingTarget=false;return;}
   const position = g.players[g.turn].position;
+  if(position!==0&&power(g,g.turn,"jujitsu"))g.players.forEach((p,i)=>{if(i!==g.turn&&p.position===position)reportAdamantBlock(g,i,"주짓수 · 기절",g.turn);});
   if (power(g, g.turn, "steal") && g.abilities.ownerTurns[g.turn] > 1) g.players.forEach((p, i) => { if (i !== g.turn && !p.bankrupt && p.position === position) steal(g, g.turn, i, Math.floor(p.cash * .1), "mosquito"); });
   if (power(g, g.turn, "jujitsu") && position !== 0) g.players.forEach((p, i) => { if (i !== g.turn && !p.bankrupt && !immune(g, i) && p.position === position) { g.abilities.statuses[i].skipTurns = Math.max(1, g.abilities.statuses[i].skipTurns); g.abilities.statuses[i].skipBy = "주짓수"; emitAbility(g.abilities, { actor:g.turn,target:i,tile:position,ability:"jujitsu",caption:"주짓수 · 다음 차례 기절",visual:"trap",stage:"before_move" }); } });
   if (power(g, g.turn, "exploit")) {const targets=turnTargets(g);for(const target of targets)steal(g,g.turn,target,Math.floor(targetWealth(g,target)*.15/targets.length),"exploit");}
@@ -526,7 +535,7 @@ export function moveCloneAlongBoard(g:Game,steps:number,direction:number,random:
  const state=blackState(g),clone=state.clones[g.turn],record=state.cloneMove;if(!clone||!record)return;
  const oldMove=g.abilities.movement,oldLast=g.abilities.lastMove,oldPhase=g.phase,oldEntity=g.abilities.movingEntity;
  withCloneEntity(g,g.turn,()=>{const p=g.players[g.turn];g.abilities.movement={seat:g.turn,remaining:steps,visited:[],resume:"step"};g.abilities.lastMove=record;g.abilities.movingEntity="clone";
-  try{const move=g.abilities.movement;while(move.remaining>0&&!p.bankrupt){const boundary=direction===1?p.position:(p.position+35)%36;if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);record.wall={boundary,tile:p.position,next:(p.position+direction+36)%36};break;}p.position=(p.position+direction+36)%36;move.remaining--;move.visited.push(p.position);record.path.push(p.position);passingEffects(g,random);if(p.position===0&&direction===1){receiveSalary(g,g.turn);settleForcedPayment(g,g.turn,landTax(g,g.turn),null);}if(g.phase==='finished')break;}}
+  try{const move=g.abilities.movement;while(move.remaining>0&&!p.bankrupt){const boundary=direction===1?p.position:(p.position+35)%36;if(g.world.walls.includes(boundary)&&protectedBlack(g,g.turn))reportAdamantBlock(g,g.turn,"벽 · 이동 정지");if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);record.wall={boundary,tile:p.position,next:(p.position+direction+36)%36};break;}p.position=(p.position+direction+36)%36;move.remaining--;move.visited.push(p.position);record.path.push(p.position);passingEffects(g,random);if(p.position===0&&direction===1){receiveSalary(g,g.turn);settleForcedPayment(g,g.turn,landTax(g,g.turn),null);}if(g.phase==='finished')break;}}
   finally{g.abilities.movement=oldMove;g.abilities.lastMove=oldLast;g.abilities.movingEntity=oldEntity;if(g.phase!=='finished')g.phase=oldPhase;}
  });
 }
@@ -537,7 +546,7 @@ function advanceMovement(g: Game, random: () => number, catalog: readonly Augmen
   while (move.remaining > 0) {
     const direction=g.world.players[g.turn].reverseThisTurn?-1:1;
     const boundary=direction===1?player.position:(player.position+BOARD.length-1)%BOARD.length;
-    if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);move.remaining=0;g.abilities.lastMove!.wall={boundary,tile:player.position,next:(player.position+direction+36)%36};note(g,"벽 충돌 · 직전 칸에서 정지");break;}
+    if(g.world.walls.includes(boundary)&&protectedBlack(g,g.turn))reportAdamantBlock(g,g.turn,"벽 · 이동 정지");if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);move.remaining=0;g.abilities.lastMove!.wall={boundary,tile:player.position,next:(player.position+direction+36)%36};note(g,"벽 충돌 · 직전 칸에서 정지");break;}
     player.position = (player.position + direction + BOARD.length) % BOARD.length; move.remaining--; move.visited.push(player.position); g.abilities.lastMove?.path.push(player.position);
     passingEffects(g, random);
     if (g.phase === "finished") { g.abilities.movement = null; return; }
@@ -568,8 +577,9 @@ function tranquilize(g:Game,actor:number,target:number){
 }
 function applyMarks(g: Game, seat: number) {
   const tile = g.players[seat].position;
-  const hit = g.abilities.marks.filter(m => m.tile === tile && m.owner !== seat && !g.players[m.owner].bankrupt && definitionsActive(g,m.owner) && !immune(g, seat) && (m.expiresRound ?? Infinity) > g.round);
+  const hit = g.abilities.marks.filter(m => m.tile === tile && m.owner !== seat && !g.players[m.owner].bankrupt && definitionsActive(g,m.owner) && (m.expiresRound ?? Infinity) > g.round);
   for (const mark of hit) {
+    if(immune(g,seat)){reportAdamantBlock(g,seat,mark.kind==="trap"?"덫 · 다음 차례 휴식":mark.kind==="poison"?"독 · 주사위 제한":"방귀쟁이 · 주사위 제한",mark.owner);continue;}
     g.abilities.marks = g.abilities.marks.filter(m => m !== mark);
     const status=g.abilities.statuses[seat];
     if (mark.kind === "trap") {status.skipTurns = Math.max(status.skipTurns, 1);status.skipBy="덫";cancelExtraTurn(g,seat);}
@@ -605,7 +615,9 @@ function passingEffects(g: Game, random: () => number) {
         else{g.players[other].position=to;emitAbility(g.abilities,{actor,target:other,tile,ability:"singed",caption:"신지드 · 뒤로 2칸",visual:"poison",flight:{seat:other,from:tile,to}});forcedArrival(g,other,random);}
       }
     }
-    if (!passing || immune(g, actor)) continue;
+    if(protectedBlack(g,other)&&power(g,actor,'singed'))reportAdamantBlock(g,other,'신지드 · 강제 이동',actor);
+    if(!passing)continue;
+    if(immune(g,actor)){for(const kind of ['vendor','low_kick','calf_kick','drop_kick','trip'] as const)if(power(g,other,kind)){const a=AUGMENT_CATALOG.find(a=>a.effect===kind&&a.power===power(g,other,kind));reportAdamantBlock(g,actor,a?.name??kind,other);}continue;}
     const vendor = power(g, other, "vendor"); if (vendor) steal(g,other,actor,vendor,"vendor");
     if (power(g,other,"low_kick") || power(g,other,"drop_kick")) { g.abilities.statuses[actor].restrictedRolls = Math.max(1,g.abilities.statuses[actor].restrictedRolls);g.abilities.statuses[actor].restrictedBy=power(g,other,"drop_kick")?"드롭킥":"로우킥"; }
     const reduction = Math.max(power(g,other,"calf_kick"),power(g,other,"drop_kick"));
@@ -618,14 +630,14 @@ function passingEffects(g: Game, random: () => number) {
 export function forcedArrival(g: Game, seat: number, random: () => number) {
   if(g.players[seat].position!==9)g.players[seat].rest=0;
   const p=g.players[seat],tile=BOARD[p.position],property=g.properties[p.position];
-  if(protectedBlack(g,seat)){}
+  if(tile.kind==="rest"&&protectedBlack(g,seat))reportAdamantBlock(g,seat,"무인도 · 구금");
   blackArrival(g,seat,true,random);if(p.bankrupt)return;
   applyMarks(g,seat);rewardRevisit(g,seat,tile.index);
   if(tile.kind==="event"||tile.kind==="portal"){g.world.deferred??=[];g.world.deferred.push({seat,tile:tile.index,effects:true,arrived:true,settled:true});note(g,"강제 이동 · 도착 이벤트 대기");}
   else if(tile.kind==="bonus") withMoneyReason(g,"보너스",()=>receiveIncome(g,seat,BONUS));
   else if(tile.kind==="rest" && !protectedBlack(g,seat) && !power(g,seat,"island_owner")) p.rest=3;
   else if(tile.kind==="city" && property.owner!==null && property.owner!==seat) {
-    const quote=rentQuote(g,tile.index,seat),amount=quote.amount;property.festival=0;
+    const quote=rentQuote(g,tile.index,seat),amount=quote.amount;reportTollProtection(g,tile.index,seat,amount);property.festival=0;
     if(amount>0&&g.world.players[seat].autoPass>0){g.world.players[seat].autoPass--;note(g,`${seat+1}P 하이패스 · 강제 이동 통행료 면제`);}
     else if(amount>0&&g.world.players[seat].passCoupons>0){g.world.deferred??=[];g.world.deferred.push({seat,tile:tile.index,effects:false,noPurchase:true,rentAmount:amount,principal:quote.principal,receipt:quote.receipt,creditor:property.owner});note(g,`${seat+1}P 강제 이동 통행료 · 쿠폰 선택 대기`);}
     else settleForcedPayment(g,seat,amount,property.owner,quote);
@@ -706,7 +718,7 @@ function eventSample<T>(pool:readonly T[],random:()=>number):T|undefined{return 
 function eventShuffle<T>(pool:readonly T[],random:()=>number){const a=[...pool];for(let i=a.length-1;i>0;i--){const j=Math.min(i,Math.floor(random()*(i+1)));[a[i],a[j]]=[a[j],a[i]];}return a;}
 export function destroyTopBuilding(g:Game,tile:number,loseEmpty=false,kind:"quake"|"missile"="quake"){
  const p=g.properties[tile],before={...p};
- if(p.owner!==null&&protectedBlack(g,p.owner))return;
+ if(p.owner!==null&&protectedBlack(g,p.owner)){if(p.landmark||p.buildings||loseEmpty)reportAdamantBlock(g,p.owner,`${kind==="missile"?"미사일":"지진"} · ${BOARD[tile].name} 파괴 방어`,g.turn);return;}
  const record=()=>{if(g.destructionBatch?.revision!==g.revision)g.destructionBatch={id:(g.destructionBatch?.id??0)+1,revision:g.revision,kind,items:[]};g.destructionBatch!.items.push({tile,before});};
  if(p.landmark){p.landmark=false;record();note(g,`${BOARD[tile].name} 랜드마크 붕괴`);return;}
  for(let i=BUILDINGS.length-1;i>=0;i--)if(p.buildings&(1<<i)){p.buildings&=~(1<<i);record();note(g,`${BOARD[tile].name} ${BUILDINGS[i].name} 붕괴`);return;}
@@ -749,7 +761,7 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
  if(input.decline && id!=="hero"&&id!=="change_augment")throw new Error("이 이벤트는 거부할 수 없습니다.");
  // The atomic applyAction clone prevents failed choices from consuming the event.
  g.world.current=null;g.phase="end";
- if(protectedBlack(g,seat)&&eventDefinition(id).category==="negative"){note(g,"금강불괴 · 부정 이벤트 무시");return;}
+ if(protectedBlack(g,seat)&&eventDefinition(id).category==="negative"){reportAdamantBlock(g,seat,eventDefinition(id).name);note(g,"금강불괴 · 부정 이벤트 무시");return;}
  if(input.decline){note(g,`${eventDefinition(id).name} · 사용 포기`);return;}
  switch(id){
   case "salary_again":{const paid=receiveSalary(g,seat);note(g,`월급 한번더! · ${paid}만원`);break;}
@@ -764,12 +776,13 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
   case "tranquilizer":{const other=target();if(input.entity==="clone"&&blackState(g).clones[other]){blackState(g).clones[other].skip++;emitAbility(g.abilities,{actor:seat,target:other,tile:blackState(g).clones[other].position,ability:"tranquilizer",caption:"분신 · 다음 차례 수면",targetEntity:"clone",visual:"trap"});}else tranquilize(g,seat,other);break;}
   case "extra_coupon":status.extraCoupons++;break;
   case "typhoon":{
+   for(let i=0;i<g.players.length;i++)if(protectedBlack(g,i))reportAdamantBlock(g,i,"태풍 · 강제 이동",seat);
    if(queueTyphoonChoices(g))break;
    const items=playerDisplayOrder(g).filter(i=>!g.players[i].bankrupt&&!protectedBlack(g,i)).map(seat=>({seat,from:g.players[seat].position,to:(g.players[seat].position+34)%36}));
    g.flightBatch={id:(g.flightBatch?.id??0)+1,items};for(const item of items)g.players[item.seat].position=item.to;
    beginEventVisits(g,items.map(item=>({seat:item.seat,tile:item.to,effects:true,arrived:true,forced:true})),random,catalog);break;
   }
-  case "locust":{const start=Math.min(35,Math.floor(random()*36));g.locustBatch={id:(g.locustBatch?.id??0)+1,path:Array.from({length:6},(_,i)=>(start+i)%36)};for(let step=1;step<=5;step++){const tile=(start+step)%36;if(BOARD[tile].kind==="city"&&(g.properties[tile].owner===null||!protectedBlack(g,g.properties[tile].owner!)))g.properties[tile].locust=(g.properties[tile].locust??0)+1;}note(g,`메뚜기떼 · ${BOARD[start].name}에서 5칸 이동`);break;}
+  case "locust":{const start=Math.min(35,Math.floor(random()*36));g.locustBatch={id:(g.locustBatch?.id??0)+1,path:Array.from({length:6},(_,i)=>(start+i)%36)};for(let step=1;step<=5;step++){const tile=(start+step)%36;if(BOARD[tile].kind==="city"&&(g.properties[tile].owner===null||!protectedBlack(g,g.properties[tile].owner!)))g.properties[tile].locust=(g.properties[tile].locust??0)+1;else if(BOARD[tile].kind==="city"&&g.properties[tile].owner!==null)reportAdamantBlock(g,g.properties[tile].owner!,"메뚜기떼 · 통행료 감소",seat);}note(g,`메뚜기떼 · ${BOARD[start].name}에서 5칸 이동`);break;}
   case "change_augment":{
    const owned=g.augments?.players[seat].owned??[];if(!owned.length){note(g,"보유 증강이 없어 교체 종료");break;}
    const old=catalog.find(a=>a.id===input.augmentId&&owned.includes(a.id));if(!old)throw new Error("교체할 증강을 선택해주세요.");
@@ -788,12 +801,12 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
   case "fool":{const other=eventSample(g.players.flatMap((p,i)=>i!==seat&&!p.bankrupt?[i]:[]),random);if(other!==undefined)beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true}],random,catalog);break;}
   case "reverse_order":g.world.direction=g.world.direction===1?-1:1;break;
   case "bet":{if(!Number.isSafeInteger(input.amount)||input.amount!<0||input.amount!>g.players[seat].cash)throw new Error("보유 현금 이하의 정수 금액을 입력해주세요.");const amount=input.amount!;if(random()<.5){const profit=receiveIncome(g,seat,amount);note(g,`도박 성공 · 원금 유지 · 수익 ${profit}만원`);}else{const loss=Math.min(g.players[seat].cash,lossAmount(g,seat,amount));consumeLoss(g,seat,loss);g.players[seat].cash-=loss;note(g,`도박 실패 · ${loss}만원 손실`);}break;}
-  case "depression":for(const [i,s]of g.world.players.entries())if(!protectedBlack(g,i))s.halfSalary++;break;
+  case "depression":for(const [i,s]of g.world.players.entries())if(!protectedBlack(g,i))s.halfSalary++;else reportAdamantBlock(g,i,"경제대공황 · 월급 삭감",seat);break;
   case "sleep":status.sleep++;cancelExtraTurn(g,seat);status.endLocked=true;break;
   case "vacation":beginEventVisits(g,[{seat,tile:9,effects:true}],random,catalog);break;
   case "unpaid":status.unpaidSalary++;break;
   case "lost_die":status.lostDice++;break;
-  case "famine":g.world.famineUntil=g.round+3;break;
+  case "famine":g.world.famineUntil=g.round+3;for(let i=0;i<g.players.length;i++)if(g.properties.some(p=>p.owner===i))reportAdamantBlock(g,i,"흉년 · 통행료 감소",seat);break;
   case "overspend":status.overspendUntil=g.abilities.ownerTurns[seat]+3;break;
   case "reverse_move":status.reverseMoves++;break;
   case "disable":status.disabledUntil=g.round+3;g.abilities.pendingTarget=false;break;

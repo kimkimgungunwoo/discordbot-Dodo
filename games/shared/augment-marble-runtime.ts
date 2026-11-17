@@ -110,6 +110,7 @@ export function chooseBlackDice(roll: RollContext, useNew: boolean) {
 
 export type AbilityVisual = "steal" | "kick" | "trip" | "poison" | "trap" | "income" | "revive" | "dice" | "buff";
 export interface AbilityEvent {
+  blocked?:{reason:string;source?:number;revision:number};
   targetEntity?:"main"|"clone";actorEntity?:"main"|"clone";
   black?: { targets?:number[]; destinationTile?:number; territories?:{tile:number;owner:number}[] };
   id: number;
