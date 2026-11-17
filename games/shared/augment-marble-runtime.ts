@@ -141,7 +141,7 @@ export interface AbilityRuntime {
   movement: { seat: number; remaining: number; visited: number[]; resume: "step" | "arrival" } | null;
   statuses: { skipTurns: number; skipBy?: string; restrictedRolls: number; restrictedBy?: string; nextTurnRestricted?: boolean; restrictWholeTurn?: boolean; revivals?: { id: string; cash: number; tier: number; consumed: boolean }[]; revival: { tier: number; consumed: boolean } | null }[];
   lastThrow?: { additional?: boolean; id: number; seat: number; kind: "roll" | "reroll" | "copy"; dice: number[]; die?: 0 | 1 } | null;
-  lastMove: { id: number; seat: number; path: number[]; flight?:boolean;wall?:{boundary:number;tile:number;next:number} } | null;
+  lastMove: { entity?:"main"|"clone"; id: number; seat: number; path: number[]; flight?:boolean;wall?:{boundary:number;tile:number;next:number} } | null;
   startedTurn: number;
   ordinal: number;
   history: number[];

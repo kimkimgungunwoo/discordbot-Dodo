@@ -24,7 +24,7 @@ export interface Player { liquidationRescueUsed?:boolean; name: string; cash: nu
 export interface Property { revisitBoost?:number; owner: number | null; buildings: number; landmark?: boolean; builtTurn?: number; purchasedTurn?:number; festival?: number; locust?: number }
 export type Phase = "portal" | "event" | "rent" | "augment" | "roll" | "dice" | "buy" | "build" | "takeover" | "debt" | "end" | "finished";
 export type WinReason = "bankruptcy" | "triple" | "line" | "assets";
-export interface Game { diceComparison?:number[]|null; black?:BlackState; roundPrism?:{given:boolean;pending:number[]}; locustBatch?:{id:number;path:number[]}; landmarkVisit?:{seat:number;tile:number;turnId:number}; teleport?:{id:number;seat:number;from:number;to:number}; destructionBatch?:{id:number;revision:number;kind:"quake"|"missile";items:{tile:number;before:Property}[]}; flightBatch?:{id:number;items:{seat:number;from:number;to:number;entity?:"main"|"clone"}[]}; turnOrder?:number[];orderDrawUntil?:number; moneyTransfers?:MoneyTransfer[]; world: EventState; abilities: AbilityRuntime; players: Player[]; properties: Property[]; turn: number; turnId: number; round: number; roundPending: number[]; revision: number; phase: Phase; dice: number[]; doubles: number; extraTurn: boolean; winner: number | null; reason: WinReason | null; debt: { amount: number; creditor: number | null; reason: "rent" | "land_tax"; principal?:number;receipt?:number; resume: "takeover" | "arrival" | "event" } | null; log: string[]; augments: AugmentState | null; augmentSeat: number | null; augmentResume: "start" | "arrive" | "round30" | null }
+export interface Game { diceComparison?:number[]|null; black?:BlackState; roundPrism?:{given:boolean;pending:number[]}; locustBatch?:{id:number;path:number[]}; landmarkVisit?:{seat:number;tile:number;turnId:number}; teleport?:{id:number;seat:number;from:number;to:number;entity?:"main"|"clone"}; destructionBatch?:{id:number;revision:number;kind:"quake"|"missile";items:{tile:number;before:Property}[]}; flightBatch?:{id:number;items:{seat:number;from:number;to:number;entity?:"main"|"clone"}[]}; turnOrder?:number[];orderDrawUntil?:number; moneyTransfers?:MoneyTransfer[]; world: EventState; abilities: AbilityRuntime; players: Player[]; properties: Property[]; turn: number; turnId: number; round: number; roundPending: number[]; revision: number; phase: Phase; dice: number[]; doubles: number; extraTurn: boolean; winner: number | null; reason: WinReason | null; debt: { amount: number; creditor: number | null; reason: "rent" | "land_tax"; principal?:number;receipt?:number; resume: "takeover" | "arrival" | "event" } | null; log: string[]; augments: AugmentState | null; augmentSeat: number | null; augmentResume: "start" | "arrive" | "round30" | null }
 export interface Seat { userId: string | null; name: string; bot?: string }
 export interface View { presentationAt?:number; type: "MARBLE_STATE"; matchId: string; game: Game; seats: (Seat & { connected: boolean; ready?: boolean })[]; seat: number; started: boolean; deadline: number; serverNow: number; aborted?: string; rematch?: { matchId: string; votes: string[]; required: number; delivered: boolean } }
 export interface Action { action: "black_choice" | "black_trade" | "portal_move" | "roll" | "buy" | "build" | "takeover" | "skip" | "end" | "sell" | "bankrupt" | "augment_select" | "augment_reroll" | "dice_force" | "dice_double" | "dice_copy" | "dice_reroll" | "dice_choose" | "dice_confirm" | "subsidy" | "escape" | "landmark" | "ability_target" | "island_buy" | "event_resolve" | "rent_pay" | "coupon_pass" | "home_stone" | "extra_coupon"; entity?: "main"|"clone"; eventSerial?: number; amount?: number; decline?: boolean; augmentId?: string; line?: number; steps?: number; target?: number; ability?: ForceAbility | RerollAbility; option?: number; die?: 0 | 1; useNew?: boolean; offerId?: string; slot?: number; buildings?:number[]; building?: number; tile?: number }
@@ -194,14 +194,14 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
   if(g.phase==="rent")throw new Error("통행료 지급 여부를 먼저 선택해주세요.");
   if(input.action==="portal_move"){
    if(g.phase!=="portal"||!Number.isInteger(input.tile)||BOARD[input.tile!]?.kind!=="city")throw new Error("포탈로 이동할 지역을 선택하세요.");
-   const seat=g.turn,from=g.players[seat].position,noPurchase=g.world.noPurchase;
-   g.teleport={id:(g.teleport?.id??0)+1,seat,from,to:input.tile!};beginEventVisits(g,[{seat,tile:input.tile!,effects:true,noPurchase}],random,catalog);g.revision++;return;
+   const seat=g.turn,entity=g.black?.entityFrame?.seat===seat?"clone" as const:undefined,noPurchase=g.world.noPurchase;
+   beginEventVisits(g,[{seat,tile:input.tile!,effects:true,noPurchase,entity}],random,catalog);g.revision++;return;
   }
   if(g.phase==="portal")throw new Error("포탈 목적지를 먼저 선택하세요.");
   if(input.action==="home_stone"){
     if(g.phase!=="roll"||g.abilities.roll||g.world.interrupted||g.players[g.turn].rest||g.abilities.statuses[g.turn].skipTurns||g.world.players[g.turn].sleepThisTurn||!g.world.players[g.turn].homeStones)throw new Error("지금 귀환석을 사용할 수 없습니다.");
     startTurn(g);if(g.abilities.pendingTarget)throw new Error("대상을 먼저 선택해주세요.");
-    g.world.players[g.turn].homeStones--;g.world.players[g.turn].endLocked=true;g.players[g.turn].position=0;const paid=receiveSalary(g,g.turn);note(g,`귀환석 · 출발 이동 · 월급 ${paid}만원`);g.extraTurn=false;g.phase="end";g.revision++;return;
+    g.world.players[g.turn].homeStones--;g.world.players[g.turn].endLocked=true;g.teleport={id:(g.teleport?.id??0)+1,seat:g.turn,from:g.players[g.turn].position,to:0};g.players[g.turn].position=0;const paid=receiveSalary(g,g.turn);note(g,`귀환석 · 출발 이동 · 월급 ${paid}만원`);g.extraTurn=false;g.phase="end";g.revision++;return;
   }
   if(input.action==="extra_coupon"){
     if(!["buy","build","takeover","end"].includes(g.phase)||g.world.interrupted||g.extraTurn||g.players[g.turn].rest||g.abilities.statuses[g.turn].skipTurns||g.world.players[g.turn].endLocked||!g.world.players[g.turn].extraCoupons)throw new Error("지금 한번더 쿠폰을 사용할 수 없습니다.");
@@ -738,7 +738,11 @@ function nextEventVisit(g:Game,random:()=>number=Math.random,catalog:readonly Au
   g.world.noPurchase=!!visit.noPurchase;
   g.turn=visit.seat;g.extraTurn=false;g.doubles=0;g.abilities.ordinal=0;g.abilities.roll=null;g.abilities.movement=null;
   const previous=g.players[g.turn].position;g.players[g.turn].position=visit.tile;
-  if(!visit.arrived&&previous!==visit.tile)g.abilities.lastMove={id:(g.abilities.lastMove?.id??0)+1,seat:g.turn,path:[previous,visit.tile],flight:visit.flight};
+  if(visit.entity==="clone"&&g.black?.clones[g.turn])g.black.clones[g.turn].position=visit.tile;
+  if(!visit.arrived&&previous!==visit.tile){
+   g.abilities.lastMove={id:(g.abilities.lastMove?.id??0)+1,seat:g.turn,path:[previous,visit.tile],flight:visit.flight,entity:visit.entity};
+   if(!visit.flight)g.teleport={id:(g.teleport?.id??0)+1,seat:g.turn,from:previous,to:visit.tile,entity:visit.entity};
+  }
   g.phase="end";
   // Forced arrivals share Singed settlement. Ordinary event visits retain their destination rules.
   if(visit.rentAmount!==undefined&&visit.creditor!==undefined){g.world.rent={amount:visit.rentAmount,principal:visit.principal,receipt:visit.receipt,creditor:visit.creditor,tile:visit.tile};g.phase="rent";}
@@ -755,7 +759,7 @@ function nextEventVisit(g:Game,random:()=>number=Math.random,catalog:readonly Au
 function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly AugmentDefinition[]){
  const pending=g.world.current;
  if(g.phase!=="event"||!pending||pending.seat!==g.turn||input.eventSerial!==pending.serial)throw new Error("최신 이벤트를 확인해주세요.");
- const id=pending.id,seat=g.turn,status=g.world.players[seat];
+ const id=pending.id,seat=g.turn,status=g.world.players[seat],entity=g.black?.entityFrame?.seat===seat?"clone" as const:undefined;
  const target=()=>{if(!Number.isInteger(input.target)||!g.players.some((p,i)=>i===input.target&&i!==seat&&!p.bankrupt&&(id==="hero"||!protectedBlack(g,i))))throw new Error("대상 플레이어를 선택해주세요.");return input.target!;};
  const ownedTile=()=>{if(!eventOwnedTiles(g).length)return undefined;if(!Number.isInteger(input.tile)||!eventOwnedTiles(g).includes(input.tile!))throw new Error("내 지역을 선택해주세요.");return input.tile!;};
  if(input.decline && id!=="hero"&&id!=="change_augment")throw new Error("이 이벤트는 거부할 수 없습니다.");
@@ -772,7 +776,7 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
   case "long_robbery":{const other=target();const {principal}=stealMoney(g,seat,other,Math.floor(g.players[other].cash*.1));note(g,`초장거리 강도 · ${other+1}P에게서 ${principal}만원 강탈`);break;}
   case "home_stone":status.homeStones++;break;
   case "wall":{const free=BOARD.map(t=>t.index).filter(i=>!g.world.walls.includes(i));if(!free.length)break;if(!Number.isInteger(input.tile)||!free.includes(input.tile!))throw new Error("벽이 없는 경계를 선택해주세요.");g.world.walls.push(input.tile!);break;}
-  case "hero":{const other=target();beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true,startEffects:true}],random,catalog);break;}
+  case "hero":{const other=target();beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true,startEffects:true,entity}],random,catalog);break;}
   case "tranquilizer":{const other=target();if(input.entity==="clone"&&blackState(g).clones[other]){blackState(g).clones[other].skip++;emitAbility(g.abilities,{actor:seat,target:other,tile:blackState(g).clones[other].position,ability:"tranquilizer",caption:"분신 · 다음 차례 수면",targetEntity:"clone",visual:"trap"});}else tranquilize(g,seat,other);break;}
   case "extra_coupon":status.extraCoupons++;break;
   case "typhoon":{
@@ -794,16 +798,16 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
    acquireEffect(g,seat,replacement.id,random,catalog);note(g,`증강변경 · ${old.name} → ${replacement.name}`);break;
   }
   case "quake":for(const tile of eventShuffle(BOARD.filter(t=>g.properties[t.index].buildings||g.properties[t.index].landmark).map(t=>t.index),random).slice(0,3))destroyTopBuilding(g,tile);break;
-  case "wormhole":{const tile=eventSample(BOARD.filter(t=>t.kind==="event"&&t.index!==g.players[seat].position),random);if(tile)beginEventVisits(g,[{seat,tile:tile.index,effects:false}],random,catalog);break;}
-  case "homing":{g.players[seat].position=0;const salary=receiveSalary(g,seat);note(g,`귀소본능 · 월급 ${salary}만원`);pay(g,landTax(g,seat),null,"event","land_tax");break;}
+  case "wormhole":{const tile=eventSample(BOARD.filter(t=>t.kind==="event"&&t.index!==g.players[seat].position),random);if(tile)beginEventVisits(g,[{seat,tile:tile.index,effects:false,entity}],random,catalog);break;}
+  case "homing":{g.teleport={id:(g.teleport?.id??0)+1,seat,from:g.players[seat].position,to:0,entity};g.players[seat].position=0;if(entity==="clone")blackState(g).clones[seat].position=0;const salary=receiveSalary(g,seat);note(g,`귀소본능 · 월급 ${salary}만원`);pay(g,landTax(g,seat),null,"event","land_tax");break;}
   case "random_wall":{const tile=eventSample(BOARD.map(t=>t.index).filter(i=>!g.world.walls.includes(i)),random);if(tile!==undefined)g.world.walls.push(tile);break;}
   case "auto_pass":status.autoPass++;break;
-  case "fool":{const other=eventSample(g.players.flatMap((p,i)=>i!==seat&&!p.bankrupt?[i]:[]),random);if(other!==undefined)beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true}],random,catalog);break;}
+  case "fool":{const other=eventSample(g.players.flatMap((p,i)=>i!==seat&&!p.bankrupt?[i]:[]),random);if(other!==undefined)beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true,entity}],random,catalog);break;}
   case "reverse_order":g.world.direction=g.world.direction===1?-1:1;break;
   case "bet":{if(!Number.isSafeInteger(input.amount)||input.amount!<0||input.amount!>g.players[seat].cash)throw new Error("보유 현금 이하의 정수 금액을 입력해주세요.");const amount=input.amount!;if(random()<.5){const profit=receiveIncome(g,seat,amount);note(g,`도박 성공 · 원금 유지 · 수익 ${profit}만원`);}else{const loss=Math.min(g.players[seat].cash,lossAmount(g,seat,amount));consumeLoss(g,seat,loss);g.players[seat].cash-=loss;note(g,`도박 실패 · ${loss}만원 손실`);}break;}
   case "depression":for(const [i,s]of g.world.players.entries())if(!protectedBlack(g,i))s.halfSalary++;else reportAdamantBlock(g,i,"경제대공황 · 월급 삭감",seat);break;
   case "sleep":status.sleep++;cancelExtraTurn(g,seat);status.endLocked=true;break;
-  case "vacation":beginEventVisits(g,[{seat,tile:9,effects:true}],random,catalog);break;
+  case "vacation":beginEventVisits(g,[{seat,tile:9,effects:true,entity}],random,catalog);break;
   case "unpaid":status.unpaidSalary++;break;
   case "lost_die":status.lostDice++;break;
   case "famine":g.world.famineUntil=g.round+3;for(let i=0;i<g.players.length;i++)if(g.properties.some(p=>p.owner===i))reportAdamantBlock(g,i,"흉년 · 통행료 감소",seat);break;
