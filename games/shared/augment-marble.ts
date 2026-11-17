@@ -535,7 +535,7 @@ export function moveCloneAlongBoard(g:Game,steps:number,direction:number,random:
  const state=blackState(g),clone=state.clones[g.turn],record=state.cloneMove;if(!clone||!record)return;
  const oldMove=g.abilities.movement,oldLast=g.abilities.lastMove,oldPhase=g.phase,oldEntity=g.abilities.movingEntity;
  withCloneEntity(g,g.turn,()=>{const p=g.players[g.turn];g.abilities.movement={seat:g.turn,remaining:steps,visited:[],resume:"step"};g.abilities.lastMove=record;g.abilities.movingEntity="clone";
-  try{const move=g.abilities.movement;while(move.remaining>0&&!p.bankrupt){const boundary=direction===1?p.position:(p.position+35)%36;if(g.world.walls.includes(boundary)&&protectedBlack(g,g.turn))reportAdamantBlock(g,g.turn,"벽 · 이동 정지");if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);record.wall={boundary,tile:p.position,next:(p.position+direction+36)%36};break;}p.position=(p.position+direction+36)%36;move.remaining--;move.visited.push(p.position);record.path.push(p.position);passingEffects(g,random);if(p.position===0&&move.remaining>0)blackStartContact(g,g.turn);if(p.position===0&&direction===1){receiveSalary(g,g.turn);settleForcedPayment(g,g.turn,landTax(g,g.turn),null);}if(g.phase==='finished')break;}}
+  try{const move=g.abilities.movement;while(move.remaining>0&&!p.bankrupt){const boundary=direction===1?p.position:(p.position+35)%36;if(g.world.walls.includes(boundary)&&protectedBlack(g,g.turn))reportAdamantBlock(g,g.turn,"벽 · 이동 정지");if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);record.wall={boundary,tile:p.position,next:(p.position+direction+36)%36};break;}p.position=(p.position+direction+36)%36;move.remaining--;move.visited.push(p.position);record.path.push(p.position);passingEffects(g,random,direction);if(p.position===0&&move.remaining>0)blackStartContact(g,g.turn);if(p.position===0&&direction===1){receiveSalary(g,g.turn);settleForcedPayment(g,g.turn,landTax(g,g.turn),null);}if(g.phase==='finished')break;}}
   finally{g.abilities.movement=oldMove;g.abilities.lastMove=oldLast;g.abilities.movingEntity=oldEntity;if(g.phase!=='finished')g.phase=oldPhase;}
  });
 }
@@ -548,7 +548,7 @@ function advanceMovement(g: Game, random: () => number, catalog: readonly Augmen
     const boundary=direction===1?player.position:(player.position+BOARD.length-1)%BOARD.length;
     if(g.world.walls.includes(boundary)&&protectedBlack(g,g.turn))reportAdamantBlock(g,g.turn,"벽 · 이동 정지");if(g.world.walls.includes(boundary)&&!protectedBlack(g,g.turn)){g.world.walls=g.world.walls.filter(b=>b!==boundary);move.remaining=0;g.abilities.lastMove!.wall={boundary,tile:player.position,next:(player.position+direction+36)%36};note(g,"벽 충돌 · 직전 칸에서 정지");break;}
     player.position = (player.position + direction + BOARD.length) % BOARD.length; move.remaining--; move.visited.push(player.position); g.abilities.lastMove?.path.push(player.position);
-    passingEffects(g, random);
+    passingEffects(g, random, direction);
     if(player.position===0&&move.remaining>0)blackStartContact(g,g.turn);
     if (g.phase === "finished") { g.abilities.movement = null; return; }
     if (player.position === 0 && direction===1) {
@@ -602,7 +602,7 @@ function landEffects(g: Game) {
     }
   }
 }
-function passingEffects(g: Game, random: () => number) {
+function passingEffects(g: Game, random: () => number, direction: number) {
   const move = g.abilities.movement!, actor = g.turn, tile = g.players[actor].position;
   // Final landing is not passing through another token.
   const passing = move.remaining > 0;
@@ -611,7 +611,7 @@ function passingEffects(g: Game, random: () => number) {
     if (!immune(g, other)) {
       if (passing && power(g, actor, "pickpocket") && random() < .3) steal(g,actor,other,power(g,actor,"pickpocket"),"pickpocket");
       if (passing && power(g, actor, "robber") && random() < .25) steal(g,actor,other,power(g,actor,"robber"),"robber");
-      if (power(g, actor, "singed")) {const cloneHit=g.players[other].position!==tile&&g.black?.clones[other]?.position===tile;const to=(tile+BOARD.length-2)%BOARD.length;
+      if (power(g, actor, "singed")) {const cloneHit=g.players[other].position!==tile&&g.black?.clones[other]?.position===tile;const to=(tile+BOARD.length-direction*2)%BOARD.length;
         if(cloneHit){blackState(g).clones[other].position=to;emitAbility(g.abilities,{actor,target:other,targetEntity:"clone",tile,ability:"singed",caption:"신지드 · 분신 뒤로 2칸",visual:"poison",flight:{seat:other,from:tile,to}});withCloneEntity(g,other,()=>forcedArrival(g,other,random));}
         else{g.players[other].position=to;emitAbility(g.abilities,{actor,target:other,tile,ability:"singed",caption:"신지드 · 뒤로 2칸",visual:"poison",flight:{seat:other,from:tile,to}});forcedArrival(g,other,random);}
       }

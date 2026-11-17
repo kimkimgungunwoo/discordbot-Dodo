@@ -88,7 +88,7 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "island_owner", "name": "김씨표류기", "tier": "gold", "effect": "island_owner", "power": 1, "description": "무인도를 매수할 수 있고 무인도에 갇히지 않습니다. 갇힌 상대가 나오지 못하고 차례를 쉬는 동안 돈을 강탈합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "realtor_prism", "name": "부동산의 왕", "tier": "prism", "effect": "realtor", "power": 50, "description": "지역 구매 비용을 50% 할인받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "negotiator_prism", "name": "인수 왕", "tier": "prism", "effect": "negotiator", "power": 50, "description": "인수 비용을 50% 할인받습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "singed", "name": "신지드", "tier": "prism", "effect": "singed", "power": 1, "description": "이동 중 경로의 상대를 뒤로 2칸 던져 도착 효과를 발생시킵니다. 던져진 상대는 매입·인수를 할 수 없습니다. 자신이 도착한 칸에는 3라운드 동안 독을 남겨, 다른 플레이어가 밟으면 독은 사라지고 해당 상대의 다음 차례 주사위를 10 이하로 제한하고 주사위 능력을 무시합니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "singed", "name": "신지드", "tier": "prism", "effect": "singed", "power": 1, "description": "이동 중 경로의 상대를 자신의 이동 방향 기준 뒤로 2칸 던져 도착 효과를 발생시킵니다. 던져진 상대는 매입·인수를 할 수 없습니다. 자신이 도착한 칸에는 3라운드 동안 독을 남겨, 다른 플레이어가 밟으면 독은 사라지고 해당 상대의 다음 차례 주사위를 10 이하로 제한하고 주사위 능력을 무시합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "conversion_gold_two", "name": "전환 : 골드 2", "tier": "prism", "effect": "conversion", "power": 2, "description": "이 카드를 소비하고 골드 증강 2개를 무작위로 얻습니다.", "hooks": ["acquire"], "targetTier": "gold"},
   {"id": "builder_prism", "name": "건설왕", "tier": "prism", "effect": "builder", "power": 50, "description": "건물 건설 비용을 50% 할인받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "great_luck", "name": "운수대통", "tier": "prism", "effect": "luck", "power": 100, "description": "이벤트 칸에서 부정적 이벤트가 발생하지 않습니다.", "hooks": ["before_move", "arrive"]},

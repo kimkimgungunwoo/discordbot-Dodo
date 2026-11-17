@@ -42,10 +42,10 @@ export class AbilityEffects {
     caption.append(description);layer.append(caption);
     const targets=[{node:layer,seat}];
     const addParticles=(node:HTMLElement)=>{const ring=document.createElement('b');ring.className='m-ability-ring';node.append(ring);for(let i=0;i<8;i++){const dot=document.createElement('i'),angle=i*Math.PI/4;dot.style.setProperty('--dx',`${Math.round(Math.cos(angle)*32)}px`);dot.style.setProperty('--dy',`${Math.round(Math.sin(angle)*24)}px`);node.append(dot)}};
-    const status=statusEffect(event);if(status)layer.append(status);else addParticles(layer);
+    const status=statusEffect(event);if(status)layer.append(status);else if(event.ability!=='exploit')addParticles(layer);
     if(event.target!==undefined&&event.target!==seat){const hit=document.createElement('div');hit.className=`m-ability-fx m-ability-hit fx-${event.visual}`;hit.dataset.anchorSeat=String(event.target);addParticles(hit);targets.push({node:hit,seat:event.target})}
     for(const target of targets){document.body.append(target.node);this.layers.add(target.node)}
-    if(captionLane){const rise=captionLane*Math.max(110,caption.offsetHeight+14);caption.style.bottom=`${10+rise}px`;const tether=document.createElement('span');tether.className='m-caption-tether';Object.assign(tether.style,{position:'absolute',left:'0',bottom:'10px',height:`${rise}px`,borderLeft:'1px dashed #28e43c',opacity:'.7'});layer.prepend(tether);}
+    if(captionLane){const rise=captionLane*Math.max(110,caption.offsetHeight+14);caption.style.bottom=`${10+rise}px`;}
     const cards=[...this.root.querySelectorAll<HTMLElement>(`[data-owned-seat="${event.actor}"]`)].filter(el=>el.dataset.ability===event.ability||el.dataset.effect===definition?.effect||el.dataset.effect===event.ability);for(const card of cards)card.classList.add('ability-active');
     const rentNode=event.rentChange?this.root.querySelector(`[data-rent-tile="${event.tile}"]`):null;if(rentNode){rentNode.classList.add("m-toll-raised");layer.dataset.rentBefore=String(event.rentChange!.before);layer.dataset.rentAfter=String(event.rentChange!.after);}
     const drain=event.target!==undefined&&["vladimir","exploit","mosquito"].includes(event.ability)?bloodDrain(()=>anchor(event.target!)?.getBoundingClientRect(),()=>anchor(event.actor)?.getBoundingClientRect(),duration,signal,event.ability==="exploit"?"green":"blood",started):undefined;
