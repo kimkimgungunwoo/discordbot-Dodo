@@ -55,11 +55,14 @@ export function landTax(g:Game,owner:number,cash=g.players[owner].cash){return l
 export const cashTax=landTax;
 export function tileLines(index:number){const line=Math.floor(index/9);return index%9===0?[line,(line+3)%4]:[line];}
 export function sameLine(a:number,b:number){return tileLines(a).some(line=>tileLines(b).includes(line));}
-export function rent(g: Game, index: number, modifiers = true) {
+export function rent(g: Game, index: number, modifiers: boolean | "beneficial" = true) {
   const t = BOARD[index], p = g.properties[index];
   if (t.kind !== "city" || p.owner === null) return 0;
+  const gamble=g.abilities.gambles[p.owner]?.[index] ?? 1;
+  const multiplier=definitionsActive(g,p.owner)?(protectedBlack(g,p.owner)?Math.max(1,gamble):gamble):1;
+  const appliedGamble=modifiers===false?1:modifiers==="beneficial"?Math.min(1,multiplier):multiplier;
   const monopoly = BOARD.filter(x => x.group === t.group).every(x => g.properties[x.index].owner === p.owner);
-  return Math.max(0, Math.ceil((baseRent(index) + BUILDINGS.reduce((sum, _, i) => sum + (p.buildings & (1 << i) ? construction(index, i).rent : 0), 0)) * (1+Math.max(0,p.revisitBoost??0)*REVISIT_BONUS_PERCENT/100) * (monopoly ? 2 : 1) * (p.landmark ? 2 : 1) * (g.abilities.gambles[p.owner]?.[index] !== undefined && modifiers && definitionsActive(g,p.owner) ? g.abilities.gambles[p.owner][index] : 1) * Math.pow(2,p.festival ?? 0) * Math.pow(.7,p.locust ?? 0) * (g.world?.famineUntil > g.round && !protectedBlack(g,p.owner) ? .5 : 1) - 1e-9));
+  return Math.max(0, Math.ceil((baseRent(index) + BUILDINGS.reduce((sum, _, i) => sum + (p.buildings & (1 << i) ? construction(index, i).rent : 0), 0)) * (1+Math.max(0,p.revisitBoost??0)*REVISIT_BONUS_PERCENT/100) * (monopoly ? 2 : 1) * (p.landmark ? 2 : 1) * appliedGamble * (modifiers==="beneficial"?1:Math.pow(2,p.festival ?? 0)) * (protectedBlack(g,p.owner)?1:Math.pow(.7,p.locust ?? 0)) * (g.world?.famineUntil > g.round && !protectedBlack(g,p.owner) ? .5 : 1) - 1e-9));
 }
 export function value(g: Game, index: number) { return (g.properties[index].landmark ? landmarkBase(index) : 0) + BOARD[index].price + BUILDINGS.reduce((sum, _, i) => sum + (g.properties[index].buildings & (1 << i) ? construction(index, i).cost : 0), 0); }
 export function assets(g: Game, owner: number) { return g.players[owner].cash + BOARD.reduce((sum, t) => sum + (g.properties[t.index].owner === owner ? incomeAmount(g, owner, Math.floor(value(g, t.index) / 2)) : 0), 0); }
@@ -405,7 +408,7 @@ export function takeoverCost(g: Game, index: number, seat = g.turn) {
 }
 export function rentQuote(g:Game,index:number,seat:number){
  const owner=g.properties[index].owner;if(owner===null)return {amount:0,principal:0,receipt:0};
- const protectedVisitor=immune(g,seat),base=(protectedVisitor?rent(g,index,false):incomeWithoutGlass(g,owner,rent(g,index)))*((g.world?.players[seat].overspendUntil??0)>=g.abilities.ownerTurns[seat]&&(g.world?.players[seat].overspendUntil??0)>0?1.5:1);
+ const protectedVisitor=immune(g,seat),base=(protectedVisitor?rent(g,index,protectedBlack(g,seat)?"beneficial":false):incomeWithoutGlass(g,owner,rent(g,index)))*(!protectedBlack(g,seat)&&(g.world?.players[seat].overspendUntil??0)>=g.abilities.ownerTurns[seat]&&(g.world?.players[seat].overspendUntil??0)>0?1.5:1);
  const amount=lossAmount(g,seat,base),principal=lossWithoutGlass(g,seat,base),receipt=glassIncome(g,owner,principal);
  return {amount,principal,receipt};
 }
@@ -697,7 +700,7 @@ export function openEvent(g:Game,seat:number,random:()=>number=Math.random,id?:E
  g.world.current=event;g.world.history.push(event);if(g.world.history.length>60)g.world.history.shift();g.phase="event";
  note(g,`${seat+1}P 이벤트 · ${eventDefinition(event.id).name}`);
 }
-export function eventTargets(g:Game){return g.players.flatMap((p,i)=>i!==g.turn&&!p.bankrupt&&!protectedBlack(g,i)?[i]:[]);}
+export function eventTargets(g:Game){return g.players.flatMap((p,i)=>i!==g.turn&&!p.bankrupt&&(["hero","fool"].includes(g.world.current?.id??"")||!protectedBlack(g,i))?[i]:[]);}
 export function eventOwnedTiles(g:Game){return BOARD.filter(t=>t.kind==="city"&&g.properties[t.index].owner===g.turn).map(t=>t.index);}
 function eventSample<T>(pool:readonly T[],random:()=>number):T|undefined{return pool.length?pool[Math.min(pool.length-1,Math.floor(random()*pool.length))]:undefined;}
 function eventShuffle<T>(pool:readonly T[],random:()=>number){const a=[...pool];for(let i=a.length-1;i>0;i--){const j=Math.min(i,Math.floor(random()*(i+1)));[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -741,7 +744,7 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
  const pending=g.world.current;
  if(g.phase!=="event"||!pending||pending.seat!==g.turn||input.eventSerial!==pending.serial)throw new Error("최신 이벤트를 확인해주세요.");
  const id=pending.id,seat=g.turn,status=g.world.players[seat];
- const target=()=>{if(!Number.isInteger(input.target)||!eventTargets(g).includes(input.target!))throw new Error("대상 플레이어를 선택해주세요.");return input.target!;};
+ const target=()=>{if(!Number.isInteger(input.target)||!g.players.some((p,i)=>i===input.target&&i!==seat&&!p.bankrupt&&(id==="hero"||!protectedBlack(g,i))))throw new Error("대상 플레이어를 선택해주세요.");return input.target!;};
  const ownedTile=()=>{if(!eventOwnedTiles(g).length)return undefined;if(!Number.isInteger(input.tile)||!eventOwnedTiles(g).includes(input.tile!))throw new Error("내 지역을 선택해주세요.");return input.tile!;};
  if(input.decline && id!=="hero"&&id!=="change_augment")throw new Error("이 이벤트는 거부할 수 없습니다.");
  // The atomic applyAction clone prevents failed choices from consuming the event.
@@ -782,7 +785,7 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
   case "homing":{g.players[seat].position=0;const salary=receiveSalary(g,seat);note(g,`귀소본능 · 월급 ${salary}만원`);pay(g,landTax(g,seat),null,"event","land_tax");break;}
   case "random_wall":{const tile=eventSample(BOARD.map(t=>t.index).filter(i=>!g.world.walls.includes(i)),random);if(tile!==undefined)g.world.walls.push(tile);break;}
   case "auto_pass":status.autoPass++;break;
-  case "fool":{const other=eventSample(eventTargets(g),random);if(other!==undefined)beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true}],random,catalog);break;}
+  case "fool":{const other=eventSample(g.players.flatMap((p,i)=>i!==seat&&!p.bankrupt?[i]:[]),random);if(other!==undefined)beginEventVisits(g,[{seat,tile:g.players[other].position,effects:true}],random,catalog);break;}
   case "reverse_order":g.world.direction=g.world.direction===1?-1:1;break;
   case "bet":{if(!Number.isSafeInteger(input.amount)||input.amount!<0||input.amount!>g.players[seat].cash)throw new Error("보유 현금 이하의 정수 금액을 입력해주세요.");const amount=input.amount!;if(random()<.5){const profit=receiveIncome(g,seat,amount);note(g,`도박 성공 · 원금 유지 · 수익 ${profit}만원`);}else{const loss=Math.min(g.players[seat].cash,lossAmount(g,seat,amount));consumeLoss(g,seat,loss);g.players[seat].cash-=loss;note(g,`도박 실패 · ${loss}만원 손실`);}break;}
   case "depression":for(const [i,s]of g.world.players.entries())if(!protectedBlack(g,i))s.halfSalary++;break;

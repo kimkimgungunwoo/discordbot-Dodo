@@ -22,7 +22,7 @@ export function incomeAmount(g: Game, seat: number, amount: number) {
 }
 export function incomeWithoutGlass(g:Game,seat:number,amount:number){return Math.max(0,Math.ceil(amount*(power(g,seat,"investor")?2:1)-1e-9));}
 export function glassIncome(g:Game,seat:number,amount:number){return Math.max(0,Math.ceil(amount*(power(g,seat,"glass_cannon")?2.5:1)-1e-9));}
-export function lossWithoutGlass(g:Game,seat:number,amount:number){return Math.max(0,Math.ceil(amount*(g.world?.players[seat].vulnerable?2:1)));}
+export function lossWithoutGlass(g:Game,seat:number,amount:number){return Math.max(0,Math.ceil(amount*(!protectedBlack(g,seat)&&g.world?.players[seat].vulnerable?2:1)));}
 export function transferMoney(g:Game,payer:number,receiver:number,paid:number,principal:number,received:number,collectorEligible=false){
  if(collectorEligible&&paid>0&&payer!==receiver)blackState(g).contacts.push({actor:receiver,target:payer});
  g.players[payer].cash-=principal;g.players[receiver].cash+=principal;
@@ -34,12 +34,12 @@ export function stealMoney(g:Game,actor:number,target:number,amount:number){
 }
 export function salaryAmount(g:Game,seat:number){
  const status=g.world?.players[seat];
- return status?.unpaidSalary ? 0 : Math.ceil((power(g,seat,"investor")?0:SALARY*(power(g,seat,"salary")?1.5:1)*(power(g,seat,"glass_cannon")?2.5:1))*((status?.halfSalary ?? 0)>0 ? .5:1));
+ return !protectedBlack(g,seat)&&status?.unpaidSalary ? 0 : Math.ceil((power(g,seat,"investor")?0:SALARY*(power(g,seat,"salary")?1.5:1)*(power(g,seat,"glass_cannon")?2.5:1))*(!protectedBlack(g,seat)&&(status?.halfSalary ?? 0)>0 ? .5:1));
 }
 export function receiveSalary(g:Game,seat:number,reason="월급"){const amount=salaryAmount(g,seat),status=g.world?.players[seat];if(status){if(status.unpaidSalary>0)status.unpaidSalary--;if(status.halfSalary>0)status.halfSalary--;}bankCashChange(g,seat,amount,reason);return amount;}
 export function consumeLoss(g:Game,seat:number,amount:number){const status=g.world?.players[seat];if(amount>0&&status?.vulnerable)status.vulnerable--;}
 
-export function lossAmount(g: Game, seat: number, amount: number) { return Math.max(0, Math.ceil(amount * (power(g, seat, "glass_cannon") ? 2 : 1) * (g.world?.players[seat].vulnerable ? 2:1))); }
+export function lossAmount(g: Game, seat: number, amount: number) { return Math.max(0, Math.ceil(amount * (!protectedBlack(g,seat)&&power(g, seat, "glass_cannon") ? 2 : 1) * (!protectedBlack(g,seat)&&g.world?.players[seat].vulnerable ? 2:1))); }
 export function immune(g: Game, seat: number) { return protectedBlack(g,seat)||seat !== (g.world?.interrupted?.turn ?? g.turn) && !!power(g, seat, "stealth"); }
 export function receiveIncome(g: Game, seat: number, amount: number) {
   const paid = incomeAmount(g, seat, amount); bankCashChange(g,seat,paid); return paid;
@@ -73,6 +73,7 @@ export function capabilities(g: Game, seat = g.turn): DiceCapabilities {
 export function acquireEffect(g: Game, seat: number, id: string, random: () => number, catalog: readonly AugmentDefinition[] = AUGMENT_CATALOG, visited = new Set<string>()) {
   const a = catalog.find(a => a.id === id);
   if (!a || visited.has(id)) return;
+  if(a.tier!=="black"&&g.black?.silenced&&!hasBlack(g,seat,"silent")&&!protectedBlack(g,seat))return;
   const eventStatus=g.world?.players[seat];
   if(eventStatus && eventStatus.disabledUntil>g.round){eventStatus.pendingAcquisitions??=[];if(!eventStatus.pendingAcquisitions.includes(id))eventStatus.pendingAcquisitions.push(id);return;}
   visited.add(id);
