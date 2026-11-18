@@ -4,7 +4,7 @@ import {hasBlack,blackTargets} from "./augment-marble-black.js";
 import { AUGMENT_CATALOG, type AugmentDefinition } from './augment-marble-augments.js';
 import { capabilities, incomeAmount, lossAmount, power, salaryAmount } from './augment-marble-effects.js';
 import { createRoll, diceCandidates, type DicePair, type RollContext } from './augment-marble-runtime.js';
-import { applyAction, availableDice, turnTargets, purchaseCost, takeoverCost, landmarkCost, landmarkAvailable, groupCount, COLOR_GROUPS_TO_WIN, MAX_ROUNDS, SALARY, ISLAND_COST, BONUS, BOARD, construction, eventOwnedTiles, eventTargets, netWorth, rent, rentPayment, type Action, type Game } from './augment-marble.js';
+import { applyAction, availableDice, turnTargets, purchaseCost, takeoverCost, landmarkCost, landmarkAvailable, groupCount, COLOR_GROUPS_TO_WIN, MAX_ROUNDS, SALARY, ISLAND_COST, BONUS, BOARD, construction, eventOwnedTiles, eventTargets, netWorth, rent, rentPayment, rentQuote, type Action, type Game } from './augment-marble.js';
 
 export function augmentValue(g:Game,seat:number,a:AugmentDefinition):number {
  const own=BOARD.filter(t=>g.properties[t.index].owner===seat),cash=g.players[seat].cash,late=g.round/MAX_ROUNDS;
@@ -47,13 +47,15 @@ export function augmentValue(g:Game,seat:number,a:AugmentDefinition):number {
   case 'gambler':return 30+economic*(n===4?8:5);
   case 'conversion':return 80+n*25+(a.targetTier==='prism'?25:0);
   case 'island_owner':return cash>600?65:30;
+  // Reversed tolls pay off when opponents own the rent and this seat owns little.
+  case 'copernicus':{const total=(who:(o:number|null)=>boolean)=>BOARD.reduce((sum,t)=>sum+(t.kind==='city'&&who(g.properties[t.index].owner)?rent(g,t.index):0),0);return 40+Math.max(-40,Math.min(120,(total(o=>o!==null&&o!==seat)-total(o=>o===seat)*2)*.1));}
   default:return 40;
  }
 }
 /** Keep a cash cushion based on visible nearby tolls, then spend surplus on tempo/territory. */
 export function botCashPlan(g:Game,seat=g.turn){
  const cash=g.players[seat].cash,direction=g.world.players[seat].reverseThisTurn?-1:1;
- const tolls=Array.from({length:11},(_,i)=>{const tile=(g.players[seat].position+direction*(i+2)+360)%36;return g.properties[tile].owner===seat?0:rentPayment(g,tile,seat);}).sort((a,b)=>a-b);
+ const tolls=Array.from({length:11},(_,i)=>{const tile=(g.players[seat].position+direction*(i+2)+360)%36;const quote=rentQuote(g,tile,seat);return g.properties[tile].owner===seat||quote.reversed?0:quote.amount;}).sort((a,b)=>a-b);
  const danger=tolls[8]??0,rich=cash>=SALARY*3;
  const reserve=Math.min(cash*(rich?.22:.45),Math.max(SALARY*(rich?.35:.4),danger*(rich?.45:.65)));
  return {rich,reserve:Math.ceil(reserve),spend:Math.max(0,cash-Math.ceil(reserve))};
@@ -74,9 +76,11 @@ function invest(g:Game):Action|null{
    const opportunity=prop.owner===seat?(prop.buildings===7?Math.min(180,rent(g,t.index)*.3):65):cost<=p.cash?(prop.owner===null?(plan.rich?240:140):45+Math.min(300,rent(g,t.index)*.75))+priority.owned*65+(priority.complete?240:0)+(priority.win?100000:0)+(priority.block?10000:0)+(priority.deny?500:0)-cost*(plan.rich?.1:.35):-10000;
    return {tile:t.index,score:opportunity};}).sort((a,b)=>b.score-a.score);return {action:'portal_move',tile:options[0].tile};
  }
- if(g.phase==='buy'){const priority=territoryPriority(g,seat,tile),cost=purchaseCost(g,tile);return {action:cost<=p.cash&&(priority.win||priority.block||cost<=plan.spend)?'buy':'end'};}
+ // Copernicus owners pay the toll on their own land: only buy or take over to win or block.
+ const flipped=hasBlack(g,seat,'copernicus');
+ if(g.phase==='buy'){const priority=territoryPriority(g,seat,tile),cost=purchaseCost(g,tile);return {action:cost<=p.cash&&(priority.win||priority.block||!flipped&&cost<=plan.spend)?'buy':'end'};}
  if(g.phase==='build'){
-  if(property.landmark)return {action:'end'};
+  if(property.landmark||flipped)return {action:'end'};
   if(landmarkAvailable(g,tile)&&landmarkCost(g,tile)<=plan.spend)return {action:'landmark'};
   const missing=[0,1,2].filter(i=>!(property.buildings&(1<<i)));let best:Action={action:'end'},bestScore=0;
   for(let mask=1;mask<1<<missing.length;mask++){const buildings=missing.filter((_,i)=>mask&(1<<i)),preview=structuredClone(g);try{applyAction(preview,{action:'build',buildings},()=>.5)}catch{continue}
@@ -89,12 +93,14 @@ function invest(g:Game):Action|null{
   if(property.owner===null||property.owner===seat||property.landmark&&!hasBlack(g,seat,"landmark_takeover"))return {action:'end'};
   const cost=takeoverCost(g,tile),priority=territoryPriority(g,seat,tile);if(cost>p.cash)return {action:'end'};
   const worthwhile=priority.win||priority.block||priority.complete||priority.deny||priority.owned>0||rent(g,tile)*2+BOARD[tile].price*.5>=cost||plan.rich&&rent(g,tile)>0&&cost<=p.cash*.15;
-  return {action:priority.win||priority.block||cost<=plan.spend&&worthwhile?'takeover':'end'};
+  return {action:priority.win||priority.block||!flipped&&cost<=plan.spend&&worthwhile?'takeover':'end'};
  }
  return null;
 }
 function propertyOpportunity(g:Game,seat:number,tile:number):number {
  const t=BOARD[tile],p=g.properties[tile];if(t.kind!=='city')return 0;
+ // Copernicus: owning land only costs tolls (landing on others' land is already scored as cash gain); keep only win/block.
+ if(hasBlack(g,seat,'copernicus')){const priority=territoryPriority(g,seat,tile);return priority.win?100000:priority.block?10000:0;}
  if(p.owner===seat)return p.buildings===7?(power(g,seat,'landmark')&&!p.landmark?65:Math.min(90,rent(g,tile)*.3)):40;
  if(p.owner!==null){const priority=territoryPriority(g,seat,tile);if(g.players[seat].cash<takeoverCost(g,tile))return 0;return priority.win?100000:priority.block?10000:priority.complete?250:g.players[seat].cash>=SALARY*3?60:0;}
  const group=BOARD.filter(b=>b.group===t.group),ours=group.filter(b=>g.properties[b.index].owner===seat).length;
