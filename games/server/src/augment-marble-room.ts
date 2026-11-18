@@ -1,16 +1,31 @@
+import {initializeDevelopment} from "../../shared/augment-marble-development.js";
 import { EVENT_MS,createEventState } from "../../shared/augment-marble-events.js";
 import { type MarbleStore, type MarbleSave } from "./augment-marble-store.js";
-import { AUGMENT_CATALOG, AUGMENT_SELECTION_MS, removeRetiredAugments, publicAugmentState, type AugmentDefinition } from "../../shared/augment-marble-augments.js";
+import { AUGMENT_CATALOG, AUGMENT_SELECTION_MS, normalizeUniqueBlack, removeRetiredAugments, publicAugmentState, type AugmentDefinition } from "../../shared/augment-marble-augments.js";
 import { randomInt } from "node:crypto";
 import { RelayRoom } from "./volleyball-room.js";
 import type { Definition, Peer } from "./protocol.js";
-import { drawTurnOrder,ORDER_DRAW_MS,canAct,actingSeat, automaticContinuation, preservesDeadline, applyAction, autoAction, createGame, TURN_MS, type View } from "../../shared/augment-marble.js";
+import { BLACK_IDS } from "../../shared/augment-marble-black.js";
+import { drawTurnOrder,ORDER_DRAW_MS,canAct,actingSeat, automaticContinuation, preservesDeadline, applyAction, autoAction, createGame, TURN_MS, type View, type Game } from "../../shared/augment-marble.js";
+
+/** Rough client presentation length for before→after, so bots act after the animation instead of mid-move.
+ * ponytail: mirrors client timings (dice 620+520, 250ms/tile, effect durations); update both if those change. */
+export function presentationMs(before:Game|undefined,after:Game){
+ if(!before)return 0;let ms=0;
+ const t=after.abilities.lastThrow;if(t&&t.kind!=="copy"&&t.id!==before.abilities.lastThrow?.id)ms+=1140;
+ const m=after.abilities.lastMove,o=before.abilities.lastMove;if(m)ms+=Math.max(0,m.path.length-1-(o?.id===m.id?o.path.length-1:0))*250;
+ const last=before.abilities.events.at(-1)?.id??0;
+ for(const e of after.abilities.events)if(e.id>last&&e.ability!=="dice")ms+=e.ability==="redistribution"?7600:e.ability==="silent"?1650:(BLACK_IDS as readonly string[]).includes(e.ability)?2200:1400;
+ return Math.min(ms,12_000);
+}
 
 export class AugmentMarbleRoom extends RelayRoom {
   readonly game;
   started = false;
   private readonly readyPlayers = new Set<string>();
   deadline = 0;
+  private blackCeremonySeen=false;
+  private blackCeremonyUntil=0;
   private presentationRevision=-1;
   private presentationAt=0;
   private forgotten = false;
@@ -66,6 +81,7 @@ export class AugmentMarbleRoom extends RelayRoom {
   }
   handle(peer: Peer, message: any) {
     try {
+      if(Date.now()<this.blackCeremonyUntil)throw new Error("블랙 증강 공개 중입니다.");
       if(Date.now()<(this.game.orderDrawUntil??0))throw new Error("순서 추첨 중입니다.");
       if (!this.started || this.result || !canAct(this.game,this.seat(peer.id))) throw new Error("자신의 차례에만 조작할 수 있습니다.");
       const simultaneous=this.game.phase==="augment"&&this.game.augmentResume==="round30";
@@ -74,35 +90,42 @@ export class AugmentMarbleRoom extends RelayRoom {
       if (Date.now() >= this.deadline) { this.timeout(); return; }
       const before = structuredClone(this.game);
       applyAction(this.game, message, () => randomInt(0, 2 ** 32) / 2 ** 32, this.catalog);
-      this.schedule(preservesDeadline(before, this.game, message)); this.presence();
+      this.schedule(preservesDeadline(before, this.game, message),before); this.presence();
     } catch (error) { peer.send({ type: "MARBLE_ERROR", message: (error as Error).message }); this.presence(); }
   }
-  timeout() { if (!this.started || this.result) return; const before = structuredClone(this.game), action = autoAction(this.game); applyAction(this.game, action, () => randomInt(0, 2 ** 32) / 2 ** 32, this.catalog); this.schedule(preservesDeadline(before, this.game, action)); this.presence(); }
-  private schedule(keepDeadline = false) {
+  timeout() { if (!this.started || this.result) return; const before = structuredClone(this.game), action = autoAction(this.game); applyAction(this.game, action, () => randomInt(0, 2 ** 32) / 2 ** 32, this.catalog); this.schedule(preservesDeadline(before, this.game, action),before); this.presence(); }
+  private schedule(keepDeadline = false, before?: Game) {
     const previousDeadline = this.deadline;
+    if(this.game.black?.acquisitionResolved&&!this.blackCeremonySeen){
+      this.blackCeremonySeen=true;
+      const titles=new Set(['silent','redistribution','collector','copernicus','pacemaker','guillotine','dirge']);
+      const owned=this.game.augments?.players.flatMap(p=>p.owned)??[];
+      const reveal=owned.filter(id=>titles.has(id)).length*2400;
+      const effects=this.game.abilities.events.reduce((ms,e)=>ms+(e.ability==='redistribution'?7600:e.ability==='silent'?1650:['collector','shaco','leech','sniper'].includes(e.ability)?2200:0),0);
+      this.blackCeremonyUntil=Date.now()+reveal+effects+(effects?1600:0)+250;
+    }
     this.dispose(); this.lastActivity = Date.now();
     if (this.game.phase === "finished") {
-      const winner = this.game.winner!;
-      // Win/loss points, independent of the temporary economic balance.
-      const scores = this.game.players.map((_, i) => i === winner ? (this.game.players.length - 1) * 10 : -10);
-      this.result = { roomId: this.definition.roomId, matchId: this.matchId, winnerId: this.definition.seats![winner].userId, winnerSeat: winner, seatScores: scores, score: { left: scores[0], right: scores[1] }, reason: this.game.reason! };
+      // Marble has no score or result persistence. Only the room lifecycle completes.
+      this.result={roomId:this.definition.roomId,matchId:this.matchId,winnerId:null,reason:this.game.reason??'draw'};
       this.finishedAt = Date.now(); this.deadline = 0; return;
     }
-    const drawDelay=Math.max(0,(this.game.orderDrawUntil??0)-Date.now());
+    const drawDelay=Math.max(0,(this.game.orderDrawUntil??0)-Date.now(),this.blackCeremonyUntil-Date.now());
     const duration = this.game.phase === "augment" ? AUGMENT_SELECTION_MS : this.game.phase === "event" ? EVENT_MS : TURN_MS;
     this.deadline = keepDeadline ? previousDeadline : Date.now() + duration+drawDelay;
     this.timer = setTimeout(() => this.timeout(), Math.max(0, this.deadline - Date.now())); this.timer.unref();
-    const continuation=automaticContinuation(this.game);
-    if(continuation){this.botTimer=setTimeout(()=>{if(this.result)return;applyAction(this.game,continuation,()=>randomInt(0,2**32)/2**32,this.catalog);this.schedule();this.presence()},700+drawDelay);this.botTimer.unref();}
+    const continuation=automaticContinuation(this.game),shown=presentationMs(before,this.game);
+    if(continuation){this.botTimer=setTimeout(()=>{if(this.result)return;const before=structuredClone(this.game);applyAction(this.game,continuation,()=>randomInt(0,2**32)/2**32,this.catalog);this.schedule(false,before);this.presence()},700+drawDelay+shown);this.botTimer.unref();}
     else if (this.definition.seats![actingSeat(this.game)].bot || this.game.augmentResume==="round30"&&this.game.roundPrism?.pending.some(i=>this.definition.seats![i].bot)) {
-      this.botTimer = setTimeout(() => { if (this.result) return; const before = structuredClone(this.game),snapshot=structuredClone(this.game);if(snapshot.augmentResume==="round30")snapshot.augmentSeat=snapshot.roundPrism!.pending.find(i=>this.definition.seats![i].bot)!;const action = autoAction(snapshot, true); applyAction(this.game, action, () => randomInt(0, 2 ** 32) / 2 ** 32, this.catalog); this.schedule(preservesDeadline(before, this.game, action)); this.presence(); }, this.game.phase === "roll" ? 1400+drawDelay : 1000+drawDelay);
+      this.botTimer = setTimeout(() => { if (this.result) return; const before = structuredClone(this.game),snapshot=structuredClone(this.game);if(snapshot.augmentResume==="round30")snapshot.augmentSeat=snapshot.roundPrism!.pending.find(i=>this.definition.seats![i].bot)!;const action = autoAction(snapshot, true); applyAction(this.game, action, () => randomInt(0, 2 ** 32) / 2 ** 32, this.catalog); this.schedule(preservesDeadline(before, this.game, action),before); this.presence(); }, (this.game.phase === "roll" ? 1400 : 1000)+drawDelay+shown);
       this.botTimer.unref();
     }
   }
-  override abort(reason: string) { this.dispose(); super.abort(reason); this.presence(); }
+  override abort(reason: string) { this.dispose();this.result={roomId:this.definition.roomId,matchId:this.matchId,winnerId:null,aborted:true,reason};this.finishedAt=Date.now();this.deadline=0;this.presence(); }
   forget() { this.forgotten = true; this.dispose(); }
   persist() {
     if (this.forgotten) return;
+    if(this.result||this.game.phase==="finished"){this.store?.remove(this.definition.roomId);return;}
     this.store?.save({ version: 1, definition: this.definition, game: this.game, seed: this.seed, started: this.started, deadline: this.deadline, emptySince: this.emptySince, lastActivity: this.lastActivity, result: this.result, delivered: this.delivered, finishedAt: this.finishedAt, votes: [...this.rematchVotes] });
   }
   restore(saved: MarbleSave) {
@@ -110,8 +133,12 @@ export class AugmentMarbleRoom extends RelayRoom {
     delete this.game.turnOrder;delete this.game.orderDrawUntil;
     Object.assign(this.game, saved.game); this.game.world ??= createEventState(this.game.players.length); Object.assign(this, { seed: saved.seed });
     if(this.game.augments){const affected=removeRetiredAugments(this.game.augments,()=>randomInt(0,2**32)/2**32,this.catalog),roll=this.game.abilities.roll;if(roll&&!roll.result&&affected.includes(roll.seat)){roll.min=2;roll.max=roll.restricted?10:12;}}
+    if(this.game.augments)normalizeUniqueBlack(this.game.augments,()=>randomInt(0,2**32)/2**32,this.catalog);
+    if(this.game.abilities.islandOwner!==null)this.game.abilities.islandOwner=null;
+    initializeDevelopment(this.game);
+    this.blackCeremonySeen=!!this.game.black?.acquisitionResolved;
     this.started = saved.started; this.deadline = saved.deadline; this.lastActivity = saved.lastActivity;
-    this.result = saved.result; this.delivered = saved.delivered; this.finishedAt = saved.finishedAt;
+    this.result = saved.result?{roomId:saved.result.roomId,matchId:saved.result.matchId,winnerId:null,reason:saved.result.reason,...(saved.result.aborted?{aborted:true}:{})}:null; this.delivered = saved.delivered; this.finishedAt = saved.finishedAt;
     this.emptySince = saved.emptySince ?? Date.now();
     for (const id of saved.votes) this.rematchVotes.add(id);
     if (this.started && !this.result) this.schedule(true);

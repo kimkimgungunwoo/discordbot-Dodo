@@ -223,11 +223,11 @@ const callbacks = setInterval(() => {
     if (room.result && room.finishedAt && Date.now() - room.finishedAt > REMATCH_GRACE_MS) { room.broadcast({ type: "ROOM_CLOSED", message: "재경기 대기 시간이 만료되었습니다." }); if (room instanceof AugmentMarbleRoom || room instanceof BombBattleRoom) room.dispose(); if (room instanceof AugmentMarbleRoom) room.forget(); rooms.delete(roomId); marbleStore.remove(roomId); continue; }
     room.connectionStatus();
     if (!room.result || room.delivered || room.delivering || !process.env.BOT_INTERNAL_URL) continue;
-    room.broadcast({ type: "RESULT_PENDING", result: room.result, message: "경기 결과 저장 중..." });
+    room.broadcast({ type: "RESULT_PENDING", result: room.result, message: room instanceof AugmentMarbleRoom?"재경기 준비 중...":"경기 결과 저장 중..." });
     room.delivering = true;
     void fetch(new URL("/internal/game-results", process.env.BOT_INTERNAL_URL), {
       method: "POST", headers: { Authorization: "Bearer " + secret, "content-type": "application/json" },
-      body: JSON.stringify(room.result), signal: AbortSignal.timeout(5000),
+      body: JSON.stringify(room instanceof AugmentMarbleRoom?{roomId:room.result.roomId,matchId:room.result.matchId,completed:true}:room.result), signal: AbortSignal.timeout(5000),
     }).then(response => {
       if (!response.ok) return;
       room.delivered = true;

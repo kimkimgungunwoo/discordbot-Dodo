@@ -311,7 +311,7 @@
   background:#263244;
 }
 .m-dice.rolling .m-die {
-  animation:m-roll .62s ease-out;
+  animation:m-roll .62s ease-out var(--roll-delay,0ms) both;
 }
 .m-dice.rolling .m-die:nth-child(2) {
   animation-direction:reverse;
@@ -1907,3 +1907,31 @@ body:has(.m-shell),body:has(.m-setup){background:#f3f1e7;color:#171714}
 .m-board .m-board-choice h2{font-size:17px;line-height:1.3;margin:4px 0 10px}
 .m-board .m-board-choice .m-eyebrow{font-size:10px}
 .m-board .m-board-choice button{font-size:12px;line-height:1.4;min-height:38px;padding:8px;margin-top:6px}
+
+/* Candidates use orange arrows; confirmed travel keeps its blue outline arrow. */
+.m-destination-marker.m-candidate-marker{color:#b34b00;filter:drop-shadow(0 0 2px #fffef8) drop-shadow(0 2px 1px #fffef8)}
+.m-destination-marker.m-candidate-marker path{fill:#ffb348;stroke:#713400;stroke-width:2.5}
+
+/* Black selection ceremony. Ability activation effects keep their own board anchors. */
+.m-black-introduction {
+  position:fixed;z-index:130;left:50%;top:44%;transform:translate(-50%,-50%);
+  width:min(560px,calc(100vw - 32px));padding:24px 26px;text-align:center;
+  display:flex;flex-direction:column;gap:12px;pointer-events:none;
+  background:#202c3ef5;color:#fff6db;border:1px solid #8994a5;border-radius:10px;
+  box-shadow:0 10px 35px #16213333;animation:m-black-introduce 2400ms both;
+}
+.m-black-intro-player {font-size:13px;color:#cad3df;}
+.m-black-introduction strong {font-size:clamp(23px,5vw,36px);line-height:1.2;}
+.m-black-intro-caption {font-size:clamp(14px,3vw,18px);line-height:1.65;word-break:keep-all;}
+.m-black-intro-subject {filter:drop-shadow(0 0 7px #efd392);}
+.m-player.m-black-intro-subject {outline:2px solid #c6ad75;outline-offset:-2px;}
+@keyframes m-black-introduce {0%{opacity:0;transform:translate(-50%,-45%)}12%,82%{opacity:1;transform:translate(-50%,-50%)}100%{opacity:0;transform:translate(-50%,-53%)}}
+@media(prefers-reduced-motion:reduce){.m-black-introduction{animation:none;}}
+.m-guillotine-zone{display:none}
+.m-guillotine-zone.m-guillotine-strike{display:inline;animation:m-guillotine-strike 1.6s both}
+@keyframes m-guillotine-strike{0%,30%,60%{opacity:1}15%,45%{opacity:.25}100%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.m-guillotine-zone.m-guillotine-strike{animation:none}}
+.m-board:has([data-guillotine-option="0"]:is(:hover,:focus-visible)) [data-guillotine-zone="0"]{display:inline}
+.m-board:has([data-guillotine-option="1"]:is(:hover,:focus-visible)) [data-guillotine-zone="1"]{display:inline}
+.m-board:has([data-guillotine-option="2"]:is(:hover,:focus-visible)) [data-guillotine-zone="2"]{display:inline}
+.m-board:has([data-guillotine-option="3"]:is(:hover,:focus-visible)) [data-guillotine-zone="3"]{display:inline}

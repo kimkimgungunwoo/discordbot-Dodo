@@ -1,3 +1,4 @@
+import {canUseConstructionPermit,constructionPermitTiles} from "./augment-marble-development.js";
 import {hasBlack,blackTargets} from "./augment-marble-black.js";
 /** Public board + own choices only. No future tier schedule, hidden offers or live RNG access. */
 import { AUGMENT_CATALOG, type AugmentDefinition } from './augment-marble-augments.js';
@@ -15,6 +16,10 @@ export function augmentValue(g:Game,seat:number,a:AugmentDefinition):number {
   case 'reroll':return 80+n*15;
   case 'realtor':return n*(2-late)+Math.max(0,8-economic)*2;
   case 'builder':return n*(1.2+Math.min(economic,6)*.18);
+  case 'free_build':return 110+Math.min(economic,6)*15;
+  case 'first_spade':return 75+Math.max(0,8-economic)*4;
+  case 'tax_account':return 85+economic*7;
+  case 'construction_team':return 100+economic*8;
   case 'negotiator':return n*(1.5+late);
   case 'tax':return n*(.4+economic*.12);
   case 'salary':return has('investor')?2:95;
@@ -137,6 +142,10 @@ function eventDestinationValue(g:Game,seat:number,tile:number):number {
 }
 export function strategicBotAction(g:Game,fallback:Action):Action {
  const seat=g.turn,p=g.players[seat],state=g.world.players[seat];
+ if(canUseConstructionPermit(g)){
+  const choices=constructionPermitTiles(g,seat).flatMap(tile=>[0,1,2].filter(building=>!(g.properties[tile].buildings&(1<<building))).map(building=>({tile,building})));
+  choices.sort((a,b)=>construction(b.tile,b.building).rent-construction(a.tile,a.building).rent);if(choices[0])return {action:'construction_permit',tile:choices[0].tile,building:choices[0].building};
+ }
  const investment=invest(g);if(investment)return investment;
  if(g.phase==='roll'&&g.abilities.pendingTarget)return {action:'ability_target',target:turnTargets(g).sort((a,b)=>g.players[b].cash-g.players[a].cash)[0]};
  if(g.phase==='augment'){

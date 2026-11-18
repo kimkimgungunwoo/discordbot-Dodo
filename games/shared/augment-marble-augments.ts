@@ -19,10 +19,10 @@ export interface AugmentDefinition {
   power?: number;
   targetTier?: AugmentTier;
 }
-export type EffectKind = BlackId | "direction" | "builder" | "calf_kick" | "cashback" | "conversion" | "double_lover" | "drop_kick" | "exploit" | "force" | "gambler" | "gas" | "glass_cannon" | "grant" | "investor" | "island_owner" | "jujitsu" | "landmark" | "low_kick" | "luck" | "mimic" | "negotiator" | "no_island" | "pickpocket" | "realtor" | "reroll" | "revival" | "robber" | "salary" | "selective_double" | "singed" | "steal" | "stealth" | "subsidy" | "tax" | "trap" | "trip" | "vendor" | "vladimir";
-// 57 active original cards after retiring the three force-control augments.
+export type EffectKind = BlackId | "direction" | "builder" | "free_build" | "first_spade" | "tax_account" | "construction_team" | "calf_kick" | "cashback" | "conversion" | "double_lover" | "drop_kick" | "exploit" | "force" | "gambler" | "gas" | "glass_cannon" | "grant" | "investor" | "island_owner" | "jujitsu" | "landmark" | "low_kick" | "luck" | "mimic" | "negotiator" | "no_island" | "pickpocket" | "realtor" | "reroll" | "revival" | "robber" | "salary" | "selective_double" | "singed" | "steal" | "stealth" | "subsidy" | "tax" | "trap" | "trip" | "vendor" | "vladimir";
+// Active cards only; retired checkpoint IDs are cleaned below.
 export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
-  {"id": "collector", "name": "징수의 총", "tier": "black", "effect": "collector", "power": 1, "description": "획득 시 현금 50만원 이하 상대를 처형합니다. 최초 처형은 현금을 흡수하지 않으며 기본 구제·능력 부활이 가능합니다. 이후 자신의 강탈·지역 통행료로 현금이 50만원 이하가 된 상대는 기본 구제·능력 부활을 무시하고 처형하여 남은 현금 전부를 흡수합니다.", "hooks": ["acquire", "before_move", "arrive"]},
+  {"id": "collector", "name": "징수의 총", "tier": "black", "effect": "collector", "power": 1, "description": "획득 시 현금 50만원 이하 상대를 처형합니다. 원인에 관계없이 현금 50만원 이하 상대를 처형합니다. 현금과 소유 부동산의 정가 50% 정산액을 흡수하고 땅은 빈 땅으로 만듭니다. 기본 구제·능력 부활을 무시하며, 샤코로 생존하면 현금이 50만원을 초과한 뒤 다시 내려가야 재발동합니다.", "hooks": ["acquire", "before_move", "arrive"]},
   {"id": "devour", "name": "꿀꺽", "tier": "black", "effect": "devour", "power": 1, "description": "자신이 최종 도착한 칸의 상대 전원을 처형하고 현금을 모두 흡수합니다. 이벤트·강제 이동 도착에도 발동합니다. 기본 구제·능력 부활을 무시합니다.", "hooks": ["acquire", "before_move", "arrive"]},
   {"id": "goblin", "name": "도깨비", "tier": "black", "effect": "goblin", "power": 1, "description": "주사위로 이동한 뒤 -2~+2칸 중 추가 이동을 선택합니다. 추가 이동을 끝낸 최종 칸의 도착 효과만 적용합니다. 매 투척마다 사용할 수 있습니다.", "hooks": ["acquire", "before_move", "arrive"]},
   {"id": "redistribution", "name": "부의 재분배", "tier": "black", "effect": "redistribution", "power": 1, "description": "획득 즉시 1회, 생존 플레이어의 보유 현금을 합쳐 균등분배합니다.", "hooks": ["acquire", "before_move", "arrive"]},
@@ -38,13 +38,16 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
 
   {id:"yin_yang",name:"음과 양",tier:"prism",effect:"direction",power:1,description:"주사위 결과를 확인한 뒤 앞으로 또는 뒤로 이동할지 선택합니다. 선택한 방향으로 주사위 합계만큼 이동합니다.",hooks:["before_move","arrive"]},
   {"id": "mosquito", "name": "모기", "tier": "silver", "effect": "steal", "power": 10, "description": "자신의 차례 시작 시 같은 칸의 모든 상대에게서 보유 골드의 10%를 강탈합니다. 첫 차례에는 발동하지 않습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "realtor_silver", "name": "부동산 할인", "tier": "silver", "effect": "realtor", "power": 10, "description": "지역 구매 비용을 10% 할인받습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "builder_silver", "name": "건설자", "tier": "silver", "effect": "builder", "power": 10, "description": "건물 건설 비용을 10% 할인받습니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "builder_silver", "name": "첫 삽", "tier": "silver", "effect": "first_spade", "power": 1, "description": "주인 없는 지역을 매입하면 별장 1개를 무료로 건설합니다. 인수에는 적용되지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "salary_raise", "name": "월급 인상", "tier": "gold", "effect": "salary", "power": 50, "description": "월급을 1.5배 받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "negotiator_silver", "name": "인수의 고수", "tier": "silver", "effect": "negotiator", "power": 10, "description": "인수 비용을 10% 할인받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "selective_double", "name": "선택적 더블", "tier": "gold", "effect": "selective_double", "power": 1, "description": "매 차례 첫 주사위에서 더블 여부를 선택할 수 있습니다.", "hooks": ["before_move", "arrive"]},
+  {id:'copernicus',name:'코페르니쿠스 변환',tier:'black',effect:'copernicus',power:1,description:'보유자가 내거나 받는 통행료의 지불 방향을 반전합니다. 금강불괴에도 적용되며 하이패스·면제 쿠폰을 사용할 수 없습니다.',hooks:['before_rent']},
+  {id:'bread',name:'헨젤과 그레텔',tier:'black',effect:'bread',power:1,description:'보드의 일반 지역 6곳에 자신만 수집할 수 있는 빵조각을 만듭니다. 최종 도착으로 모두 모으면 승리합니다. 수집한 상대 지역은 통행료 면제, 본인 지역은 인수 후에도 유지되는 통행료 2배를 얻습니다.',hooks:['acquire','arrive']},
+  {id:'pacemaker',name:'페이스메이커',tier:'black',effect:'pacemaker',power:1,description:'자신을 제외한 플레이어가 같은 라인에 자기 차례 3회 머무르면 처형하고 현금을 흡수합니다. 라인을 벗어나면 초기화하며 더블은 추가 계산하지 않습니다. 금강불괴는 처형을 막습니다.',hooks:['turn_end']},
+  {id:'guillotine',name:'단두대',tier:'black',effect:'guillotine',power:1,description:'획득 시와 4라운드마다 라인을 지정하거나 선택을 포기합니다. 4라운드 뒤 해당 라인의 플레이어를 동시에 처형하고 생존한 시전자가 현금을 흡수합니다. 자신도 대상이며 금강불괴는 처형을 막습니다.',hooks:['acquire','turn_end']},
+
   {"id": "no_island", "name": "그런곳 가지 않아요", "tier": "silver", "effect": "no_island", "power": 1, "description": "3연속 더블이어도 무인도로 가지 않고 이동합니다. 추가 주사위는 던지지 않습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "tax_silver", "name": "세금감면", "tier": "silver", "effect": "tax", "power": 20, "description": "세금이 20% 줄어듭니다.", "hooks": ["before_move", "arrive"]},
   {"id": "suspicious_dice", "name": "에디셔널 다이스", "tier": "gold", "effect": "reroll", "power": 1, "description": "기본 주사위의 도착 예정지를 확인한 뒤, 원하면 1~3이 나오는 추가 주사위를 한 번 던집니다. 추가 눈만큼 더 이동하며 더블 판정에는 포함하지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "low_kick", "name": "로우킥", "tier": "silver", "effect": "low_kick", "power": 1, "description": "차례를 기다리는 동안 자신을 통과하는 상대의 다음 주사위 합계를 10 이하로 제한합니다. 해당 투척의 주사위 능력은 무시합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "cocoa", "name": "코코아 팔기", "tier": "silver", "effect": "vendor", "power": 33, "description": "자신을 통과하는 상대에게 코코아를 팔아 33만원을 받습니다.", "hooks": ["before_move", "arrive"]},
@@ -64,14 +67,13 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "coffee", "name": "커피팔기", "tier": "gold", "effect": "vendor", "power": 45, "description": "자신을 통과하는 상대에게 커피를 팔아 45만원을 받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "grant_gold", "name": "지급 2", "tier": "gold", "effect": "grant", "power": 500, "description": "획득 즉시 500만원을 받습니다.", "hooks": ["acquire"]},
   {"id": "revival_gold", "name": "트린다미어2", "tier": "gold", "effect": "revival", "power": 125, "description": "파산 시 한 번 부활하고 현금 125만원을 받습니다.", "hooks": ["acquire"]},
-  {"id": "tax_gold", "name": "세금 감면2", "tier": "gold", "effect": "tax", "power": 50, "description": "세금이 50% 줄어듭니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "realtor_gold", "name": "부동산 고수", "tier": "gold", "effect": "realtor", "power": 20, "description": "지역 구매 비용을 20% 할인받습니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "tax_gold", "name": "절세통장", "tier": "gold", "effect": "tax_account", "power": 50, "description": "세금이 50% 감소하고 실제 납부한 기본 세금만큼 건설 적립금을 받습니다. 최대 200만원까지 보관하며 일반 건물·랜드마크 건설에 자동 사용합니다. 추가 지출 배율은 적립하지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "glass_cannon", "name": "유리대포", "tier": "gold", "effect": "glass_cannon", "power": 1, "description": "얻는 돈은 2.5배, 잃는 돈은 2배입니다. 플레이어 간 거래의 추가 수입은 은행에서 지급하고, 추가 지출은 소멸하며 상대가 주고받는 금액은 늘어나지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "negotiator_gold", "name": "인수의 고수", "tier": "gold", "effect": "negotiator", "power": 20, "description": "인수 비용을 20% 할인받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "gas", "name": "방귀쟁이", "tier": "silver", "effect": "gas", "power": 1, "description": "자신이 한 차례 동안 도착한 칸에 방귀를 남깁니다. 다른 플레이어가 밟으면 방귀는 사라지고, 2라운드 안에 도착한 상대는 다음 주사위 합계가 10 이하로 제한되고 주사위 능력을 쓸 수 없습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "conversion_prism", "name": "전환 : 프리즘", "tier": "gold", "effect": "conversion", "power": 1, "description": "이 카드를 소비하고 프리즘 증강 1개를 무작위로 얻습니다.", "hooks": ["acquire"], "targetTier": "prism"},
   {"id": "conversion_silver_two", "name": "전환 : 실버", "tier": "gold", "effect": "conversion", "power": 2, "description": "이 카드를 소비하고 실버 증강 2개를 무작위로 얻습니다.", "hooks": ["acquire"], "targetTier": "silver"},
-  {"id": "builder_gold", "name": "건설고수 2", "tier": "gold", "effect": "builder", "power": 20, "description": "건물 건설 비용을 20% 할인받습니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "builder_gold", "name": "출장 건설반", "tier": "gold", "effect": "construction_team", "power": 1, "description": "최초 획득 시 시공권 2장을 받고 출발점을 정방향으로 통과할 때 1장 충전합니다. 최대 3장 보관하며 자기 차례에 한 번, 방문하지 않은 자기 지역에도 일반 건물 1개를 무료로 건설합니다. 랜드마크에는 사용할 수 없습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "robber", "name": "강도", "tier": "gold", "effect": "robber", "power": 125, "description": "상대를 통과할 때 25% 확률로 125만원을 갈취합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "cashback", "name": "페이백", "tier": "silver", "effect": "cashback", "power": 50, "description": "다른 플레이어의 증강으로 돈을 갈취당하면 잃은 돈의 50%를 돌려받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "subsidy", "name": "근로장려금", "tier": "gold", "effect": "subsidy", "power": 1, "description": "자신의 차례에 이동하는 대신 현재 위치에서 월급을 받는 것을 선택할 수 있습니다.", "hooks": ["before_move", "arrive"]},
@@ -84,13 +86,10 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "grant_prism", "name": "지급3", "tier": "prism", "effect": "grant", "power": 1000, "description": "획득 즉시 1000만원을 받습니다.", "hooks": ["acquire"]},
   {"id": "revival_prism", "name": "트린다미어3", "tier": "prism", "effect": "revival", "power": 250, "description": "파산 시 한 번 부활하고 현금 250만원을 받습니다.", "hooks": ["acquire"]},
   {"id": "stealth", "name": "스텔스모드", "tier": "prism", "effect": "stealth", "power": 1, "description": "자신의 차례를 기다리는 동안 다른 플레이어의 일반 증강 효과를 받지 않습니다. 블랙 증강은 막을 수 없습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "tax_prism", "name": "조세회피", "tier": "prism", "effect": "tax", "power": 100, "description": "세금을 내지 않습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "island_owner", "name": "김씨표류기", "tier": "gold", "effect": "island_owner", "power": 1, "description": "무인도를 매수할 수 있고 무인도에 갇히지 않습니다. 갇힌 상대가 나오지 못하고 차례를 쉬는 동안 돈을 강탈합니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "realtor_prism", "name": "부동산의 왕", "tier": "prism", "effect": "realtor", "power": 50, "description": "지역 구매 비용을 50% 할인받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "negotiator_prism", "name": "인수 왕", "tier": "prism", "effect": "negotiator", "power": 50, "description": "인수 비용을 50% 할인받습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "singed", "name": "신지드", "tier": "prism", "effect": "singed", "power": 1, "description": "이동 중 경로의 상대를 자신의 이동 방향 기준 뒤로 2칸 던져 도착 효과를 발생시킵니다. 던져진 상대는 매입·인수를 할 수 없습니다. 자신이 도착한 칸에는 3라운드 동안 독을 남겨, 다른 플레이어가 밟으면 독은 사라지고 해당 상대의 다음 차례 주사위를 10 이하로 제한하고 주사위 능력을 무시합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "conversion_gold_two", "name": "전환 : 골드 2", "tier": "prism", "effect": "conversion", "power": 2, "description": "이 카드를 소비하고 골드 증강 2개를 무작위로 얻습니다.", "hooks": ["acquire"], "targetTier": "gold"},
-  {"id": "builder_prism", "name": "건설왕", "tier": "prism", "effect": "builder", "power": 50, "description": "건물 건설 비용을 50% 할인받습니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "builder_prism", "name": "건축의 거장", "tier": "prism", "effect": "free_build", "power": 1, "description": "자기 지역의 일반 건물(별장·빌딩·호텔)을 무료로 건설합니다. 기존 건설 가능 시점은 그대로 적용되며, 랜드마크 건설 비용은 면제하지 않습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "great_luck", "name": "운수대통", "tier": "prism", "effect": "luck", "power": 100, "description": "이벤트 칸에서 부정적 이벤트가 발생하지 않습니다.", "hooks": ["before_move", "arrive"]},
 ];
 export interface AugmentOffer {
@@ -103,21 +102,44 @@ export interface AugmentOffer {
   seen: string[];
 }
 export interface AugmentPlayer { acquired: number; laps: number; owned: string[]; offer: AugmentOffer | null }
-export interface AugmentState { tierSequence: AugmentTier[]; players: AugmentPlayer[] }
-const RETIRED_AUGMENTS=new Set(["force_silver","force_gold","force_prism"]);
+export const UNIQUE_BLACK_IDS=new Set(["collector","copernicus","pacemaker","redistribution","silent"]);
+export function blackAvailable(state:AugmentState,id:string,seat:number){return !UNIQUE_BLACK_IDS.has(id)||(!(state.claimedBlack??[]).includes(id)&&!state.players.some((p,i)=>p.owned.includes(id)||i!==seat&&p.offer?.cards.includes(id)));}
+export interface AugmentState {claimedBlack?:string[]; tierSequence: AugmentTier[]; players: AugmentPlayer[] }
+/** Bring old checkpoints into the same ownership and offer-reservation rules. */
+export function normalizeUniqueBlack(state:AugmentState,random:()=>number=Math.random,catalog:readonly AugmentDefinition[]=AUGMENT_CATALOG){
+ const owned=new Set<string>();
+ for(const p of state.players)p.owned=p.owned.map(id=>{
+  if(!UNIQUE_BLACK_IDS.has(id))return id;
+  if(!owned.has(id)){owned.add(id);return id;}
+  const pool=catalog.filter(a=>a.tier==='black'&&!UNIQUE_BLACK_IDS.has(a.id)&&!p.owned.includes(a.id)&&a.id!=='shaco');
+  return pool.length?sample(pool,random).id:id;
+ });
+ const claimed=[...new Set([...(state.claimedBlack??[]),...owned])];if(claimed.length||state.claimedBlack)state.claimedBlack=claimed;
+ const reserved=new Set(claimed);
+ for(const p of state.players){const offer=p.offer;if(!offer)continue;
+  for(let slot=0;slot<offer.cards.length;slot++){const id=offer.cards[slot];if(!UNIQUE_BLACK_IDS.has(id))continue;
+   if(!reserved.has(id)){reserved.add(id);continue;}
+   const pool=catalog.filter(a=>a.tier===offer.tier&&!p.owned.includes(a.id)&&!offer.cards.includes(a.id)&&(!UNIQUE_BLACK_IDS.has(a.id)||!reserved.has(a.id)));
+   if(!pool.length){offer.cards.splice(slot,1);offer.rerolled.splice(slot--,1);continue;}
+   const replacement=sample(pool,random).id;offer.cards[slot]=replacement;offer.seen.push(replacement);if(UNIQUE_BLACK_IDS.has(replacement))reserved.add(replacement);
+  }
+ }
+}
+const ECONOMIC_REPLACEMENTS:Record<string,string>={realtor_silver:'builder_silver',realtor_gold:'builder_silver',realtor_prism:'builder_silver',tax_silver:'tax_gold',tax_prism:'tax_gold'};
+const RETIRED_AUGMENTS=new Set(["force_silver","force_gold","force_prism","island_owner",...Object.keys(ECONOMIC_REPLACEMENTS)]);
 /** Old checkpoints must not keep removed cards in either owned skills or pending offers. */
 export function removeRetiredAugments(state:AugmentState,random:()=>number=Math.random,catalog:readonly AugmentDefinition[]=AUGMENT_CATALOG){
  const affected:number[]=[];
  state.players.forEach((p,seat)=>{
   if(p.owned.some(id=>RETIRED_AUGMENTS.has(id)))affected.push(seat);
-  p.owned=p.owned.filter(id=>!RETIRED_AUGMENTS.has(id));
+  p.owned=[...new Set(p.owned.map(id=>ECONOMIC_REPLACEMENTS[id]??id).filter(id=>!RETIRED_AUGMENTS.has(id)))];
   const offer=p.offer;if(!offer)return;
   for(let slot=offer.cards.length-1;slot>=0;slot--){
    if(!RETIRED_AUGMENTS.has(offer.cards[slot]))continue;
    const available=catalog.filter(a=>a.tier===offer.tier&&!RETIRED_AUGMENTS.has(a.id)&&!p.owned.includes(a.id)&&!offer.cards.includes(a.id));
    const unseen=available.filter(a=>!offer.seen.includes(a.id)),pool=unseen.length?unseen:available;
    if(!pool.length){offer.cards.splice(slot,1);offer.rerolled.splice(slot,1);continue;}
-   const replacement=sample(pool,random);offer.cards[slot]=replacement.id;offer.seen.push(replacement.id);
+   const mapped=ECONOMIC_REPLACEMENTS[offer.cards[slot]],replacement=pool.find(a=>a.id===mapped)??sample(pool,random);offer.cards[slot]=replacement.id;offer.seen.push(replacement.id);
   }
   offer.seen=offer.seen.filter(id=>!RETIRED_AUGMENTS.has(id));
  });
@@ -154,7 +176,7 @@ export function createAugmentState(count: number, random: () => number = Math.ra
 export function openAugmentOffer(state: AugmentState, seat: number, random: () => number = Math.random, catalog: readonly AugmentDefinition[] = AUGMENT_CATALOG) {
   const p = state.players[seat];
   if (!p || p.offer || p.acquired >= AUGMENT_MILESTONES.length || p.laps < AUGMENT_MILESTONES[p.acquired]) return false;
-  const round = p.acquired, tier = state.tierSequence[round], pool = catalog.filter(a => a.tier === tier && !p.owned.includes(a.id)).map(a => a.id);
+  const round = p.acquired, tier = state.tierSequence[round], pool = catalog.filter(a => a.tier === tier && !p.owned.includes(a.id)&&blackAvailable(state,a.id,seat)).map(a => a.id);
   const cards: string[] = [];
   for (let i = 0; i < Math.min(3, pool.length); i++) cards.push(sample(pool.filter(id => !cards.includes(id)), random));
   if (!cards.length) { p.acquired++; return false; }
@@ -169,14 +191,16 @@ function requireOffer(state: AugmentState, seat: number, offerId: string, slot: 
 export function rerollAugment(state: AugmentState, seat: number, offerId: string, slot: number, random: () => number = Math.random, catalog: readonly AugmentDefinition[] = AUGMENT_CATALOG) {
   const offer = requireOffer(state, seat, offerId, slot), player = state.players[seat];
   if (offer.rerolled[slot]) throw new Error("이 카드의 리롤은 이미 사용했습니다.");
-  const pool = catalog.filter(a => a.tier === offer.tier && !player.owned.includes(a.id) && !offer.seen.includes(a.id));
+  const pool = catalog.filter(a => a.tier === offer.tier && !player.owned.includes(a.id) && !offer.seen.includes(a.id)&&blackAvailable(state,a.id,seat));
   const replacement = sample(pool, random);
   offer.cards[slot] = replacement.id; offer.rerolled[slot] = true; offer.seen.push(replacement.id);
-  if (!catalog.some(a => a.tier === offer.tier && !player.owned.includes(a.id) && !offer.seen.includes(a.id))) offer.rerolled.fill(true);
+  if (!catalog.some(a => a.tier === offer.tier && !player.owned.includes(a.id) && !offer.seen.includes(a.id)&&blackAvailable(state,a.id,seat))) offer.rerolled.fill(true);
 }
 export function selectAugment(state: AugmentState, seat: number, offerId: string, slot: number) {
   const offer = requireOffer(state, seat, offerId, slot), player = state.players[seat], chosen = offer.cards[slot];
   if (player.owned.includes(chosen) || !offer.bonus && player.acquired >= AUGMENT_MILESTONES.length) throw new Error("이미 보유했거나 획득할 수 없는 증강입니다.");
+  if(!blackAvailable(state,chosen,seat))throw new Error("다른 플레이어에게 예약된 블랙 증강입니다.");
+  if(UNIQUE_BLACK_IDS.has(chosen))(state.claimedBlack??=[]).push(chosen);
   player.owned.push(chosen); if(!offer.bonus)player.acquired++; player.offer = null;
   return chosen;
 }
@@ -188,7 +212,7 @@ export function publicAugmentState(state: AugmentState, seat: number): AugmentSt
 /** Separate from personal lap milestones; every survivor receives an offer at once. */
 export function openRoundPrismOffer(state:AugmentState,seat:number,random:()=>number,catalog:readonly AugmentDefinition[]=AUGMENT_CATALOG){
  const p=state.players[seat];if(p.offer)return false;
- const pool=catalog.filter(a=>a.tier==='black'&&!p.owned.includes(a.id)).map(a=>a.id),cards:string[]=[];
+ const pool=catalog.filter(a=>a.tier==='black'&&!p.owned.includes(a.id)&&blackAvailable(state,a.id,seat)).map(a=>a.id),cards:string[]=[];
  for(let i=0;i<Math.min(3,pool.length);i++)cards.push(sample(pool.filter(id=>!cards.includes(id)),random));
  if(!cards.length)return false;
  p.offer={id:`round30:${seat}`,round:20,tier:'black',bonus:true,cards,rerolled:cards.map(()=>pool.length<=cards.length),seen:[...cards]};return true;

@@ -1,3 +1,4 @@
+import {initializeDevelopment} from "./augment-marble-development.js";
 import { hasBlack,protectedBlack,blackState,reportAdamantBlock } from "./augment-marble-black.js";
 import { bankCashChange,withMoneyReason } from "./augment-marble-money.js";
 import { SALARY } from "./augment-marble-economy.js";
@@ -78,6 +79,7 @@ export function acquireEffect(g: Game, seat: number, id: string, random: () => n
   const eventStatus=g.world?.players[seat];
   if(eventStatus && eventStatus.disabledUntil>g.round){eventStatus.pendingAcquisitions??=[];if(!eventStatus.pendingAcquisitions.includes(id))eventStatus.pendingAcquisitions.push(id);return;}
   visited.add(id);
+  if(a.effect==="construction_team")initializeDevelopment(g);
   const p = g.augments!.players[seat], status = g.abilities.statuses[seat];
   if (a.effect === "revival") {
     status.revivals ??= [];

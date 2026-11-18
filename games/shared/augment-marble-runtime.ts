@@ -113,7 +113,7 @@ export type AbilityVisual = "steal" | "kick" | "trip" | "poison" | "trap" | "inc
 export interface AbilityEvent {
   blocked?:{reason:string;source?:number;revision:number};
   targetEntity?:"main"|"clone";actorEntity?:"main"|"clone";
-  black?: { targets?:number[]; destinationTile?:number; territories?:{tile:number;owner:number}[] };
+  black?: { targets?:number[]; destinationTile?:number; line?:number; territories?:{tile:number;owner:number}[] };
   id: number;
   actor: number;
   target?: number;
