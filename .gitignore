@@ -51,3 +51,9 @@ test_*.py
 /games/server/scripts/summarize-omok.ts
 .DS_Store
 *.tsbuildinfo
+
+# Runtime logs, local previews and benchmark output
+/logs/
+/work/
+/games/server/benchmarks/
+/games/server/forbidden-fuzz.mjs

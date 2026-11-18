@@ -37,6 +37,8 @@ export function planPresentation(previous: Game | undefined, next: Game, events:
 export function projectedLanding(g:Game,direction?:1|-1):{seat:number;tile:number}|null {
  if(g.phase!=="dice"||g.dice.length<2)return null;
  const copy=structuredClone(g);
+ // The marker shows intended dice travel; walls only stop the actual token.
+ copy.world.walls=[];
  if(copy.augments)copy.augments.players.forEach((p,i)=>{p.acquired=4;p.offer=null;if(i!==g.turn)p.owned=p.owned.filter(a=>!["calf_kick","drop_kick","trip"].includes(a));});
  copy.abilities.roll ??= createRoll(g.turn,g.abilities.ordinal);copy.abilities.roll.result=[g.dice[0],g.dice[1]];copy.abilities.roll.bonus=g.dice[2];copy.abilities.roll.comparison=null;copy.dice=[...g.dice];
  try{applyAction(copy,{action:"dice_confirm",...(direction===undefined?{}:{option:direction})},()=>.6);return {seat:g.turn,tile:copy.players[g.turn].position};}catch{return null;}
@@ -51,7 +53,8 @@ export function landingCandidates(g:Game):{seat:number;tile:number}[]{
  const pairs:DicePair[]=[[g.dice[0],g.dice[1]]];
  const comparison=roll.comparison??g.diceComparison;if(comparison)pairs.push([comparison[0],comparison[1]]);
  if(choices.rerolls.some(id=>id==='red_dice'||id==='black_dice'))pairs.push(...diceCandidates(roll));
- const bonuses=choices.rerolls.includes('suspicious_dice')?[g.dice[2]??0,1,2,3]:[g.dice[2]??0];
+ // Additional dice are random: never advertise unrevealed +1/+2/+3 landings.
+ const bonuses=[g.dice[2]??0];
  const directions:(1|-1|undefined)[]=!roll.restricted&&power(g,g.turn,'direction')?[1,-1]:[undefined];
  const outcomes=new Map<string,{seat:number;tile:number}>(),seen=new Set<string>();
  for(const pair of pairs)for(const bonus of bonuses)for(const direction of directions){
@@ -60,4 +63,9 @@ export function landingCandidates(g:Game):{seat:number;tile:number}[]{
   if(target)outcomes.set(`${target.seat}:${target.tile}`,target);
  }
  const result=[...outcomes.values()];candidateCache.set(g,{revision:g.revision,targets:result});return result;
+}
+
+/** Elimination becomes visible only after the token finishes its arrival. */
+export function presentationGame(g:Game,pending:ReadonlySet<number>):Game{
+ return pending.size?{...g,players:g.players.map((p,seat)=>pending.has(seat)?{...p,bankrupt:false}:p)}:g;
 }

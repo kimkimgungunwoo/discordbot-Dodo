@@ -629,6 +629,18 @@ class Game(commands.Cog):
             room = self.rooms.get(room_id)
             if not room or payload.get("matchId") != room.get("matchId") or not room["handoff"]:
                 return web.json_response({"ok": True})
+            if room.get("game") == "marble":
+                if GAMES["marble"].verify_result(payload, room) is None:
+                    return web.json_response({"error": "Invalid completion"}, status=400)
+                room["status"] = "WAITING"
+                room["handoff"] = False
+                room.pop("last_result", None)
+                old_task = self.room_tasks.pop(room_id, None)
+                if old_task:
+                    old_task.cancel()
+                self.room_tasks[room_id] = asyncio.create_task(self._room_alarm(room_id))
+                await self.edit_room(room)
+                return web.json_response({"ok": True})
             if type(payload.get("aborted", False)) is not bool:
                 return web.json_response({"error": "Invalid result"}, status=400)
             if payload.get("aborted"):
