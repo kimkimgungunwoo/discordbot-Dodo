@@ -250,14 +250,14 @@ function updateStage() { const el = root.querySelector(".m-presentation-label");
 const KICKS=new Set(["calf_kick","drop_kick","trip","low_kick"]);
 function moveDirection(g:View['game'],seat:number){return g.world.players[seat].reverseThisTurn?-1:1;}
 async function animateDice(result:number[],signal:AbortSignal,die?:0|1,additional=false){
- sound.play("roll");presentationStage=additional?"에디셔널 다이스 · 추가 주사위":"주사위를 굴리고 있습니다";updateStage();
+ presentationStage=additional?"에디셔널 다이스 · 추가 주사위":"주사위를 굴리고 있습니다";updateStage();
  const selector=additional?".m-extra-die":".m-die:not(.m-extra-die)";let frame=0;
- const rollStart=performance.now();
+ sound.play("roll");const rollStart=performance.now();
  // render() rebuilds the board; restore the roll on a fresh .m-dice at the elapsed point instead of leaving only pips changing.
  const keepRolling=()=>{const d=root.querySelector<HTMLElement>('.m-dice');if(!d||d.classList.contains('rolling'))return;d.style.setProperty('--roll-delay',`${-(performance.now()-rollStart)}ms`);d.classList.remove('landed');d.classList.add('rolling');d.classList.toggle('additional-rolling',additional);};
  const shuffle=()=>{keepRolling();root.querySelectorAll<HTMLElement>(selector).forEach((el,i)=>{if(die!==undefined&&i!==die)return;const value=1+(frame*(i?5:1)+i*3)%(additional?3:6);if(presentedDice)presentedDice[additional?2:i]=value;el.innerHTML=dieMarkup(value)});frame++;};
  shuffle();const interval=setInterval(shuffle,70);
- try{await pause(timelineDelay(620),signal);}finally{clearInterval(interval);root.querySelector('.m-dice')?.classList.remove('rolling','additional-rolling');}
+ try{await pause(620,signal);}finally{clearInterval(interval);root.querySelector('.m-dice')?.classList.remove('rolling','additional-rolling');}
  if(signal.aborted)return;
  presentedDice=additional?[...(view!.game.dice)]:[...result,...(view!.game.dice[2]!==undefined?[view!.game.dice[2]]:[])];diceResultHidden=false;render();root.querySelector('.m-dice')?.classList.add('landed');sound.play(!additional&&result.length===2&&result[0]===result[1]?'double':'dice');
 }
