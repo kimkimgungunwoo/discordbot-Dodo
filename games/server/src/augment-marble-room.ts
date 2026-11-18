@@ -13,7 +13,10 @@ import { drawTurnOrder,ORDER_DRAW_MS,canAct,actingSeat, automaticContinuation, p
 export function presentationMs(before:Game|undefined,after:Game){
  if(!before)return 0;let ms=0;
  const t=after.abilities.lastThrow;if(t&&t.kind!=="copy"&&t.id!==before.abilities.lastThrow?.id)ms+=1140;
- const m=after.abilities.lastMove,o=before.abilities.lastMove;if(m)ms+=Math.max(0,m.path.length-1-(o?.id===m.id?o.path.length-1:0))*250;
+ const m=after.abilities.lastMove,o=before.abilities.lastMove,hops=m?Math.max(0,m.path.length-1-(o?.id===m.id?o.path.length-1:0)):0;
+ // The clone walks in step with the main token; a clone-only move has no main hops at all.
+ const c=after.black?.cloneMove,co=before.black?.cloneMove,cloneHops=c&&(c.id!==co?.id||c.path.length!==co?.path.length)?c.path.length-1:0;
+ ms+=Math.max(hops,cloneHops)*250+(c?.wall&&cloneHops?520:0);
  const last=before.abilities.events.at(-1)?.id??0;
  for(const e of after.abilities.events)if(e.id>last&&e.ability!=="dice")ms+=e.ability==="redistribution"?7600:e.ability==="silent"?1650:(BLACK_IDS as readonly string[]).includes(e.ability)?2200:1400;
  return Math.min(ms,12_000);

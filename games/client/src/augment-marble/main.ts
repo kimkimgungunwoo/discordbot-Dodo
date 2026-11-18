@@ -54,7 +54,9 @@ let animating = false, presentationStage = "", needsBaseline = true, draining = 
 let directPickingKey="";
 let eventPlayerChoice:{key:string;seat:number}|null=null;
 let drawnMatch="",drawingOrder=false;
-let heldWall:number|undefined;
+let heldWall:number|undefined;let heldCloneWall:number|undefined;
+/** Shaco clone landing arrow, shown beside the main one; same lifecycle as landingTarget. */
+let cloneTarget:{seat:number;tile:number}|null=null;
 let controller = new AbortController(), movingSprite: HTMLCanvasElement | undefined, movingShadow: HTMLDivElement | undefined;
 let queue: { next: View; keepDeadline: boolean }[] = [];
 let info: { kind: "ability"; id: string; seat: number } | { kind: "rules" } | null = null;
@@ -88,7 +90,7 @@ function cleanupMovement() { root.querySelectorAll(".m-step-active").forEach(el=
 function resetPresentation() {
   pendingBlackAppearances.clear();pendingPaceAppearances.clear();
   pendingEliminations.clear();presentedDice=null;diceResultHidden=false;resetPresentationClock();sound.stop();generation++; controller.abort(); controller = new AbortController(); queue = []; draining = false;
-  cleanupMovement(); landingTarget=null;displayedPositions.clear();moveProgress={done:0,total:0};displayedCash.clear();displayedProperties.clear();moneyEffects.clear();abilityEffects.clear();drawingOrder=false; animating = false; presentationStage = ""; clearTimeout(timer);
+  cleanupMovement(); landingTarget=null;cloneTarget=null;displayedPositions.clear();moveProgress={done:0,total:0};displayedCash.clear();displayedProperties.clear();moneyEffects.clear();abilityEffects.clear();drawingOrder=false; animating = false; presentationStage = ""; clearTimeout(timer);
 }
 function pause(ms: number, signal: AbortSignal) {
   if (signal.aborted) return Promise.resolve();
@@ -142,7 +144,7 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
   if(previous&&next.game.abilities.lastMove?.id!==previous.abilities.lastMove?.id){const prior=new Set(previous.abilities.marks.map(markKey));for(const m of next.game.abilities.marks)if(!prior.has(markKey(m)))hiddenMarks.add(markKey(m));}
   if(previous)consumedMarks=previous.abilities.marks.filter(m=>!next.game.abilities.marks.some(n=>markKey(n)===markKey(m))&&events.some(e=>e.actor===m.owner&&e.tile===m.tile&&e.target!==undefined&&e.ability===(m.kind==='poison'?'singed':m.kind)));
   if(previous?.turnId!==next.game.turnId||previous?.abilities.ordinal!==next.game.abilities.ordinal){blackMoveTarget=undefined;blackPick=null;blackEntity="main";}
-  if(previous?.turnId!==next.game.turnId || next.game.phase==="roll"&&previous?.abilities.ordinal!==next.game.abilities.ordinal)landingTarget=null;
+  if(previous?.turnId!==next.game.turnId || next.game.phase==="roll"&&previous?.abilities.ordinal!==next.game.abilities.ordinal){landingTarget=null;cloneTarget=null;}
   const teleport=next.game.teleport?.id!==previous?.teleport?.id?next.game.teleport:undefined;
   const takeovers=previous&&!events.some(e=>e.ability==="unfair_trade")?next.game.properties.flatMap((p,tile)=>p.owner!==null&&previous.properties[tile].owner!==null&&p.owner!==previous.properties[tile].owner?[{tile,from:previous.properties[tile].owner!,to:p.owner}]:[]):[];
   const introductions=blackIntroductions(previous,next.game);
@@ -173,7 +175,9 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
   shownMoneyTransferId=previous?.moneyTransfers?.at(-1)?.id??0;
   if(plan.dice){diceResultHidden=true;presentedDice=[...next.game.dice];if(plan.dice.additional)presentedDice[2]=0;else for(let i=0;i<2;i++)presentedDice[i]=plan.dice.die!==undefined&&i!==plan.dice.die?(previous?.dice[i]??0):0;}
   view = next; pending = false; retries = 0; syncRematch(next); clearTimeout(timer);
-  animating = !!(introductions.length || plan.dice || plan.steps.some(s => s.path.length > 1) || events.length || transfers.length || heldWall!==undefined || batch?.length || destruction?.items.length || teleport || takeovers.length || locust);
+  const cm=next.game.black?.cloneMove,pm=previous?.black?.cloneMove,cloneMoved=previous&&cm&&cm.path.length>1&&(cm.id!==pm?.id||cm.path.length!==pm?.path.length)?cm:undefined;
+  heldCloneWall=cloneMoved?.wall?.boundary;
+  animating = !!(cloneMoved || introductions.length || plan.dice || plan.steps.some(s => s.path.length > 1) || events.length || transfers.length || heldWall!==undefined || batch?.length || destruction?.items.length || teleport || takeovers.length || locust);
   if(previous&&next.game.players.some((p,i)=>p.bankrupt&&!previous.players[i].bankrupt))animating=true;
   presentationStage = animating ? "발동 효과를 확인하고 있습니다" : "";
   if (["augment","event","rent","debt"].includes(next.game.phase) && actingSeat(next.game) === next.seat && (previous?.phase !== next.game.phase || next.game.world.current?.serial !== previous?.world.current?.serial)) { if(info?.kind!=="rules")info = null; }
@@ -204,8 +208,14 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
       // The arrow shows the dice destination until a wall or kick visibly changes it; finalTarget is synced after movement.
       finalTarget=landingTarget;const mover=next.game.abilities.lastMove;
       if(plan.dice&&!teleport&&!continuation&&mover&&!mover.flight&&route.length>1)landingTarget={seat:mover.seat,tile:(mover.path[0]+moveDirection(next.game,mover.seat)*next.game.dice.reduce((sum,n)=>sum+n,0)+360)%36};
+      if(cloneMoved){
+        // Clone-only moves (mind control, resting main) leave the main token in place: no main arrow.
+        if(new Set(route).size<2){landingTarget=null;finalTarget=null;}
+        const steps=next.game.dice.reduce((sum,n)=>sum+n,0),own=cloneMoved.seat===previous!.turn,n=own&&previous!.black?.clones[cloneMoved.seat]?.restricted?Math.min(10,steps):steps;
+        cloneTarget={seat:cloneMoved.seat,tile:plan.dice?(cloneMoved.path[0]+moveDirection(next.game,previous!.turn)*n+360)%36:cloneMoved.path.at(-1)!};
+      }
       render();
-      if(!teleport&&(plan.dice||landingTarget&&route.length>1))await pause(timelineDelay(520),signal);
+      if(!teleport&&(plan.dice||landingTarget&&route.length>1||cloneMoved))await pause(timelineDelay(520),signal);
     }
     await play(plan.before.filter(e => e.ability === "dice"));
     if(batch?.length&&!signal.aborted){presentationStage="태풍";updateStage();await animateFlights(batch.map(item=>({seat:item.seat,tile:item.to,entity:item.entity})),signal);}
@@ -215,10 +225,13 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
       if(teleport){await play(step.events);continue;}
       if(next.game.abilities.lastMove!.flight)await animateFlight(next.game.abilities.lastMove!.seat,step.path.at(-1)!,signal);
       else {await animateMovement(next.game.abilities.lastMove!.seat, step.path, signal);cleanupMovement();render();}
-      for(const e of step.events){const seat=e.target;if(KICKS.has(e.ability)&&e.targetEntity!=="clone"&&e.remaining!==undefined&&seat!==undefined&&seat===landingTarget?.seat){landingTarget={seat,tile:(e.tile+moveDirection(next.game,seat)*e.remaining+360)%36};render();}}
+      for(const e of step.events){const seat=e.target;if(!KICKS.has(e.ability)||e.remaining===undefined||seat===undefined)continue;const tile=(e.tile+moveDirection(next.game,previous?.turn??seat)*e.remaining+360)%36;
+        if(e.targetEntity==="clone"&&seat===cloneTarget?.seat){cloneTarget={seat,tile};render();}else if(e.targetEntity!=="clone"&&seat===landingTarget?.seat){landingTarget={seat,tile};render();}}
       await play(step.events);
     }
     if(heldWall!==undefined&&!signal.aborted)await animateWall(next.game.abilities.lastMove!.seat,next.game.abilities.lastMove!.wall!,signal);
+    if(heldCloneWall!==undefined&&cloneMoved?.wall&&!signal.aborted)await animateWall(cloneMoved.seat,cloneMoved.wall,signal,"clone");
+    if(!signal.aborted&&cloneMoved&&cloneTarget?.tile!==cloneMoved.path.at(-1)){cloneTarget={seat:cloneMoved.seat,tile:cloneMoved.path.at(-1)!};render();}
     if(!signal.aborted&&finalTarget&&(finalTarget.tile!==landingTarget?.tile||finalTarget.seat!==landingTarget?.seat)){landingTarget=finalTarget;render();}
     if(destruction?.items.length&&!signal.aborted){presentationStage=destruction.kind==="quake"?"지진 · 건물 붕괴":"미사일 · 건물 붕괴";updateStage();sound.play("quake");await destroyBuildings(root,destruction.items.map(i=>i.tile),signal);displayedProperties.clear();render();}
     if(locust&&!signal.aborted){presentationStage="메뚜기떼";updateStage();await showLocustSwarm(root,locust.path,tile=>{displayedProperties.delete(tile);render();},signal);}
@@ -229,7 +242,7 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
     for(const item of takeovers){if(signal.aborted)return;sound.play("takeover");await showTakeover(root,item.tile,BOARD[item.tile].name,item.from,item.to,next.game.players.map(p=>p.name),()=>{displayedProperties.delete(item.tile);render();},signal);}
     if(!signal.aborted&&transfers.length){shownMoneyTransferId=next.game.moneyTransfers?.at(-1)?.id??0;render();presentationStage="금액 정산";updateStage();sound.play(next.game.players.some((p,i)=>p.laps>(previous?.players[i].laps??p.laps))?"salary":transfers.some(t=>t.from!==null&&t.to!==null)?"transfer":transfers.some(t=>t.to!==null)?"income":"payment");await moneyEffects.play(transfers,signal,next.game.players.map(p=>p.name));}
   } finally {
-    if (!signal.aborted) { cleanupMovement();pendingEliminations.clear();presentedDice=null;diceResultHidden=false;displayedClones.clear();hiddenMarks.clear();consumedMarks=[];heldWall=undefined; displayedPositions.clear();displayedCash.clear();displayedProperties.clear();animating = false; presentationStage = ""; shownEventId = next.game.abilities.events.at(-1)?.id ?? shownEventId; displayedLog = undefined; render(); }
+    if (!signal.aborted) { cleanupMovement();pendingEliminations.clear();presentedDice=null;diceResultHidden=false;displayedClones.clear();hiddenMarks.clear();consumedMarks=[];heldWall=undefined;heldCloneWall=undefined; displayedPositions.clear();displayedCash.clear();displayedProperties.clear();animating = false; presentationStage = ""; shownEventId = next.game.abilities.events.at(-1)?.id ?? shownEventId; displayedLog = undefined; render(); }
   }
   if(!signal.aborted&&previous){for(const cue of cues)if(!earlyCues.has(cue))sound.play(cue);if(next.game.phase==="event"&&next.game.world.current?.serial!==previous.world.current?.serial){sound.play(`event-${eventDefinition(next.game.world.current!.id).category}`);await pause(1000,signal);}}
 }
@@ -250,12 +263,12 @@ async function animateDice(result:number[],signal:AbortSignal,die?:0|1,additiona
 }
 
 function revealBoardTile(index:number){const stage=root.querySelector<HTMLElement>(".m-board-stage"),anchor=root.querySelector(`[data-landing-anchor="${index}"]`);if(!stage||!anchor)return 0;const r=anchor.getBoundingClientRect(),box=stage.getBoundingClientRect(),before=stage.scrollLeft;if(r.left<box.left+32||r.right>box.right-32)stage.scrollLeft+=r.left-(box.left+box.width/2);return stage.scrollLeft-before;}
-async function animateWall(seat:number,wall:{boundary:number;tile:number;next:number},signal:AbortSignal){
+async function animateWall(seat:number,wall:{boundary:number;tile:number;next:number},signal:AbortSignal,entity:"main"|"clone"="main"){
  sound.play("wall");
- cleanupMovement();render();const token=root.querySelector<SVGImageElement>(`[data-token="${seat}"]`),bar=root.querySelector<SVGGElement>(`[data-wall="${wall.boundary}"]`);if(!token||!bar)return;
+ cleanupMovement();render();const token=root.querySelector<SVGImageElement>(entity==="clone"?`[data-clone-token="${seat}"]`:`[data-token="${seat}"]`),bar=root.querySelector<SVGGElement>(`[data-wall="${wall.boundary}"]`);if(!token||!bar)return;
  const a=token.getBoundingClientRect(),b=bar.getBoundingClientRect(),dx=b.x+b.width/2-(a.x+a.width/2),dy=b.y+b.height/2-(a.y+a.height/2),length=Math.hypot(dx,dy)||1,travel=Math.max(0,length-a.width*.3)/(root.querySelector(".m-board-svg")!.getBoundingClientRect().width/908);
  const animation=token.animate([{transform:'translate(0,0)'},{transform:`translate(${dx/length*travel}px,${dy/length*travel}px)`,offset:.5},{transform:'translate(0,0)'}],{duration:520,easing:'ease-in-out'});
- animation.currentTime=Math.max(0,performance.now()-effectStart(520));signal.addEventListener('abort',()=>animation.cancel(),{once:true});await animation.finished.catch(()=>{});heldWall=undefined;moveProgress.total=moveProgress.done;landingTarget={seat,tile:wall.tile};render();
+ animation.currentTime=Math.max(0,performance.now()-effectStart(520));signal.addEventListener('abort',()=>animation.cancel(),{once:true});await animation.finished.catch(()=>{});if(entity==="clone"){heldCloneWall=undefined;cloneTarget={seat,tile:wall.tile};}else{heldWall=undefined;moveProgress.total=moveProgress.done;landingTarget={seat,tile:wall.tile};}render();
 }
 async function animatePortal(seat:number,tile:number,signal:AbortSignal,entity:"main"|"clone"="main"){
  sound.play("portal");
@@ -487,12 +500,12 @@ function blackPromptMarkup(){if(!view||animating)return '';if(eventEntityTarget!
 function boardDiceControls(){return !!view&&["roll","dice"].includes(view.game.phase);}
 function ownDiceControls(){return !!view&&!view.aborted&&!view.game.black?.pending.length&&view.game.phase!=="augment"&&(view.game.phase!=="event"||!!directPickKind())&&view!.started&&view!.seat===actingSeat(view!.game)&&!view!.aborted&&!animating&&!drawingOrder;}
 function boardMarkup() {
- const v=view!,g=v.game,centerSeat=g.winner??actingSeat(g),dv=presentedDice??(g.diceComparison?[...g.diceComparison,...(g.dice[2]!==undefined?[g.dice[2]]:[])]:g.dice),target=diceResultHidden||g.phase==="dice"?null:landingTarget,candidates=diceResultHidden?[]:landingCandidates(g);
+ const v=view!,g=v.game,centerSeat=g.winner??actingSeat(g),dv=presentedDice??(g.diceComparison?[...g.diceComparison,...(g.dice[2]!==undefined?[g.dice[2]]:[])]:g.dice),target=diceResultHidden||g.phase==="dice"?null:landingTarget,candidates=diceResultHidden||animating?[]:landingCandidates(g,blackMoveTarget,blackEntity);
  const choice=blackPromptMarkup();
  boardBirds.forEach((_,seat)=>{boardBirds[seat]=hasCopernicus(g,seat)?invertedBirds[seat]:originalBirds[seat]});
  const center=choice?`<div class="m-center m-has-black-choice" style="--seat:${COLORS[centerSeat]}" data-center-seat="${centerSeat}">${choice}</div>`:`<div class="m-center" style="--seat:${COLORS[centerSeat]}" data-center-seat="${centerSeat}"><div class="m-dice" data-dice-revealed="${!diceResultHidden}" role="img" aria-label="${diceResultHidden?'주사위를 굴리고 있습니다':dv.length?`주사위 ${dv.join(', ')}`:'주사위 대기'}">${(g.world.players[g.turn].lostThisTurn?[0]:[0,1]).map(i=>`<span class="m-die">${dieMarkup(dv[i]??0)}</span>`).join('')}${dv[2]!==undefined?`<span class="m-extra-label">＋</span><span class="m-die m-extra-die" aria-label="${diceResultHidden?'추가 주사위 굴리는 중':`추가 주사위 ${dv[2]}`}">${dieMarkup(dv[2])}</span>`:""}</div><p class="m-center-hint">${target?`${target.seat+1}P · ${BOARD[target.tile].name} 도착${animating||g.phase==="dice"?" 예정":""}`:candidates.length?`도착 후보 ${candidates.length}곳 · 이동을 확정하세요`:`${g.round}/${MAX_ROUNDS}라운드`}</p><span class="m-move-progress" aria-live="off">${animating&&moveProgress.total?`${moveProgress.done} / ${moveProgress.total}칸`:''}</span><div class="m-board-action-slot">${ownDiceControls()?`<section class="m-board-actions" aria-label="주사위 조작">${controls()}${couponControls()}<p class="m-error" role="status">${escape(error)}</p></section>`:""}</div></div>`;
- const boardGame={...presentationGame(g,pendingEliminations),abilities:{...g.abilities,marks:[...g.abilities.marks.filter(m=>!hiddenMarks.has(markKey(m))),...consumedMarks]},properties:g.properties.map((p,i)=>displayedProperties.get(i)??p),world:heldWall===undefined?g.world:{...g.world,walls:[...g.world.walls,heldWall]}};
- return renderBoardB(boardGame,{clonePositions:displayedClones,seat:v.seat,selected,positions:displayedPositions,target,candidates,birds:boardBirds,stealth:g.players.map((p,i)=>g.phase!=="finished"&&!v.aborted&&!p.bankrupt&&immune(g,i)),center,salePick:saleTiles(),eventTilePick:directPickKind()==="tile"?eventOwnedTiles(g):[],boundaryPick:directPickKind()==="boundary"?BOARD.filter(t=>!g.world.walls.includes(t.index)).map(t=>t.index):[],portalPick:g.phase==="portal"&&editable(),linePick:directPickKind()==="line"});
+ const boardGame={...presentationGame(g,pendingEliminations),abilities:{...g.abilities,marks:[...g.abilities.marks.filter(m=>!hiddenMarks.has(markKey(m))),...consumedMarks]},properties:g.properties.map((p,i)=>displayedProperties.get(i)??p),world:heldWall===undefined&&heldCloneWall===undefined?g.world:{...g.world,walls:[...g.world.walls,...[heldWall,heldCloneWall].filter((w):w is number=>w!==undefined)]}};
+ return renderBoardB(boardGame,{clonePositions:displayedClones,seat:v.seat,selected,positions:displayedPositions,target,cloneTarget:diceResultHidden||g.phase==="dice"?null:cloneTarget,candidates,birds:boardBirds,stealth:g.players.map((p,i)=>g.phase!=="finished"&&!v.aborted&&!p.bankrupt&&immune(g,i)),center,salePick:saleTiles(),eventTilePick:directPickKind()==="tile"?eventOwnedTiles(g):[],boundaryPick:directPickKind()==="boundary"?BOARD.filter(t=>!g.world.walls.includes(t.index)).map(t=>t.index):[],portalPick:g.phase==="portal"&&editable(),linePick:directPickKind()==="line"});
 }
 function updateConstructionSelection(){
  const control=root.querySelector<HTMLButtonElement>('[data-build-selected]');if(!control||!view)return;

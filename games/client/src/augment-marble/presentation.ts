@@ -1,6 +1,7 @@
 import { applyAction, availableDice, type Game } from "../../../shared/augment-marble";
 import { power } from "../../../shared/augment-marble-effects";
-import { createRoll, diceCandidates, type DicePair } from "../../../shared/augment-marble-runtime";
+import { createRoll, type DicePair } from "../../../shared/augment-marble-runtime";
+import { blackTargets, hasBlack } from "../../../shared/augment-marble-black";
 import type { AbilityEvent } from "../../../shared/augment-marble-runtime";
 
 export interface PresentationStep { path: number[]; events: AbilityEvent[] }
@@ -44,25 +45,37 @@ export function projectedLanding(g:Game,direction?:1|-1):{seat:number;tile:numbe
  try{applyAction(copy,{action:"dice_confirm",...(direction===undefined?{}:{option:direction})},()=>.6);return {seat:g.turn,tile:copy.players[g.turn].position};}catch{return null;}
 }
 
-/** All remaining dice/direction outcomes; previews never select a final arrow. */
-const candidateCache=new WeakMap<Game,{revision:number;targets:{seat:number;tile:number}[]}>();
-export function landingCandidates(g:Game):{seat:number;tile:number}[]{
+/** A landing arrow; label marks copy distances ("7칸") or who moves under mind control ("2P"). */
+export interface LandingCandidate {seat:number;tile:number;label?:string}
+/** Only outcomes the player already knows and chooses between; unrevealed rerolls and extra dice are never advertised. */
+const candidateCache=new WeakMap<Game,{key:string;targets:LandingCandidate[]}>();
+export function landingCandidates(g:Game,mindTarget?:number,mindEntity:"main"|"clone"="main"):LandingCandidate[]{
+ const direction=g.world.players[g.turn].reverseThisTurn?-1:1,ahead=(from:number,steps:number)=>(from+direction*steps+360)%36;
+ // Mimic: each copyable distance before rolling.
+ if(g.phase==="roll")return availableDice(g).copies.map(sum=>({seat:g.turn,tile:ahead(g.players[g.turn].position,sum),label:`${sum}칸`}));
  if(g.phase!=="dice"||g.dice.length<2)return [];
- const cached=candidateCache.get(g);if(cached?.revision===g.revision)return cached.targets;
- const roll=g.abilities.roll??createRoll(g.turn,g.abilities.ordinal),choices=availableDice(g);
+ const key=`${g.revision}:${mindTarget}:${mindEntity}`,cached=candidateCache.get(g);if(cached?.key===key)return cached.targets;
+ // Mind control: every movable bird's landing until one is picked, then only the picked one.
+ const steps=g.dice.reduce((n,x)=>n+x,0),others=hasBlack(g,g.turn,"mind_control")?blackTargets(g,g.turn):[];
+ const clones=g.black?.clones??{},bird=(seat:number,entity:"main"|"clone"):LandingCandidate=>({seat,tile:ahead(entity==="clone"?clones[seat].position:g.players[seat].position,steps),label:`${seat+1}P${entity==="clone"?" 분신":""}`});
+ const birds=others.flatMap(seat=>clones[seat]?[bird(seat,"main"),bird(seat,"clone")]:[bird(seat,"main")]);
+ if(mindTarget!==undefined&&others.includes(mindTarget)){const targets=[bird(mindTarget,mindEntity==="clone"&&clones[mindTarget]?"clone":"main")];candidateCache.set(g,{key,targets});return targets;}
+ const roll=g.abilities.roll??createRoll(g.turn,g.abilities.ordinal);
  const pairs:DicePair[]=[[g.dice[0],g.dice[1]]];
  const comparison=roll.comparison??g.diceComparison;if(comparison)pairs.push([comparison[0],comparison[1]]);
- if(choices.rerolls.some(id=>id==='red_dice'||id==='black_dice'))pairs.push(...diceCandidates(roll));
  // Additional dice are random: never advertise unrevealed +1/+2/+3 landings.
  const bonuses=[g.dice[2]??0];
  const directions:(1|-1|undefined)[]=!roll.restricted&&power(g,g.turn,'direction')?[1,-1]:[undefined];
- const outcomes=new Map<string,{seat:number;tile:number}>(),seen=new Set<string>();
+ const outcomes=new Map<string,LandingCandidate>(),seen=new Set<string>();
+ // Shaco: the own clone walks the same throw (capped at 10 while restricted) unless it is resting; its landing is a known arrival option.
+ const own=clones[g.turn],cloneWalks=!!own&&hasBlack(g,g.turn,"shaco")&&!own.skip&&!own.rest,me=others.length?`${g.turn+1}P `:"";
  for(const pair of pairs)for(const bonus of bonuses)for(const direction of directions){
   const key=`${pair[0]+pair[1]}:${pair[0]===pair[1]}:${bonus}:${direction}`;if(seen.has(key))continue;seen.add(key);
   const preview={...g,dice:[...pair,...(bonus?[bonus]:[])]};const target=projectedLanding(preview,direction);
-  if(target)outcomes.set(`${target.seat}:${target.tile}`,target);
+  if(target)outcomes.set(`${target.seat}:${target.tile}`,{...target,label:cloneWalks?`${me}본체`:others.length?`${g.turn+1}P`:undefined});
+  if(cloneWalks){const sum=pair[0]+pair[1]+bonus,n=own.restricted?Math.min(10,sum):sum,tile=(own.position+(direction??(g.world.players[g.turn].reverseThisTurn?-1:1))*n+360)%36;outcomes.set(`clone:${tile}`,{seat:g.turn,tile,label:`${me}분신`});}
  }
- const result=[...outcomes.values()];candidateCache.set(g,{revision:g.revision,targets:result});return result;
+ const result=[...outcomes.values(),...birds];candidateCache.set(g,{key,targets:result});return result;
 }
 
 /** Elimination becomes visible only after the token finishes its arrival. */

@@ -1935,3 +1935,4 @@ body:has(.m-shell),body:has(.m-setup){background:#f3f1e7;color:#171714}
 .m-board:has([data-guillotine-option="1"]:is(:hover,:focus-visible)) [data-guillotine-zone="1"]{display:inline}
 .m-board:has([data-guillotine-option="2"]:is(:hover,:focus-visible)) [data-guillotine-zone="2"]{display:inline}
 .m-board:has([data-guillotine-option="3"]:is(:hover,:focus-visible)) [data-guillotine-zone="3"]{display:inline}
+.m-candidate-label{font-size:15px;font-weight:900;fill:#3a2200;stroke:#fffef8;stroke-width:4px;paint-order:stroke;pointer-events:none}
