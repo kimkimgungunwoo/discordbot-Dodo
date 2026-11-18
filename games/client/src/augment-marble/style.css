@@ -311,7 +311,7 @@
   background:#263244;
 }
 .m-dice.rolling .m-die {
-  animation:m-roll .62s ease-out var(--roll-delay,0ms) both;
+  animation:m-roll .62s ease-out var(--roll-delay,0ms);
 }
 .m-dice.rolling .m-die:nth-child(2) {
   animation-direction:reverse;
