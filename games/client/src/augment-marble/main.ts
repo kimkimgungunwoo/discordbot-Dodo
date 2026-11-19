@@ -207,12 +207,14 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
       landingTarget=next.game.phase==="dice"?null:teleport?{seat:teleport.seat,tile:teleport.to}:continuation?.target ?? (route.length>1&&next.game.abilities.lastMove?{seat:next.game.abilities.lastMove.seat,tile:next.game.abilities.movement?(route.at(-1)!+(next.game.world.players[next.game.abilities.lastMove.seat].reverseThisTurn?-1:1)*next.game.abilities.movement.remaining+360)%36:route.at(-1)!}:landingTarget);
       // The arrow shows the dice destination until a wall or kick visibly changes it; finalTarget is synced after movement.
       finalTarget=landingTarget;const mover=next.game.abilities.lastMove;
-      if(plan.dice&&!teleport&&!continuation&&mover&&!mover.flight&&route.length>1)landingTarget={seat:mover.seat,tile:(mover.path[0]+moveDirection(next.game,mover.seat)*next.game.dice.reduce((sum,n)=>sum+n,0)+360)%36};
+      // A move that starts in this update: with dice abilities the roll arrived in an earlier update, so don't key this on plan.dice.
+      const freshMove=!!mover&&mover.id!==previous?.abilities.lastMove?.id;
+      if(freshMove&&!teleport&&!continuation&&mover&&!mover.flight&&route.length>1)landingTarget={seat:mover.seat,tile:(mover.path[0]+moveDirection(next.game,mover.seat)*next.game.dice.reduce((sum,n)=>sum+n,0)+360)%36};
       if(cloneMoved){
         // Clone-only moves (mind control, resting main) leave the main token in place: no main arrow.
         if(new Set(route).size<2){landingTarget=null;finalTarget=null;}
         const steps=next.game.dice.reduce((sum,n)=>sum+n,0),own=cloneMoved.seat===previous!.turn,n=own&&previous!.black?.clones[cloneMoved.seat]?.restricted?Math.min(10,steps):steps;
-        cloneTarget={seat:cloneMoved.seat,tile:plan.dice?(cloneMoved.path[0]+moveDirection(next.game,previous!.turn)*n+360)%36:cloneMoved.path.at(-1)!};
+        cloneTarget={seat:cloneMoved.seat,tile:plan.dice||freshMove?(cloneMoved.path[0]+moveDirection(next.game,previous!.turn)*n+360)%36:cloneMoved.path.at(-1)!};
       }
       render();
       if(!teleport&&(plan.dice||landingTarget&&route.length>1||cloneMoved))await pause(timelineDelay(520),signal);
