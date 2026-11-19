@@ -19,7 +19,16 @@ export function presentationMs(before:Game|undefined,after:Game){
  ms+=Math.max(hops,cloneHops)*250+(c?.wall&&cloneHops?520:0);
  const last=before.abilities.events.at(-1)?.id??0;
  for(const e of after.abilities.events)if(e.id>last&&e.ability!=="dice")ms+=e.ability==="redistribution"?7600:e.ability==="silent"?1650:(BLACK_IDS as readonly string[]).includes(e.ability)?2200:1400;
- return Math.min(ms,12_000);
+ // Board effects played after movement (takeover-effect, destruction-effects, locust-effect, flight, portal-effect, money-effects, elimination-announcement).
+ const trade=after.abilities.events.some(e=>e.id>last&&e.ability==="unfair_trade");
+ if(!trade)ms+=after.properties.filter((p,i)=>p.owner!==null&&before.properties[i].owner!==null&&p.owner!==before.properties[i].owner).length*1100;
+ if(after.destructionBatch?.items.length&&after.destructionBatch.id!==before.destructionBatch?.id)ms+=1100;
+ if(after.locustBatch&&after.locustBatch.id!==before.locustBatch?.id)ms+=2750;
+ if(after.flightBatch&&after.flightBatch.id!==before.flightBatch?.id)ms+=780;
+ if(after.teleport&&after.teleport.id!==before.teleport?.id)ms+=1100;
+ if((after.moneyTransfers?.at(-1)?.id??0)>(before.moneyTransfers?.at(-1)?.id??0))ms+=1400;
+ if(after.players.some((p,i)=>p.bankrupt&&!before.players[i].bankrupt))ms+=1250;
+ return Math.min(ms,15_000);
 }
 
 export class AugmentMarbleRoom extends RelayRoom {
@@ -120,7 +129,7 @@ export class AugmentMarbleRoom extends RelayRoom {
     const continuation=automaticContinuation(this.game),shown=presentationMs(before,this.game);
     if(continuation){this.botTimer=setTimeout(()=>{if(this.result)return;const before=structuredClone(this.game);applyAction(this.game,continuation,()=>randomInt(0,2**32)/2**32,this.catalog);this.schedule(false,before);this.presence()},700+drawDelay+shown);this.botTimer.unref();}
     else if (this.definition.seats![actingSeat(this.game)].bot || this.game.augmentResume==="round30"&&this.game.roundPrism?.pending.some(i=>this.definition.seats![i].bot)) {
-      this.botTimer = setTimeout(() => { if (this.result) return; const before = structuredClone(this.game),snapshot=structuredClone(this.game);if(snapshot.augmentResume==="round30")snapshot.augmentSeat=snapshot.roundPrism!.pending.find(i=>this.definition.seats![i].bot)!;const action = autoAction(snapshot, true); applyAction(this.game, action, () => randomInt(0, 2 ** 32) / 2 ** 32, this.catalog); this.schedule(preservesDeadline(before, this.game, action),before); this.presence(); }, (this.game.phase === "roll" ? 1400 : 1000)+drawDelay+shown);
+      this.botTimer = setTimeout(() => { if (this.result) return; const before = structuredClone(this.game),snapshot=structuredClone(this.game);if(snapshot.augmentResume==="round30")snapshot.augmentSeat=snapshot.roundPrism!.pending.find(i=>this.definition.seats![i].bot)!;const action = autoAction(snapshot, true); applyAction(this.game, action, () => randomInt(0, 2 ** 32) / 2 ** 32, this.catalog); this.schedule(preservesDeadline(before, this.game, action),before); this.presence(); }, (this.game.phase === "roll" ? 1400 : this.game.phase === "event" ? 2500 : 1000)+drawDelay+shown); // event: time to read the card before the bot picks
       this.botTimer.unref();
     }
   }

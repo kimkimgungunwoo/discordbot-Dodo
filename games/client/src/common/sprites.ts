@@ -56,6 +56,20 @@ function bird(state: PlayerState, frame: number, accent: string) {
 // Same Dodo artwork, with a seat accent for games supporting more than two players.
 export function dodoProfile(accent: string) { return bird("idle", 0, accent); }
 export function dodoSprite(accent: string, state: PlayerState, frame = 0) { return bird(state, frame, accent); }
+/** Rows of empty space above the 40x32 Dodo in the hatted sprite (canvas 40x42). */
+export const HAT_HEADROOM = 10;
+/** Shaco clone: the same idle Dodo wearing a pixel party hat centred on its head (head spans x 19..29, top y 4). */
+export function dodoHatProfile(accent: string) {
+  const body = dodoProfile(accent);
+  return sprite(40, 32 + HAT_HEADROOM, ctx => {
+    ctx.drawImage(body, 0, HAT_HEADROOM);
+    const rect = (color: string, left: number, top: number, width: number, height: number) => { ctx.fillStyle = color; ctx.fillRect(left, top, width, height); };
+    rect(INK, 24, 3, 1, 1);
+    for (let y = 4; y <= 13; y++) { const k = Math.floor((y - 4) / 2); rect(INK, 23 - k, y, 2 * k + 3, 1); rect("#aa7098", 24 - k, y, 2 * k + 1, 1); }
+    rect("#e4cb83", 21, 10, 7, 1);
+    rect(INK, 23, 0, 3, 3); rect("#e4cb83", 24, 1, 1, 1);
+  });
+}
 export function loadSprites(): SpriteMap {
   const sprites: SpriteMap = {};
   const states: PlayerState[] = ["idle", "run", "jump", "fall", "hit", "spike", "dive", "lying", "win", "lose"];
