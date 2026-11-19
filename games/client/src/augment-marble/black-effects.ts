@@ -23,10 +23,10 @@ export async function playBlackEffect(root:HTMLElement,event:AbilityEvent,signal
  const target=event.target??event.actor;
  const seats=[...root.querySelectorAll<HTMLElement>('[data-player-seat]')].filter(n=>!n.classList.contains('bankrupt')).map(n=>Number(n.dataset.playerSeat));
  const peers=event.black?.targets??seats.filter(s=>s!==event.actor),redistributionSeats=event.black?.targets??seats;
- const actorImage=new Image(),victimImage=new Image();actorImage.src=token(event.actor)?.getAttribute('href')??'';victimImage.src=token(target)?.getAttribute('href')??'';
+ const actorImage=new Image(),victimImage=new Image(),cloneImage=new Image();cloneImage.src=root.querySelector(`[data-clone-token="${event.actor}"]`)?.getAttribute('href')??root.querySelector(`[data-token="${event.actor}"]`)?.getAttribute('href')??'';actorImage.src=token(event.actor)?.getAttribute('href')??'';victimImage.src=token(target)?.getAttribute('href')??'';
  const changed=new Map<HTMLElement|SVGElement,string>(),muted:HTMLElement[]=[];
  const hide=(node:HTMLElement|SVGElement|null)=>{if(node&&!changed.has(node)){changed.set(node,node.style.visibility);node.style.visibility='hidden'}};
- const drawBird=(image:HTMLImageElement,p:Point,size:number,scale=1)=>{if(image.complete&&image.naturalWidth){ctx.imageSmoothingEnabled=false;ctx.drawImage(image,p.x-size*scale/2,p.y-size*.65*scale,size*scale,size*.8*scale)}};
+ const drawBird=(image:HTMLImageElement,p:Point,size:number,scale=1)=>{if(image.complete&&image.naturalWidth){const h=size*image.naturalHeight/image.naturalWidth;ctx.imageSmoothingEnabled=false;ctx.drawImage(image,p.x-size*scale/2,p.y-(size*.65+h-size*.8)*scale,size*scale,h*scale)}};
  const line=(a:Point,b:Point,color:string,width=2)=>{ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()};
  const ellipse=(p:Point,rx:number,ry:number,fill:string,stroke='#303b2e')=>{ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(p.x,p.y,Math.max(.1,rx),Math.max(.1,ry),0,0,Math.PI*2);ctx.fill();ctx.stroke()};
  const label=(text:string,p:Point,size=17)=>{ctx.font=`900 ${size}px "Apple SD Gothic Neo",sans-serif`;ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='#fff9e5';ctx.strokeText(text,p.x,p.y);ctx.fillStyle='#293729';ctx.fillText(text,p.x,p.y)};
@@ -65,7 +65,7 @@ export async function playBlackEffect(root:HTMLElement,event:AbilityEvent,signal
  }else if(key==='silent'){
  if(t>1.35&&!shattered){shattered=true;for(const s of peers)for(const card of root.querySelectorAll<HTMLElement>(`[data-owned-seat="${s}"]`)){if(card.classList.contains('tier-black'))continue;card.classList.add('m-black-cracked');muted.push(card)}}if(t>1.35)for(const card of muted){const cr=card.getBoundingClientRect(),k=clamp((t-1.35)/.8);ctx.save();ctx.globalAlpha=1-k;for(let i=0;i<5;i++){ctx.fillStyle='#d6cfac';ctx.strokeStyle='#48503d';const x=cr.x+cr.width*i/5+(i-2)*k*8,y=cr.y+k*k*55;ctx.fillRect(x,y,6,8);ctx.strokeRect(x,y,6,8)}ctx.restore()}
  }else if(key==='shaco'){
- const cell=event.black?.destinationTile===undefined?null:root.querySelector(`[data-inspect="${event.black.destinationTile}"]`),box=cell?.getBoundingClientRect(),p=box?{x:box.x+box.width/2,y:box.y+box.height/2}:a;drawBird(actorImage,p,42*unit,clamp(t/.4));ctx.fillStyle='#a86e98';ctx.strokeStyle='#303b2e';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(p.x-8,p.y-25);ctx.lineTo(p.x,p.y-48);ctx.lineTo(p.x+14,p.y-25);ctx.closePath();ctx.fill();ctx.stroke();burst(p,clamp(t/1.5),'#987b9e');
+ const cell=event.black?.destinationTile===undefined?null:root.querySelector(`[data-inspect="${event.black.destinationTile}"]`),box=cell?.getBoundingClientRect(),p=box?{x:box.x+box.width/2,y:box.y+box.height/2}:a;drawBird(cloneImage,p,42*unit,clamp(t/.4));burst(p,clamp(t/1.5),'#987b9e');
  }else if(key==='adamant'){
  ctx.fillStyle='#c2a15c33';ctx.strokeStyle='#ad8d45';ctx.lineWidth=3;ctx.beginPath();for(let i=0;i<7;i++){const q=i*Math.PI/3-Math.PI/6,x=a.x+Math.cos(q)*36*unit,y=a.y-6+Math.sin(q)*43*unit;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.fill();ctx.stroke();if(t>.3)burst(a,(t-.3)/1.5,'#b99b55');
  }else if(key==='landmark_takeover'){

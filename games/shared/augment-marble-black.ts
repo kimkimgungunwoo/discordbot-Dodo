@@ -9,7 +9,7 @@ export const BLACK_IDS=['collector','devour','goblin','redistribution','mind_con
 export type BlackId=typeof BLACK_IDS[number];
 export interface Clone {position:number;skip:number;restricted:number;rest:number}
 export interface BlackPrompt {kind:'guillotine'|'sniper'|'leech'|'goblin'|'shaco_arrival'|'survival'|'forced_clone';seat:number;targets?:number[];actor?:number;absorb?:boolean;bypass?:boolean;resume?:'arrival'|'forced';tile?:number;options?:number[];amount?:number;creditor?:number|null;attack?:'collector'|'devour'|'pacemaker'|'guillotine';initial?:boolean;}
-export interface BlackState {expansion?:BlackExpansion;cloneMove?:{id:number;seat:number;path:number[];wall?:{boundary:number;tile:number;next:number}};active:boolean;silenced:boolean;pending:BlackPrompt[];clones:Record<number,Clone>;mainIsClone:number[];contacts:{actor:number;target:number}[];acquisitionResolved:boolean;arrivalBypass?:number;cloneResolved?:number;goblinResolved?:number;tradeThrow?:string;cloneMoved?:string;entityFrame?:{seat:number;position:number;rest:number;skip:number;restricted:number}; deathBatch?:boolean;normalMoveId?:number;cloneOnly?:boolean;forceBatch?:{seat:number;from:number;to:number;entity?:"main"|"clone"}[];}
+export interface BlackState {expansion?:BlackExpansion;cloneMove?:{id:number;seat:number;path:number[];wall?:{boundary:number;tile:number;next:number}};active:boolean;silenced:boolean;pending:BlackPrompt[];clones:Record<number,Clone>;mainIsClone:number[];contacts:{actor:number;target:number}[];acquisitionResolved:boolean;arrivalBypass?:number;cloneResolved?:number;goblinResolved?:number;tradeThrow?:string;cloneMoved?:string;entityFrame?:{seat:number;position:number;rest:number;skip:number;restricted:number}; deathBatch?:boolean;dormantClones?:number[];normalMoveId?:number;cloneOnly?:boolean;forceBatch?:{seat:number;from:number;to:number;entity?:"main"|"clone"}[];}
 export function blackState(g:Game):BlackState{return g.black??={active:false,silenced:false,pending:[],clones:{},mainIsClone:[],contacts:[],acquisitionResolved:false}}
 export function hasBlack(g:Game,seat:number,id:BlackId){return !!g.augments?.players[seat]?.owned.includes(id)}
 export function protectedBlack(g:Game,seat:number){return hasBlack(g,seat,'adamant')}
@@ -65,7 +65,11 @@ export function resolveBlackAcquisition(g:Game,random:()=>number){
  if(!state.pending.length)checkWin(g);
 }
 export function processBlackContacts(g:Game){if(!g.black)return;g.black.contacts=[];if(!g.black.active||!g.black.acquisitionResolved||g.augmentResume==='round30')return;collectorThresholds(g);if(!g.black.pending.length&&!g.black.deathBatch)checkWin(g);}
-export function blackTurnStart(g:Game){const seat=g.turn,state=blackState(g);if(!state.active||g.players[seat].bankrupt)return;
+/** Ability lock (무능력) hides the shaco clone; it reappears opposite the main body once the lock ends. A sacrificed clone never returns. */
+export function suspendClone(g:Game,seat:number){const state=g.black;if(!state?.clones[seat])return;delete state.clones[seat];(state.dormantClones??=[]).push(seat);}
+function wakeClone(g:Game,seat:number){const state=g.black;if(!state?.dormantClones?.includes(seat)||(g.world.players[seat].disabledUntil??0)>g.round)return;state.dormantClones=state.dormantClones.filter(s=>s!==seat);if(g.players[seat].bankrupt||!hasBlack(g,seat,'shaco'))return;
+ state.clones[seat]={position:(g.players[seat].position+BOARD.length/2)%BOARD.length,skip:0,restricted:0,rest:0};blackEmit(g,seat,'shaco','능력 정지 해제 · 분신 재등장');g.abilities.events.at(-1)!.black={destinationTile:state.clones[seat].position};}
+export function blackTurnStart(g:Game){const seat=g.turn,state=blackState(g);wakeClone(g,seat);if(!state.active||g.players[seat].bankrupt)return;
  if(hasBlack(g,seat,'leech')){const targets=blackTargets(g,seat),max=Math.max(...targets.map(s=>g.players[s].cash)),rich=targets.filter(s=>g.players[s].cash===max);if(rich.length===1)blackSteal(g,seat,rich[0],.1,'leech');else if(rich.length>1)state.pending.push({kind:'leech',seat,targets:rich})}
  if(hasBlack(g,seat,'sniper')){const targets=blackTargets(g,seat).filter(s=>sniperEntities(g,seat,s).length>0);if(targets.length)state.pending.push({kind:'sniper',seat,targets})}
 }

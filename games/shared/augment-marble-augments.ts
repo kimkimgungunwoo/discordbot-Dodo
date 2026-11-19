@@ -76,7 +76,7 @@ export const AUGMENT_CATALOG: readonly AugmentDefinition[] = [
   {"id": "builder_gold", "name": "출장 건설반", "tier": "gold", "effect": "construction_team", "power": 1, "description": "최초 획득 시 시공권 2장을 받고 출발점을 정방향으로 통과할 때 1장 충전합니다. 최대 3장 보관하며 자기 차례에 한 번, 방문하지 않은 자기 지역에도 일반 건물 1개를 무료로 건설합니다. 랜드마크에는 사용할 수 없습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "robber", "name": "강도", "tier": "gold", "effect": "robber", "power": 125, "description": "상대를 통과할 때 25% 확률로 125만원을 갈취합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "cashback", "name": "페이백", "tier": "silver", "effect": "cashback", "power": 50, "description": "다른 플레이어의 증강으로 돈을 갈취당하면 잃은 돈의 50%를 돌려받습니다.", "hooks": ["before_move", "arrive"]},
-  {"id": "subsidy", "name": "근로장려금", "tier": "gold", "effect": "subsidy", "power": 1, "description": "자신의 차례에 이동하는 대신 현재 위치에서 월급을 받는 것을 선택할 수 있습니다.", "hooks": ["before_move", "arrive"]},
+  {"id": "subsidy", "name": "근로장려금", "tier": "prism", "effect": "subsidy", "power": 1, "description": "자신의 차례에 이동하는 대신 현재 위치에서 월급을 받는 것을 선택할 수 있습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "drop_kick", "name": "드롭킥", "tier": "prism", "effect": "drop_kick", "power": 3, "description": "자신을 통과하는 상대의 남은 이동 칸 수를 3칸 줄입니다. 부족하면 자신의 위치에서 멈춥니다. 상대의 다음 주사위는 합계 10 이하로 제한되며 주사위 능력을 무시합니다.", "hooks": ["before_move", "arrive"]},
   {"id": "black_dice", "name": "블랙다이스", "tier": "prism", "effect": "reroll", "power": 3, "description": "매 주사위마다 다시 던진 뒤 기존 결과와 새 결과 중 하나를 선택할 수 있습니다.", "hooks": ["before_move", "arrive"]},
   {"id": "trap", "name": "덫", "tier": "prism", "effect": "trap", "power": 1, "description": "자신이 최종 도착한 칸에만 덫을 남깁니다. 2라운드 안에 다른 플레이어가 밟으면 덫은 사라지고, 해당 상대는 현재 더블 추가 투척이 취소되고 다음 자기 차례가 마비됩니다.", "hooks": ["before_move", "arrive"]},

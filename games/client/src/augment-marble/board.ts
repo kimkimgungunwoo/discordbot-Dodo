@@ -1,3 +1,4 @@
+import { HAT_HEADROOM } from "../common/sprites";
 import { activePacemaker } from '../../../shared/augment-marble-black-expansion';
 import { ownershipColors, pendingPaceAppearances } from './black-appearance';
 import { tileMark } from "./tile-marks";
@@ -7,7 +8,7 @@ import { displayedRent } from "./copy";
 type Point=[number,number];
 type Cell={x:number;y:number;w:number;h:number;col:number;row:number};
 type Drawable={y:number;html:string;badge?:string};
-export interface BoardOptions {cloneTarget?:{seat:number;tile:number}|null;candidates?:{seat:number;tile:number;label?:string}[];clonePositions?:Map<number,number>;salePick?:{tile:number;amount:number}[];eventTilePick?:number[];boundaryPick?:number[];portalPick?:boolean;linePick?:boolean;seat:number; selected:number|null; positions:Map<number,number>; target:{seat:number;tile:number}|null; birds:string[]; stealth:boolean[]; center:string;}
+export interface BoardOptions {hatBirds?:string[];cloneTarget?:{seat:number;tile:number}|null;candidates?:{seat:number;tile:number;label?:string}[];clonePositions?:Map<number,number>;salePick?:{tile:number;amount:number}[];eventTilePick?:number[];boundaryPick?:number[];portalPick?:boolean;linePick?:boolean;seat:number; selected:number|null; positions:Map<number,number>; target:{seat:number;tile:number}|null; birds:string[]; stealth:boolean[]; center:string;}
 export function renderBoardB(g:Game,opts:BoardOptions){
  const turnSeat=g.winner??actingSeat(g),turnColor=["#438ddb","#e67368","#63ac70","#dfad32"][turnSeat];
  const version:number=1,colors=ownershipColors(g),birds=opts.birds,labels=BOARD.map(t=>t.name),groups=GROUP_COLORS;
@@ -28,7 +29,7 @@ function foot(t:Cell):Point{const{x,y,w,h,col,row}=t;if(row===9&&col===9)return[
 function labelBand(t:Cell):[number,number,number,number]{const{x,y,w,h,col,row}=t;if(row===0)return[x,y,w,version===0?60:43];if(row===9)return[x,y+h-(version===0?60:48),w,version===0?60:48];if(col===0)return[x,y,58,h];return[x+w-58,y,58,h]}
 function standing(t:Cell):[number,number,number,number]{const{x,y,w,h,col,row}=t;if(row===0)return[x,y+43,w,h-43];if(row===9)return[x,y,w,h-48];if(col===0)return[x+58,y,w-58,h];return[x,y,w-58,h]}
 function occupants(i:number){return positions.flatMap((p,s)=>(g.black?.entityFrame?.seat===s?g.black.entityFrame.position:p)===i&&!g.players[s].bankrupt?[s]:[])}
-function sprite(seat:number,x:number,y:number,width:number,clone=false){const hat=clone||g.black?.mainIsClone.includes(seat);return `<g data-inspect="${positions[seat]}" data-token-part="${seat}" class="m-token-group"><image class="bird ${opts.stealth[seat]?'m-token-stealth':''}" data-token="${seat}" href="${birds[seat]}" x="${x-width/2}" y="${y-width*.8+2}" width="${width}" height="${width*.8}"/>${hat?`<g data-shaco-hat="${seat}"><path d="M${x+width*.02} ${y-width*.65}l${width*.17}-${width*.37} ${width*.25} ${width*.37}z" fill="#aa7098" stroke="#303b36" stroke-width="1.4"/><circle cx="${x+width*.19}" cy="${y-width*1.02}" r="1.7" fill="#e4cb83"/></g>`:''}</g>`}
+function sprite(seat:number,x:number,y:number,width:number,clone=false){const hat=clone||g.black?.mainIsClone.includes(seat);return `<g data-inspect="${positions[seat]}" data-token-part="${seat}" class="m-token-group"><image class="bird ${opts.stealth[seat]?'m-token-stealth':''}" data-token="${seat}" ${hat?`data-shaco-hat="${seat}" `:''}href="${hat&&opts.hatBirds?opts.hatBirds[seat]:birds[seat]}" x="${x-width/2}" y="${y-width*.8+2-(hat&&opts.hatBirds?width*HAT_HEADROOM/40:0)}" width="${width}" height="${width*(hat&&opts.hatBirds?(32+HAT_HEADROOM)/40:.8)}"/></g>`}
 
 
 function badge(seat:number,x:number,y:number,small=false){const w=small?17:20;return `<g data-token-part="${seat}" pointer-events="none"><rect x="${x-w/2}" y="${y-4}" width="${w}" height="14" rx="3" fill="${colors[seat]}" stroke="#fffef8" stroke-width="1.2"/><text x="${x}" y="${y+6}" font-size="10" fill="white" text-anchor="middle" font-weight="900">${seat+1}</text></g>`}

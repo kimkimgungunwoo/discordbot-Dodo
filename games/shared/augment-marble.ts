@@ -1,6 +1,6 @@
 import {initializeBlackExpansion,expansion,trackBlackMovement,pacemakerTurnEnd,guillotineRound,breadArrival,breadArrivalBatch,collectorPayment,collectorThresholds} from './augment-marble-black-expansion.js';
 import {createDevelopmentState,initializeDevelopment,recordTaxCredit,rechargeConstructionPermit,constructionQuote,payConstruction,canUseConstructionPermit,useConstructionPermit,type DevelopmentState} from "./augment-marble-development.js";
-import {activateBlackChange,blackStartContact,blackState,hasBlack,protectedBlack,reportAdamantBlock,blackTargets,resolveBlackAcquisition,processBlackContacts,blackTurnStart,blackArrival,blackMoveClone,blackChoice,blackAutoChoice,blackInsolvency,enterCloneVisit,leaveCloneVisit,queueTyphoonChoices,withCloneEntity,type BlackState} from "./augment-marble-black.js";
+import {suspendClone,activateBlackChange,blackStartContact,blackState,hasBlack,protectedBlack,reportAdamantBlock,blackTargets,resolveBlackAcquisition,processBlackContacts,blackTurnStart,blackArrival,blackMoveClone,blackChoice,blackAutoChoice,blackInsolvency,enterCloneVisit,leaveCloneVisit,queueTyphoonChoices,withCloneEntity,type BlackState} from "./augment-marble-black.js";
 import {captureCashTransfers,bankCashChange,withMoneyReason,type MoneyTransfer} from "./augment-marble-money.js";
 import { strategicBotAction } from "./augment-marble-bot.js";
 import { createEventState, drawEvent, eventDefinition, type EventId, type EventState } from "./augment-marble-events.js";
@@ -846,7 +846,7 @@ function resolveEvent(g:Game,input:Action,random:()=>number,catalog:readonly Aug
   case "famine":g.world.famineUntil=g.round+3;for(let i=0;i<g.players.length;i++)if(g.properties.some(p=>p.owner===i))reportAdamantBlock(g,i,"흉년 · 통행료 감소",seat);break;
   case "overspend":status.overspendUntil=g.abilities.ownerTurns[seat]+3;break;
   case "reverse_move":status.reverseMoves++;break;
-  case "disable":status.disabledUntil=g.round+3;g.abilities.pendingTarget=false;break;
+  case "disable":status.disabledUntil=g.round+3;g.abilities.pendingTarget=false;suspendClone(g,seat);break;
   case "vulnerable":status.vulnerable++;break;
   case "missile":for(const tile of eventShuffle(eventOwnedTiles(g),random).slice(0,3))destroyTopBuilding(g,tile,true,"missile");break;
   default:{const unreachable:never=id;throw new Error(`처리되지 않은 이벤트: ${unreachable}`);}
