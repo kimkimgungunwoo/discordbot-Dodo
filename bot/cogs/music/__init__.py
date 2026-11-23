@@ -347,6 +347,17 @@ class Music(commands.Cog):
             flush=True,
         )
 
+    async def enqueue(self, guild: discord.Guild, tracks: list[Track]) -> int | None:
+        """일반 대기열 끝에 곡들을 넣고 재생을 이어간다(검색·즐겨찾기 공용).
+        첫 곡이 바로 재생되면 None, 아니면 첫 곡의 대기 번호."""
+        queue = self.queues.setdefault(guild.id, [])
+        pos = len(queue) + 1
+        queue.extend(tracks)
+        # 재생목록이 재생 중이었다면 멈추고(트랙은 재생목록 큐 맨 앞으로 보존) 일반 재생으로 전환한다.
+        await self.switch_mode(guild, "single")
+        await self.advance(guild, "single")
+        return None if self.current.get(guild.id) is tracks[0] else pos
+
     async def switch_mode(self, guild: discord.Guild, mode: str):
         """반대 모드가 재생/일시정지 중이면 멈추고 이 모드로 전환한다.
         멈춘 트랙은 잃어버리지 않도록 그 모드의 큐 맨 앞으로 되돌려 놓는다
@@ -590,7 +601,29 @@ class Music(commands.Cog):
 
     @commands.group(name="음악", invoke_without_command=True)
     async def music_group(self, ctx: commands.Context):
-        await ctx.reply(embed=category_embed("music", ctx.clean_prefix), mention_author=False)
+        """`!음악` — 게임/롤처럼 드롭다운으로 하위 기능을 고른다. 고르면 해당 명령어를 그대로 실행."""
+        from bot.cogs.command_menu import CommandMenuView, MenuItem
+
+        def run(command):
+            async def _run(interaction: discord.Interaction):
+                await interaction.response.edit_message(view=None)
+                await ctx.invoke(command)
+            return _run
+
+        items = [
+            MenuItem("입장", "join", run(self.join), "봇을 내 음성 채널로", "🎙️"),
+            MenuItem("추가", "add", run(self.add_music), "유튜브 검색해서 재생", "🔍"),
+            MenuItem("즐겨찾기", "favorites", run(self.favorites), "내 즐겨찾기 재생·삭제", "⭐"),
+            MenuItem("목록", "now", run(self.musiclist), "현재 곡 + 다음 곡", "🎵"),
+            MenuItem("대기목록", "queue", run(self.queue_list), "전체 대기열", "📋"),
+            MenuItem("정지", "pause", run(self.pause), "일시정지", "⏸️"),
+            MenuItem("재생", "resume", run(self.resume), "다시 재생", "▶️"),
+            MenuItem("스킵", "skip", run(self.skip), "현재 곡 건너뛰기", "⏭️"),
+            MenuItem("제거", "remove", run(self.musiclist_remove), "대기열 곡 빼기", "🗑️"),
+            MenuItem("퇴장", "leave", run(self.leave), "봇 음성 채널에서 내보내기", "👋"),
+        ]
+        view = CommandMenuView(ctx.author.id, items, placeholder="음악 메뉴를 선택하세요")
+        view.message = await ctx.reply(embed=category_embed("music", ctx.clean_prefix), view=view, mention_author=False)
 
     @music_group.command(name="입장")
     async def join(self, ctx: commands.Context):
@@ -641,6 +674,12 @@ class Music(commands.Cog):
             view=MusicSearchPromptView(self),
             mention_author=False,
         )
+
+    @music_group.command(name="즐겨찾기")
+    async def favorites(self, ctx: commands.Context):
+        """내 음악 즐겨찾기 목록 — 골라서 대기열 추가/삭제, 또는 전체 섞어 재생."""
+        from bot.cogs.music.favorites import show_favorites
+        await show_favorites(self, ctx)
 
     @music_group.command(name="제거")
     async def musiclist_remove(self, ctx: commands.Context):

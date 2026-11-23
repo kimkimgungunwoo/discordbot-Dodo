@@ -71,6 +71,18 @@ TABLES = [
             {"AttributeName": "player_id", "AttributeType": "S"},
         ],
     },
+    {
+        # 유튜브 음악 즐겨찾기 — 롤/오버워치 즐겨찾기처럼 서버 무관 유저 전역
+        "name": "music_favorite",
+        "KeySchema": [
+            {"AttributeName": "discord_user_id", "KeyType": "HASH"},
+            {"AttributeName": "video_id", "KeyType": "RANGE"},
+        ],
+        "AttributeDefinitions": [
+            {"AttributeName": "discord_user_id", "AttributeType": "N"},
+            {"AttributeName": "video_id", "AttributeType": "S"},
+        ],
+    },
     {"name": "chat_stat", **_GUILD_SK},
     {"name": "voice_session", **_GUILD_SK},
     {"name": "voice_stat", **_GUILD_SK},
