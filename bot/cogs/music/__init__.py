@@ -8,7 +8,7 @@ from bot.cogs.music.renderer import render_queue_card, render_playlist_card
 from bot.cogs.music.views import (
     Track,
     MusicSearchPromptView, RemoveView, QueuePaginatorView, PlaylistControlView,
-    take_stream, prefetch, YoutubeAuthError, install_cookies,
+    take_stream,
 )
 from bot.cogs.util import GENERATING_MSG
 
@@ -24,20 +24,20 @@ RETRY_CHAIN_RESET_MS = STABLE_PLAYBACK_MS  # (구 이름 호환)
 #   - 영구 재생불가로 분류된 곡(_fatal_tracks) 과 유저의 수동 !음악 스킵 만 예외.
 #   - 재시도 간격은 백오프 (1→3→8→15→30초, 마지막 값에서 고정) — Lavalink/유튜브를 계속 때리지 않도록.
 RETRY_DELAYS_SEC = [1, 3, 8, 15, 30]
-AUTH_RETRY_SEC = 300           # 쿠키 만료/IP 차단 — 갱신 전까지 유튜브를 두드리지 않도록 길게
 AUTH_ALERT_COOLDOWN_SEC = 6 * 3600  # 소유자 DM 알림 최소 간격
-COOKIE_UPLOAD_MAX_BYTES = 1_000_000
 NOTICE_LINGER_SEC = 6          # "재생 재개" 안내를 이 시간만 보여주고 삭제
 
 # Lavalink TrackException 메시지를 실제 사유별로 분류 — 재시도 무의미한 "영구 재생불가"만 여기 걸린다.
 # 클라이언트 자체 버그로 나는 메시지(예: TV 클라이언트의 "page needs to be reloaded")는 영상과 무관하게
 # 뜨므로 절대 넣지 않는다 — 넣으면 멀쩡한 영상까지 오분류되어 건너뛰게 된다.
 FATAL_MARKERS: list[tuple[str, tuple[str, ...]]] = [
-    ("login",   ("requires login", "sign in to confirm", "confirm your age")),
+    ("login",   ("requires login", "confirm your age")),
     ("region",  ("not available in your country", "not available in your region")),
     ("removed", ("video unavailable", "video is no longer available", "video has been removed", "video is private")),
     ("blocked", ("playability status", "video player configuration error")),
 ]
+# 곡 문제가 아니라 OAuth 만료/IP 차단 — 모든 곡이 이렇게 실패한다. 건너뛰지 않고 소유자에게 재인증 요청.
+AUTH_MARKERS = ("not a bot", "cannot be loaded")
 FATAL_LABELS = {
     "login":   "연령제한/로그인이 필요한 영상이라",
     "region":  "지역 제한이 걸린 영상이라",
@@ -267,7 +267,7 @@ class Music(commands.Cog):
             pass
 
     async def _alert_auth(self, guild: discord.Guild):
-        """쿠키 만료 알림 — 채널엔 길드당, 소유자 DM은 전체에서 쿨다운마다 한 번."""
+        """OAuth 만료 알림 — 채널엔 길드당, 소유자 DM은 전체에서 쿨다운마다 한 번."""
         now = asyncio.get_running_loop().time()
         if now - self._auth_alerted.get(guild.id, -AUTH_ALERT_COOLDOWN_SEC) >= AUTH_ALERT_COOLDOWN_SEC:
             self._auth_alerted[guild.id] = now
@@ -287,31 +287,12 @@ class Music(commands.Cog):
             try:
                 owner = self.bot.get_user(owner_id) or await self.bot.fetch_user(owner_id)
                 await owner.send(
-                    "🔑 **유튜브 쿠키 갱신 필요** — 유튜브가 \"Sign in to confirm you're not a bot\"으로 재생을 막고 있습니다.\n"
-                    "부계정으로 새 `cookies.txt`를 내보내서 **이 DM에 파일로 첨부**해주세요. 시험 재생에 성공하면 바로 교체됩니다."
+                    "🔑 **유튜브 OAuth 재인증 필요** — 모든 곡이 유튜브 인증 오류로 재생되지 않습니다.\n"
+                    "Lightsail에서 `docker compose -f docker-compose.prod.yml logs lavalink | grep -i oauth`로 상태를 보고, "
+                    "새 기기 코드로 부계정 인증 → 새 refresh token을 GitHub `ENV_FILE`의 `YOUTUBE_OAUTH_REFRESH_TOKEN`에 넣고 재배포해주세요."
                 )
             except discord.HTTPException:
                 pass
-
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        """봇 소유자가 DM으로 cookies.txt를 첨부하면 검사 후 교체한다."""
-        if message.guild is not None or message.author.bot or not message.attachments:
-            return
-        attachment = next((a for a in message.attachments if a.filename.endswith(".txt")), None)
-        if attachment is None or not await self.bot.is_owner(message.author):
-            return
-        if attachment.size > COOKIE_UPLOAD_MAX_BYTES:
-            await message.reply("❌ 파일이 너무 큽니다. 유튜브 쿠키만 내보낸 cookies.txt를 보내주세요.")
-            return
-        status = await message.reply("🔍 쿠키 확인 중... (시험 재생까지 10초쯤 걸립니다)")
-        problem = await install_cookies((await attachment.read()).decode("utf-8", errors="replace"))
-        if problem:
-            await status.edit(content=f"❌ 교체하지 않았습니다 — {problem}")
-            return
-        self._auth_alerted.clear()
-        self._owner_alerted_at = -AUTH_ALERT_COOLDOWN_SEC
-        await status.edit(content="✅ 쿠키를 교체했습니다. 이 DM의 파일 메시지는 직접 삭제해주세요(로그인 정보입니다).")
 
     def _schedule_retry(self, guild: discord.Guild, mode: str, track: Track, *, start: int, reason: str, attempt: int = 1, delay: float | None = None):
         guild_id = guild.id
@@ -417,14 +398,6 @@ class Music(commands.Cog):
 
                 try:
                     await vc.play(await take_stream(track), start=start)
-                except YoutubeAuthError as e:
-                    # 곡 문제가 아니므로 건너뛰지 않는다 — 대기열에 둔 채 길게 쉬었다 재시도, 소유자에게 갱신 요청.
-                    self._playing_mode.pop(guild.id, None)
-                    currents.pop(guild.id, None)
-                    print(f"[Music] 유튜브 인증 필요(쿠키 만료/IP 차단): {str(e).splitlines()[0]!r}", flush=True)
-                    self.bot.loop.create_task(self._alert_auth(guild))
-                    self._schedule_retry(guild, mode, track, start=start, reason="auth", attempt=self._consume_retry(guild.id, track), delay=AUTH_RETRY_SEC)
-                    return
                 except Exception as e:
                     category = self._classify_fatal(str(e), "")
                     if category:
@@ -528,13 +501,10 @@ class Music(commands.Cog):
         if mode is None:
             return
 
-        queues, currents = self._state(mode)
+        _, currents = self._state(mode)
         current = currents.get(guild_id)
         if current is None:
             return
-        # 재생 중 주기적으로(~5초) 다음 곡을 미리 받아둔다 — 재생 중에 새로 추가된 곡도 여기서 잡힌다.
-        if queues.get(guild_id):
-            prefetch(queues[guild_id][0])
 
         track_key = self._track_key(current)
         self._last_positions.setdefault(guild_id, {})[track_key] = payload.position
@@ -574,6 +544,10 @@ class Music(commands.Cog):
             flush=True,
         )
 
+        if any(m in f"{message}\n{cause}".lower() for m in AUTH_MARKERS):
+            self.bot.loop.create_task(self._alert_auth(player.guild))
+            return
+
         category = self._classify_fatal(message, cause)
         if category is not None:
             self._mark_fatal(guild_id, current, category)
@@ -606,7 +580,8 @@ class Music(commands.Cog):
 
         def run(command):
             async def _run(interaction: discord.Interaction):
-                await interaction.response.edit_message(view=None)
+                # 메뉴는 남겨두고 선택만 초기화 — 같은 항목(예: 스킵)을 연달아 고를 수 있게.
+                await interaction.response.edit_message(view=view)
                 await ctx.invoke(command)
             return _run
 

@@ -1,11 +1,7 @@
 from __future__ import annotations
 import asyncio
-import os
-import threading
-import time
 import discord
 import wavelink
-import yt_dlp
 from typing import TYPE_CHECKING
 
 from bot.cogs.music.renderer import render_playlist_card
@@ -26,7 +22,7 @@ def format_duration(seconds) -> str:
 
 class SavedPlayable:
     """즐겨찾기에서 꺼낸 곡 — Lavalink에 다시 묻지 않고 Track이 쓰는 속성만 채운 대용품.
-    실제 오디오는 재생 직전 resolve_stream()이 uri로 yt-dlp 추출한다(삭제된 영상이면 그때 재생불가로 걸러짐)."""
+    재생 직전 take_stream()이 uri로 Lavalink에 다시 불러온다(삭제된 영상이면 그때 재생불가로 걸러짐)."""
     source = "youtube"
 
     def __init__(self, video_id: str, title: str, author: str, length_ms: int, uri: str):
@@ -42,8 +38,6 @@ class Track:
     def __init__(self, playable: wavelink.Playable, requester: discord.Member):
         self.playable = playable
         self.requester = requester
-        self._stream: asyncio.Task | None = None  # prefetch()가 채움
-        self._stream_at = 0.0
 
     def __str__(self) -> str:
         return self.title
@@ -65,112 +59,17 @@ class Track:
         return format_duration((self.playable.length or 0) // 1000)
 
 
-# Lavalink youtube-plugin은 공식 MV 대부분을 못 튼다(WEB=SABR 전용 응답, 안드로이드=로그인 요구, 2026-11 실측).
-# 검색만 Lavalink에 맡기고, 실제 오디오 주소는 yt-dlp(deno로 JS 챌린지 풀이)로 받아 Lavalink http 소스로 재생한다.
-# 주소는 받은 IP에 묶이므로 봇과 Lavalink가 같은 호스트에 있어야 한다.
-# 데이터센터 IP(Lightsail)는 비로그인 요청이 "Sign in to confirm you're not a bot"으로 막혀서 부계정 쿠키가 필요하다.
-# 파일이 없으면 쿠키 없이 시도(로컬 집 IP에선 이걸로 충분). 갱신은 봇 소유자가 DM으로 cookies.txt를 보내면 된다.
-COOKIES_PATH = os.getenv("YTDLP_COOKIES", "/secrets/yt-cookies.txt")
-COOKIE_TEST_URL = "https://youtu.be/dQw4w9WgXcQ"
-_YDL_OPTS = {"quiet": True, "no_warnings": True, "noplaylist": True, "format": "bestaudio[acodec=opus]/bestaudio"}
-# yt-dlp는 끝날 때 갱신된 쿠키를 파일에 다시 쓴다 — 동시 추출/교체가 파일을 덮어쓰지 않게 직렬화.
-_cookie_lock = threading.Lock()
-_AUTH_MARKERS = ("not a bot", "cookies are no longer valid")
-
-
-class YoutubeAuthError(Exception):
-    """곡 문제가 아니라 IP 차단/쿠키 만료 — 쿠키를 갱신해야 풀린다."""
-
-
-def _extract(url: str, cookies: str | None = None) -> dict:
-    path = cookies or COOKIES_PATH
-    with _cookie_lock:
-        opts = {**_YDL_OPTS, **({"cookiefile": path} if os.path.exists(path) else {})}
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(url, download=False)
-        except yt_dlp.utils.DownloadError as e:
-            if any(m in str(e).lower() for m in _AUTH_MARKERS):
-                raise YoutubeAuthError(str(e)) from e
-            raise
-
-
-def check_cookie_text(text: str) -> str | None:
-    """업로드된 쿠키 파일의 형식만 빠르게 검사. 문제 없으면 None, 있으면 사유."""
-    if "Netscape HTTP Cookie File" not in text.split("\n", 1)[0]:
-        return "Netscape 형식 쿠키 파일이 아닙니다 (첫 줄이 `# Netscape HTTP Cookie File` 이어야 함)."
-    names = {cols[5] for line in text.splitlines() if not line.startswith("#") and len(cols := line.split("\t")) >= 7 and "youtube.com" in cols[0]}
-    if not names:
-        return "youtube.com 쿠키가 하나도 없습니다 — 로그인한 탭에서 내보냈는지 확인해주세요."
-    if not {"SAPISID", "__Secure-3PAPISID"} & names:
-        return "로그인 쿠키(SAPISID)가 없습니다 — 유튜브에 로그인된 상태에서 내보내주세요."
-    return None
-
-
-async def install_cookies(text: str) -> str | None:
-    """형식 검사 → 임시 파일로 실제 추출 시험 → 통과하면 교체. 성공 None, 실패 사유."""
-    if (problem := check_cookie_text(text)) is not None:
-        return problem
-    os.makedirs(os.path.dirname(COOKIES_PATH) or ".", exist_ok=True)
-    tmp = COOKIES_PATH + ".new"
-    with open(tmp, "w") as f:
-        f.write(text)
-    os.chmod(tmp, 0o600)
-    try:
-        await asyncio.to_thread(_extract, COOKIE_TEST_URL, tmp)
-    except Exception as e:
-        os.remove(tmp)
-        return f"시험 재생 실패: {str(e).splitlines()[0][:200]}"
-    with _cookie_lock:
-        os.replace(tmp, COOKIES_PATH)
-    return None
-
-
-async def resolve_stream(playable: wavelink.Playable) -> wavelink.Playable:
-    """재생 직전에 호출 — 유튜브 곡이면 yt-dlp로 받은 오디오 주소의 Playable을 돌려준다.
-    실패하면 yt-dlp 오류 메시지 그대로 예외를 올려서 cog의 재생불가 분류(FATAL_MARKERS)에 걸리게 한다."""
-    if playable.source != "youtube" or not playable.uri:
-        return playable
-    info = await asyncio.to_thread(_extract, playable.uri)
-    # 일부 클라이언트 주소는 available_at(보통 5초 뒤)까지 403 — 그 전에 넘기면 재생 실패.
-    wait = (info.get("available_at") or 0) - time.time()
-    if wait > 0:
-        await asyncio.sleep(min(wait, 15) + 0.5)
-    found = await wavelink.Playable.search(info["url"])
+# 재생은 Lavalink youtube-plugin(TV 클라이언트 + 부계정 OAuth)에 맡긴다.
+# 2026-11-23 Lightsail 실측: OAuth 없이는 공식 MV 전부 500, OAuth 붙이면 전부 200. (yt-dlp+쿠키는 하루도 못 버팀)
+async def take_stream(track: "Track") -> wavelink.Playable:
+    """재생 직전에 호출 — 즐겨찾기 곡(SavedPlayable)만 Lavalink에 다시 불러온다."""
+    if not isinstance(track.playable, SavedPlayable):
+        return track.playable
+    found = await wavelink.Playable.search(track.playable.uri)
     tracks = found.tracks if isinstance(found, wavelink.Playlist) else found
     if not tracks:
-        raise RuntimeError("Lavalink가 오디오 주소를 불러오지 못했습니다.")
+        raise RuntimeError("Video unavailable")  # 삭제/비공개 — cog가 재생불가(removed)로 분류
     return tracks[0]
-
-
-# 다음 곡 주소를 재생 중에 미리 받아둬서(available_at 대기 포함) 곡 전환 대기를 없앤다.
-# 유튜브 주소는 약 6시간 유효 — 여유 있게 이보다 오래된 미리받기는 버리고 새로 받는다.
-PREFETCH_TTL_SEC = 3 * 3600
-
-
-def prefetch(track: "Track") -> None:
-    """track의 오디오 주소를 백그라운드로 미리 받는다. 이미 받는 중이거나 받아뒀으면 아무것도 안 함."""
-    if track._stream is not None and time.monotonic() - track._stream_at < PREFETCH_TTL_SEC:
-        return
-    task = asyncio.get_running_loop().create_task(resolve_stream(track.playable))
-    # 대기열에서 빠져 끝내 안 쓰이는 실패 태스크가 "exception never retrieved" 로그를 남기지 않게.
-    task.add_done_callback(lambda t: t.cancelled() or t.exception())
-    track._stream, track._stream_at = task, time.monotonic()
-
-
-async def take_stream(track: "Track") -> wavelink.Playable:
-    """재생 직전에 호출 — 미리 받아둔 주소가 있으면 쓰고, 없거나 오래됐으면 지금 받는다.
-    한 번 꺼내면 비워서, 재시도 때는 항상 새 주소를 받게 한다."""
-    task, age = track._stream, time.monotonic() - track._stream_at
-    track._stream = None
-    if task is not None and age < PREFETCH_TTL_SEC:
-        try:
-            return await task
-        except YoutubeAuthError:
-            raise
-        except Exception:
-            pass  # 미리받기 실패는 지금 한 번 더 받아본다
-    return await resolve_stream(track.playable)
 
 
 async def search_youtube(query: str, count: int = 10) -> list[wavelink.Playable]:
