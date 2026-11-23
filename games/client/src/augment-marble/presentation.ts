@@ -57,15 +57,16 @@ export function landingCandidates(g:Game,mindTarget?:number,mindEntity:"main"|"c
  const key=`${g.revision}:${mindTarget}:${mindEntity}`,cached=candidateCache.get(g);if(cached?.key===key)return cached.targets;
  // Mind control: every movable bird's landing until one is picked, then only the picked one.
  const steps=g.dice.reduce((n,x)=>n+x,0),others=hasBlack(g,g.turn,"mind_control")?blackTargets(g,g.turn):[];
- const clones=g.black?.clones??{},bird=(seat:number,entity:"main"|"clone"):LandingCandidate=>({seat,tile:ahead(entity==="clone"?clones[seat].position:g.players[seat].position,steps),label:`${seat+1}P${entity==="clone"?" 분신":""}`});
- const birds=others.flatMap(seat=>clones[seat]?[bird(seat,"main"),bird(seat,"clone")]:[bird(seat,"main")]);
- if(mindTarget!==undefined&&others.includes(mindTarget)){const targets=[bird(mindTarget,mindEntity==="clone"&&clones[mindTarget]?"clone":"main")];candidateCache.set(g,{key,targets});return targets;}
  const roll=g.abilities.roll??createRoll(g.turn,g.abilities.ordinal);
+ const directions:(1|-1|undefined)[]=!roll.restricted&&power(g,g.turn,'direction')?[1,-1]:[undefined];
+ // 음과 양: forced moves follow the chosen direction too, so show both sides for every bird.
+ const clones=g.black?.clones??{},bird=(seat:number,entity:"main"|"clone"):LandingCandidate[]=>{const from=entity==="clone"?clones[seat].position:g.players[seat].position,label=`${seat+1}P${entity==="clone"?" 분신":""}`;return directions.map(d=>({seat,tile:d===undefined?ahead(from,steps):(from+d*steps+360)%36,label}));};
+ const birds=others.flatMap(seat=>clones[seat]?[...bird(seat,"main"),...bird(seat,"clone")]:bird(seat,"main"));
+ if(mindTarget!==undefined&&others.includes(mindTarget)){const targets=bird(mindTarget,mindEntity==="clone"&&clones[mindTarget]?"clone":"main");candidateCache.set(g,{key,targets});return targets;}
  const pairs:DicePair[]=[[g.dice[0],g.dice[1]]];
  const comparison=roll.comparison??g.diceComparison;if(comparison)pairs.push([comparison[0],comparison[1]]);
  // Additional dice are random: never advertise unrevealed +1/+2/+3 landings.
  const bonuses=[g.dice[2]??0];
- const directions:(1|-1|undefined)[]=!roll.restricted&&power(g,g.turn,'direction')?[1,-1]:[undefined];
  const outcomes=new Map<string,LandingCandidate>(),seen=new Set<string>();
  // Shaco: the own clone walks the same throw (capped at 10 while restricted) unless it is resting; its landing is a known arrival option.
  const own=clones[g.turn],cloneWalks=!!own&&hasBlack(g,g.turn,"shaco")&&!own.skip&&!own.rest,me=others.length?`${g.turn+1}P `:"";

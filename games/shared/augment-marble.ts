@@ -498,7 +498,10 @@ function diceAction(g: Game, input: Action, random: () => number, catalog: reado
     roll.result = [Math.min(6,Math.max(1,sum-1)), Math.min(6,Math.max(1,sum-6))];
     roll.bonus = sum>12?sum-12:undefined;
     g.abilities.copied = true; g.dice = [...roll.result,...(roll.bonus?[roll.bonus]:[])];
-    g.abilities.lastThrow = { id: (g.abilities.lastThrow?.id ?? 0) + 1, seat: g.turn, kind: "copy", dice: [...g.dice] }; finishDice(g, random, catalog);
+    g.abilities.lastThrow = { id: (g.abilities.lastThrow?.id ?? 0) + 1, seat: g.turn, kind: "copy", dice: [...g.dice] };
+    // A copied distance is fixed (no rerolls), but direction / mind-control / trade choices still apply before moving.
+    roll.used.push(...c.rerolls);
+    if (power(g,g.turn,"direction") || hasBlack(g,g.turn,"mind_control") || hasBlack(g,g.turn,"unfair_trade")) g.phase = "dice"; else finishDice(g, random, catalog);
   } else if (input.action === "subsidy") {
     if (!choices.workSubsidy) throw new Error("근로장려금을 받을 수 없습니다.");
     const paid = receiveSalary(g,g.turn,"근로장려금");
@@ -521,8 +524,8 @@ function diceAction(g: Game, input: Action, random: () => number, catalog: reado
     if(hasBlack(g,g.turn,"mind_control")&&input.target!==undefined){
       if(!blackTargets(g,g.turn).includes(input.target))throw new Error("강제 이동 대상을 선택해주세요.");
       const target=input.target,clone=blackState(g).clones[target],from=input.entity==="clone"&&clone?clone.position:g.players[target].position,direction=g.world.players[g.turn].reverseThisTurn?-1:1,steps=g.dice.reduce((n,x)=>n+x,0),to=(from+direction*steps+3600)%36;
-      g.abilities.history.push(steps);if(g.abilities.history.length>12)g.abilities.history.shift();g.abilities.throws.push({seat:g.turn,sum:steps,turnId:g.turnId});if(roll.restricted&&g.abilities.statuses[g.turn].restrictedRolls>0)g.abilities.statuses[g.turn].restrictedRolls--;g.abilities.copied=false;
-      const double=g.dice[0]===g.dice[1]&&!g.world.players[g.turn].lostThisTurn;g.extraTurn=double;g.doubles=double?g.doubles+1:0;g.abilities.roll=null;g.phase="end";
+      g.abilities.history.push(steps);if(g.abilities.history.length>12)g.abilities.history.shift();g.abilities.throws.push({seat:g.turn,sum:steps,turnId:g.turnId});if(roll.restricted&&g.abilities.statuses[g.turn].restrictedRolls>0)g.abilities.statuses[g.turn].restrictedRolls--;
+      const double=g.dice[0]===g.dice[1]&&!g.world.players[g.turn].lostThisTurn&&!g.abilities.copied;g.abilities.copied=false;g.extraTurn=double;g.doubles=double?g.doubles+1:0;g.abilities.roll=null;g.phase="end";
       if(g.doubles>=3&&!power(g,g.turn,"no_island")&&!power(g,g.turn,"island_owner")){g.players[g.turn].position=9;g.players[g.turn].rest=3;g.extraTurn=false;return;}
       emitAbility(g.abilities,{actor:g.turn,target,tile:from,ability:"mind_control",targetEntity:input.entity,caption:"정신조종 · 강제 이동",visual:"buff",stage:"before_move"});
       if(input.entity==="clone"&&clone){const id=(g.abilities.lastMove?.id??0)+1;g.abilities.lastMove={id,seat:target,path:[g.players[target].position]};blackState(g).cloneMove={id,seat:target,path:Array.from({length:steps+1},(_,i)=>(from+direction*i+3600)%36)};clone.position=to;beginEventVisits(g,[{seat:target,tile:to,effects:true,entity:"clone"}],random,catalog);}

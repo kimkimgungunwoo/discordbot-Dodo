@@ -1,0 +1,72 @@
+{# 음악 카드 공용 CSS + 매크로 — queue / playlist 공유.
+   사용법:  <style> 안에서 {% include "_music.html" %}  (CSS 출력)
+           <body> 에서   {% import  "_music.html" as m %}  후  {{ m.now_playing(current) }} #}
+.np { display:flex; align-items:center; gap:20px; padding:18px 24px; border-bottom:2px solid var(--line); }
+.np-thumb {
+  width:220px; height:124px; border-radius:12px; object-fit:cover; background:var(--card-2); flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:34px;
+}
+.np-info { flex:1; min-width:0; }
+.np-badge {
+  display:inline-flex; align-items:center; gap:5px; font-family:var(--disp); font-weight:800; font-size:12px;
+  color:var(--lime); background:#5fd08a22; border-radius:999px; padding:4px 11px; margin-bottom:9px;
+}
+.np-title { font-family:var(--disp); font-size:22px; font-weight:800; line-height:1.3; }
+.np-sub { font-size:15px; font-weight:600; color:var(--muted); margin-top:6px; }
+.empty-note { font-size:15px; font-weight:600; color:var(--muted); padding:18px 24px; }
+.up { padding:12px 24px 20px; }
+.up-row { display:flex; align-items:center; gap:14px; padding:10px 0; border-bottom:2px solid var(--line); }
+.up-row:last-child { border-bottom:0; }
+.up-idx {
+  width:26px; height:26px; border-radius:9px; flex-shrink:0; background:var(--card-2); color:var(--ink-dim);
+  display:flex; align-items:center; justify-content:center; font-family:var(--disp); font-weight:800; font-size:12px;
+}
+.up-thumb {
+  width:78px; height:44px; border-radius:8px; object-fit:cover; background:var(--card-2); flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:18px;
+}
+.up-info { flex:1; min-width:0; }
+.up-title { font-family:var(--disp); font-weight:700; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.up-sub { font-size:12.5px; font-weight:600; color:var(--muted); margin-top:2px; }
+.up-dur {
+  flex-shrink:0; font-family:var(--disp); font-weight:700; font-size:12.5px; color:var(--ink-dim);
+  background:var(--card-2); border-radius:999px; padding:4px 11px;
+}
+.more { padding:2px 24px 20px; font-family:var(--disp); font-weight:600; font-size:12.5px; color:var(--muted); }
+.more b { color:var(--grape); }
+
+{% macro now_playing(current) %}
+  {% if current %}
+  <div class="np">
+    <img class="np-thumb" src="{{ current.thumbnail }}" onerror="this.style.visibility='hidden'" alt="">
+    <div class="np-info">
+      <div class="np-badge">▶ 재생 중</div>
+      <div class="np-title">{{ current.title }}</div>
+      <div class="np-sub">{{ current.uploader }} · {{ current.duration_str }}</div>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-note">현재 재생 중인 곡이 없습니다.</div>
+  {% endif %}
+{% endmacro %}
+
+{% macro up_list(upcoming, remaining) %}
+  <span class="lbl" style="display:block;padding:16px 24px 0">다음 곡</span>
+  <div class="up">
+    {% if upcoming %}
+      {% for t in upcoming %}
+      <div class="up-row">
+        <span class="up-idx">{{ loop.index }}</span>
+        <img class="up-thumb" src="{{ t.thumbnail }}" onerror="this.style.visibility='hidden'" alt="">
+        <div class="up-info"><div class="up-title">{{ t.title }}</div><div class="up-sub">{{ t.uploader }}</div></div>
+        <span class="up-dur">{{ t.duration_str }}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-note" style="padding:6px 0;">대기 중인 곡이 없습니다.</div>
+    {% endif %}
+  </div>
+  {% if remaining > 0 %}
+  <div class="more"><b>+{{ remaining }}곡</b> 더 있음</div>
+  {% endif %}
+{% endmacro %}

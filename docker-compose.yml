@@ -61,6 +61,25 @@ services:
       - "3001:3001"
     command: sh -c "npm install && npm run dev"
 
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    environment:
+      LAVALINK_SERVER_PASSWORD: ${LAVALINK_PASSWORD:-youshallnotpass}
+      YOUTUBE_OAUTH_REFRESH_TOKEN: ${YOUTUBE_OAUTH_REFRESH_TOKEN:-}
+      YT_CIPHER_TOKEN: ${YT_CIPHER_TOKEN:-dodo-cipher}
+      POT_TOKEN: ${POT_TOKEN:-}
+      POT_VISITOR_DATA: ${POT_VISITOR_DATA:-}
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+    depends_on:
+      - yt-cipher
+
+  # 유튜브 cipher(서명) 자가 호스팅 — 오디오는 안 거치고 서명 계산만 함, 아주 가벼움.
+  yt-cipher:
+    image: ghcr.io/kikkia/yt-cipher:master
+    environment:
+      API_TOKEN: ${YT_CIPHER_TOKEN:-dodo-cipher}
+
   bot:
     build: .
     env_file:
@@ -70,9 +89,11 @@ services:
       DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
       ACTIVITY_SERVER_URL: http://activity-server:3001
       BOT_INTERNAL_HOST: 0.0.0.0
+      LAVALINK_URI: http://lavalink:2333
 
     volumes:
       - .:/app
+      - music_secrets:/secrets   # 유튜브 쿠키(DM으로 갱신) — git/이미지 밖에 보관
 
     command:
       - sh
@@ -90,7 +111,10 @@ services:
         condition: service_started
       dodo-postgres:
         condition: service_healthy
+      lavalink:
+        condition: service_started
 
 volumes:
   dodo_postgres_data:
   marble_state:
+  music_secrets:
