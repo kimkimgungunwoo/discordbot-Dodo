@@ -8,7 +8,7 @@ from bot.cogs.music.renderer import render_queue_card, render_playlist_card
 from bot.cogs.music.views import (
     Track,
     MusicSearchPromptView, RemoveView, QueuePaginatorView, PlaylistControlView,
-    resolve_stream, YoutubeAuthError, install_cookies,
+    take_stream, prefetch, YoutubeAuthError, install_cookies,
 )
 from bot.cogs.util import GENERATING_MSG
 
@@ -281,9 +281,11 @@ class Music(commands.Cog):
             return
         self._owner_alerted_at = now
         app = await self.bot.application_info()
-        owners = app.team.members if app.team else [app.owner]
-        for owner in owners:
+        # 팀 소유 앱이면 TeamMember(DM 불가)라서 같은 ID의 User를 다시 받아 보낸다.
+        owner_ids = [m.id for m in app.team.members] if app.team else [app.owner.id]
+        for owner_id in owner_ids:
             try:
+                owner = self.bot.get_user(owner_id) or await self.bot.fetch_user(owner_id)
                 await owner.send(
                     "🔑 **유튜브 쿠키 갱신 필요** — 유튜브가 \"Sign in to confirm you're not a bot\"으로 재생을 막고 있습니다.\n"
                     "부계정으로 새 `cookies.txt`를 내보내서 **이 DM에 파일로 첨부**해주세요. 시험 재생에 성공하면 바로 교체됩니다."
@@ -403,7 +405,7 @@ class Music(commands.Cog):
                 start = self._retry_starts.get(guild.id, {}).pop(track_key, 0)
 
                 try:
-                    await vc.play(await resolve_stream(track.playable), start=start)
+                    await vc.play(await take_stream(track), start=start)
                 except YoutubeAuthError as e:
                     # 곡 문제가 아니므로 건너뛰지 않는다 — 대기열에 둔 채 길게 쉬었다 재시도, 소유자에게 갱신 요청.
                     self._playing_mode.pop(guild.id, None)
@@ -515,10 +517,13 @@ class Music(commands.Cog):
         if mode is None:
             return
 
-        _, currents = self._state(mode)
+        queues, currents = self._state(mode)
         current = currents.get(guild_id)
         if current is None:
             return
+        # 재생 중 주기적으로(~5초) 다음 곡을 미리 받아둔다 — 재생 중에 새로 추가된 곡도 여기서 잡힌다.
+        if queues.get(guild_id):
+            prefetch(queues[guild_id][0])
 
         track_key = self._track_key(current)
         self._last_positions.setdefault(guild_id, {})[track_key] = payload.position

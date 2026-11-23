@@ -32,6 +32,8 @@ class Track:
     def __init__(self, playable: wavelink.Playable, requester: discord.Member):
         self.playable = playable
         self.requester = requester
+        self._stream: asyncio.Task | None = None  # prefetch()가 채움
+        self._stream_at = 0.0
 
     def __str__(self) -> str:
         return self.title
@@ -129,6 +131,36 @@ async def resolve_stream(playable: wavelink.Playable) -> wavelink.Playable:
     if not tracks:
         raise RuntimeError("Lavalink가 오디오 주소를 불러오지 못했습니다.")
     return tracks[0]
+
+
+# 다음 곡 주소를 재생 중에 미리 받아둬서(available_at 대기 포함) 곡 전환 대기를 없앤다.
+# 유튜브 주소는 약 6시간 유효 — 여유 있게 이보다 오래된 미리받기는 버리고 새로 받는다.
+PREFETCH_TTL_SEC = 3 * 3600
+
+
+def prefetch(track: "Track") -> None:
+    """track의 오디오 주소를 백그라운드로 미리 받는다. 이미 받는 중이거나 받아뒀으면 아무것도 안 함."""
+    if track._stream is not None and time.monotonic() - track._stream_at < PREFETCH_TTL_SEC:
+        return
+    task = asyncio.get_running_loop().create_task(resolve_stream(track.playable))
+    # 대기열에서 빠져 끝내 안 쓰이는 실패 태스크가 "exception never retrieved" 로그를 남기지 않게.
+    task.add_done_callback(lambda t: t.cancelled() or t.exception())
+    track._stream, track._stream_at = task, time.monotonic()
+
+
+async def take_stream(track: "Track") -> wavelink.Playable:
+    """재생 직전에 호출 — 미리 받아둔 주소가 있으면 쓰고, 없거나 오래됐으면 지금 받는다.
+    한 번 꺼내면 비워서, 재시도 때는 항상 새 주소를 받게 한다."""
+    task, age = track._stream, time.monotonic() - track._stream_at
+    track._stream = None
+    if task is not None and age < PREFETCH_TTL_SEC:
+        try:
+            return await task
+        except YoutubeAuthError:
+            raise
+        except Exception:
+            pass  # 미리받기 실패는 지금 한 번 더 받아본다
+    return await resolve_stream(track.playable)
 
 
 async def search_youtube(query: str, count: int = 10) -> list[wavelink.Playable]:
