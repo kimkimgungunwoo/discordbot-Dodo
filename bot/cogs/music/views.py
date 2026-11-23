@@ -24,6 +24,16 @@ def format_duration(seconds) -> str:
     return f"{minutes}:{sec:02d}"
 
 
+class SavedPlayable:
+    """즐겨찾기에서 꺼낸 곡 — Lavalink에 다시 묻지 않고 Track이 쓰는 속성만 채운 대용품.
+    실제 오디오는 재생 직전 resolve_stream()이 uri로 yt-dlp 추출한다(삭제된 영상이면 그때 재생불가로 걸러짐)."""
+    source = "youtube"
+
+    def __init__(self, video_id: str, title: str, author: str, length_ms: int, uri: str):
+        self.identifier, self.title, self.author, self.length, self.uri = video_id, title, author, length_ms, uri
+        self.artwork = f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
+
+
 class Track:
     """wavelink.Playable를 감싸는 얇은 래퍼.
     title/uploader/thumbnail/duration_str 인터페이스를 유지해서 renderer.py/HTML 템플릿을
@@ -261,21 +271,36 @@ class MusicSelect(discord.ui.Select):
         track = Track(self.entries[int(self.values[0])], interaction.user)
 
         cog: "Music" = interaction.client.cogs.get("Music")
-        guild_id = interaction.guild.id
+        pos = await cog.enqueue(interaction.guild, [track])
+        await interaction.edit_original_response(content=enqueued_text(track, pos), view=FavoriteButtonView(track))
 
-        pos = len(cog.queues.setdefault(guild_id, [])) + 1
-        cog.queues[guild_id].append(track)
 
-        # 재생목록이 재생 중이었다면 멈추고(트랙은 재생목록 큐 맨 앞으로 보존) 일반 재생으로 전환한다.
-        await cog.switch_mode(interaction.guild, "single")
-        await cog.advance(interaction.guild, "single")
+def enqueued_text(track: Track, pos: int | None) -> str:
+    return f"▶️ **{track.title}** 재생을 시작합니다!" if pos is None else f"✅ **{track.title}** 이(가) 대기열 {pos}번에 추가되었습니다."
 
-        if cog.current.get(guild_id) is track:
-            await interaction.edit_original_response(content=f"▶️ **{track.title}** 재생을 시작합니다!")
-        else:
-            await interaction.edit_original_response(
-                content=f"✅ **{track.title}** 이(가) 대기열 {pos}번에 추가되었습니다."
-            )
+
+class FavoriteButtonView(discord.ui.View):
+    """재생/대기열 추가 안내에 붙는 ⭐ — 누른 사람 본인의 즐겨찾기에 담는다(봇 재시작 전까지 유효)."""
+    def __init__(self, track: Track):
+        super().__init__(timeout=None)
+        self.track = track
+
+    @discord.ui.button(label="⭐ 즐겨찾기", style=discord.ButtonStyle.secondary)
+    async def add(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        from api.database import SessionLocal
+        from api.crud.music_crud import MAX_FAVORITES, add_favorite, get_favorite, get_favorites
+        p = self.track.playable
+        async with SessionLocal() as session:
+            if await get_favorite(session, interaction.user.id, p.identifier):
+                await interaction.response.send_message("이미 즐겨찾기에 있는 곡입니다.", ephemeral=True)
+                return
+            if len(await get_favorites(session, interaction.user.id)) >= MAX_FAVORITES:
+                await interaction.response.send_message(
+                    f"즐겨찾기는 최대 {MAX_FAVORITES}곡까지입니다. `!음악 즐겨찾기`에서 정리해주세요.", ephemeral=True
+                )
+                return
+            await add_favorite(session, interaction.user.id, p.identifier, self.track.title, self.track.uploader, p.length or 0, p.uri)
+        await interaction.response.send_message(f"⭐ **{self.track.title}** 을(를) 즐겨찾기에 추가했습니다.", ephemeral=True)
 
 
 class MusicView(discord.ui.View):
