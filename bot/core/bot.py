@@ -1,4 +1,6 @@
+import os
 import discord
+import wavelink
 from discord.ext import commands
 from watchfiles import awatch
 from pathlib import Path
@@ -14,6 +16,7 @@ COGS = [
     "bot.cogs.minigame",
     "bot.cogs.game",
     "bot.cogs.party",
+    "bot.cogs.music",
     "bot.cogs.control",
     "bot.cogs.user",
     "bot.cogs.gamble",
@@ -42,6 +45,9 @@ class MyBot(commands.Bot):
     async def setup_hook(self):
         async with SessionLocal() as session:
             self.prefixes = await get_all_prefixes(session)
+
+        node = wavelink.Node(uri=os.getenv("LAVALINK_URI", "http://lavalink:2333"), password=os.getenv("LAVALINK_PASSWORD", "youshallnotpass"))
+        await wavelink.Pool.connect(nodes=[node], client=self)
 
         for ext in COGS:
             await self.load_extension(ext)

@@ -57,3 +57,7 @@ test_*.py
 /work/
 /games/server/benchmarks/
 /games/server/forbidden-fuzz.mjs
+
+# 유튜브 로그인 쿠키(부계정) — 절대 커밋 금지
+cookies.txt
+*cookies*.txt

@@ -201,7 +201,7 @@ export function strategicBotAction(g:Game,fallback:Action):Action {
   if(state.lostThisTurn)return {action:'roll'};
   let best:Action={action:'roll'},value=expected(normal,c.doubleLover,score);
   if(choices.selectiveDouble)for(const useNew of [true,false]){const roll=createRoll(seat,g.abilities.ordinal);roll.forcedDouble=useNew;roll.avoidDouble=!useNew;const next=expected(roll,c.doubleLover,score);if(next>value+1){value=next;best={action:'dice_double',useNew};}}
-  for(const sum of choices.copies){const next=score([Math.max(1,sum-6),Math.min(6,sum-1)],true);if(next>value+3){value=next;best={action:'dice_copy',option:sum};}}
+  for(const sum of choices.copies){const pair=[Math.max(1,sum-6),Math.min(6,sum-1)],next=power(g,seat,'direction')?Math.max(score(pair,true,0,1),score(pair,true,0,-1)):score(pair,true);if(next>value+3){value=next;best={action:'dice_copy',option:sum};}}
   const lastTurn=g.abilities.lastOwnTurn[seat],stayedLastTurn=lastTurn>0&&!g.abilities.throws.some(t=>t.seat===seat&&t.turnId===lastTurn);
   const salary=salaryAmount(g,seat),needsCash=p.cash<SALARY*2;
   if(choices.workSubsidy&&salary>0&&needsCash&&!stayedLastTurn&&(value < -salary*.5 || p.cash<SALARY*.75&&value<salary*.25))return {action:'subsidy'};
@@ -218,7 +218,7 @@ export function strategicBotAction(g:Game,fallback:Action):Action {
    if(ability==='suspicious_dice'){const next=[1,2,3].reduce((n,bonus)=>n+score(roll.result!,false,bonus),0)/3;if(next>value+2){value=next;best={action:'dice_reroll',ability};}}
    else{const next=expected(roll,capabilities(g).doubleLover,p=>ability==='black_dice'?Math.max(current,score(p)):score(p));if(next>value+2){value=next;best={action:'dice_reroll',ability};}}
   }
-  if(best.action==='dice_confirm'&&power(g,g.turn,'direction')&&!roll.restricted){best.option=score(roll.result!,false,roll.bonus??0,-1)>score(roll.result!,false,roll.bonus??0,1)?-1:1;}
+  if(best.action==='dice_confirm'&&power(g,g.turn,'direction')&&!roll.restricted){const copied=g.abilities.copied;best.option=score(roll.result!,copied,roll.bonus??0,-1)>score(roll.result!,copied,roll.bonus??0,1)?-1:1;}
   if(best.action==='dice_confirm'&&hasBlack(g,g.turn,'mind_control')){const steps=g.dice.reduce((n,x)=>n+x,0),direction=best.option??(g.world.players[g.turn].reverseThisTurn?-1:1);const ranked=blackTargets(g,g.turn).map(target=>{const tile=(g.players[target].position+direction*steps+3600)%36,owner=g.properties[tile].owner;return{target,value:BOARD[tile].kind==='rest'?180:owner!==null&&owner!==target?rentPayment(g,tile,target)*(owner===g.turn?1.5:.6):0}}).sort((a,b)=>b.value-a.value);if(ranked[0]&&ranked[0].value>Math.max(25,value+10))best.target=ranked[0].target;}
   return best;
  }
