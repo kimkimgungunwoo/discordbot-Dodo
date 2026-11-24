@@ -28,7 +28,7 @@ export type Phase = "portal" | "event" | "rent" | "augment" | "roll" | "dice" | 
 export type WinReason = "bread" | "draw" | "bankruptcy" | "triple" | "line" | "assets";
 export interface Game {winners?:number[]; development?:DevelopmentState; diceComparison?:number[]|null; black?:BlackState; roundPrism?:{given:boolean;pending:number[]}; locustBatch?:{id:number;path:number[]}; landmarkVisit?:{seat:number;tile:number;turnId:number}; teleport?:{id:number;seat:number;from:number;to:number;entity?:"main"|"clone"}; destructionBatch?:{id:number;revision:number;kind:"quake"|"missile";items:{tile:number;before:Property}[]}; flightBatch?:{id:number;items:{seat:number;from:number;to:number;entity?:"main"|"clone"}[]}; turnOrder?:number[];orderDrawUntil?:number; moneyTransfers?:MoneyTransfer[]; world: EventState; abilities: AbilityRuntime; players: Player[]; properties: Property[]; turn: number; turnId: number; round: number; roundPending: number[]; revision: number; phase: Phase; dice: number[]; doubles: number; extraTurn: boolean; winner: number | null; reason: WinReason | null; debt: { amount: number; creditor: number | null; reason: "rent" | "land_tax"; principal?:number;receipt?:number; resume: "takeover" | "arrival" | "event" } | null; log: string[]; augments: AugmentState | null; augmentSeat: number | null; augmentResume: "start" | "arrive" | "round30" | null }
 export interface Seat { userId: string | null; name: string; bot?: string }
-export interface View { presentationAt?:number; type: "MARBLE_STATE"; matchId: string; game: Game; seats: (Seat & { connected: boolean; ready?: boolean })[]; seat: number; started: boolean; deadline: number; serverNow: number; aborted?: string; rematch?: { matchId: string; votes: string[]; required: number; delivered: boolean } }
+export interface View { presentationAt?:number; presentationUntil?:number; type: "MARBLE_STATE"; matchId: string; game: Game; seats: (Seat & { connected: boolean; ready?: boolean })[]; seat: number; started: boolean; deadline: number; serverNow: number; aborted?: string; rematch?: { matchId: string; votes: string[]; required: number; delivered: boolean } }
 export interface Action { action: "construction_permit" | "black_choice" | "black_trade" | "portal_move" | "roll" | "buy" | "build" | "takeover" | "skip" | "end" | "sell" | "bankrupt" | "augment_select" | "augment_reroll" | "dice_force" | "dice_double" | "dice_copy" | "dice_reroll" | "dice_choose" | "dice_confirm" | "subsidy" | "escape" | "landmark" | "ability_target" | "island_buy" | "event_resolve" | "rent_pay" | "coupon_pass" | "home_stone" | "extra_coupon"; entity?: "main"|"clone"; eventSerial?: number; amount?: number; decline?: boolean; augmentId?: string; line?: number; steps?: number; target?: number; ability?: ForceAbility | RerollAbility; option?: number; die?: 0 | 1; useNew?: boolean; offerId?: string; slot?: number; buildings?:number[]; building?: number; tile?: number }
 export interface AugmentOptions { catalog?: readonly AugmentDefinition[]; tierSequence?: readonly AugmentTier[]; random?: () => number }
 export function canAct(g:Game,seat:number){if(g.black?.pending.length)return g.black.pending[0].seat===seat;return g.phase==="augment"&&g.augmentResume==="round30"?!!g.roundPrism?.pending.includes(seat):seat===actingSeat(g);}
@@ -447,6 +447,10 @@ export function rentPayment(g:Game,index:number,seat:number){return rentQuote(g,
 
 export const ISLAND_COST = 300;
 export const ISLAND_FEE = 30;
+type Mark=Game["abilities"]["marks"][number];
+/** Owner turns left before a mark expires. Counting the owner's turns gives every opponent the same number of
+ * chances (duration) whatever the seat order; round counting cut a mark from the round's last seat to one chance. */
+export function markTurnsLeft(g: Game, m: Mark) { return m.expiresAtOwnerTurn ? m.expiresAtOwnerTurn - g.abilities.ownerTurns[m.owner] : (m.expiresRound ?? Infinity) - g.round; }
 export function turnTargets(g: Game) {
   return g.players.flatMap((p, i) => i !== g.turn && !p.bankrupt && !immune(g, i) && sameLine(p.position,g.players[g.turn].position) ? [i] : []);
 }
@@ -457,7 +461,7 @@ export function startTurn(g: Game) {
   const eventStatus=g.world?.players[g.turn];
   if(eventStatus){eventStatus.sleepThisTurn=eventStatus.sleep>0;eventStatus.endLocked=false;eventStatus.lostThisTurn=eventStatus.lostDice>0;eventStatus.reverseThisTurn=eventStatus.reverseMoves>0;}
   const status=g.abilities.statuses[g.turn];if(status.nextTurnRestricted){status.nextTurnRestricted=false;status.restrictWholeTurn=true;status.restrictedBy="신지드";}
-  g.abilities.marks = g.abilities.marks.filter(m => (m.expiresRound ?? Infinity) > g.round);
+  g.abilities.marks = g.abilities.marks.filter(m => markTurnsLeft(g, m) > 0);
   blackTurnStart(g);
   if(g.world?.players[g.turn].sleepThisTurn||g.abilities.statuses[g.turn].skipTurns>0){g.abilities.pendingTarget=false;return;}
   const position = g.players[g.turn].position;
@@ -607,7 +611,7 @@ function tranquilize(g:Game,actor:number,target:number){
 }
 function applyMarks(g: Game, seat: number) {
   const tile = g.players[seat].position;
-  const hit = g.abilities.marks.filter(m => m.tile === tile && m.owner !== seat && !g.players[m.owner].bankrupt && definitionsActive(g,m.owner) && (m.expiresRound ?? Infinity) > g.round);
+  const hit = g.abilities.marks.filter(m => m.tile === tile && m.owner !== seat && !g.players[m.owner].bankrupt && definitionsActive(g,m.owner) && markTurnsLeft(g, m) > 0);
   for (const mark of hit) {
     if(immune(g,seat)){reportAdamantBlock(g,seat,mark.kind==="trap"?"덫 · 다음 차례 휴식":mark.kind==="poison"?"독 · 주사위 제한":"방귀쟁이 · 주사위 제한",mark.owner);continue;}
     g.abilities.marks = g.abilities.marks.filter(m => m !== mark);
@@ -627,7 +631,7 @@ function landEffects(g: Game) {
     const tiles = [tile];
     for (const at of new Set(tiles)) {
       g.abilities.marks = g.abilities.marks.filter(m => !(m.tile === at && m.kind === kind && m.owner === g.turn));
-      g.abilities.marks.push({tile:at,owner:g.turn,kind,power:1,expiresAtOwnerTurn:0,expiresRound:g.round+duration});
+      g.abilities.marks.push({tile:at,owner:g.turn,kind,power:1,expiresAtOwnerTurn:g.abilities.ownerTurns[g.turn]+duration});
     }
   }
 }

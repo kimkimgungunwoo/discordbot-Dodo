@@ -3,7 +3,7 @@ import { hasCopernicus, invertBird, pendingBlackAppearances, pendingPaceAppearan
 import {canUseConstructionPermit,constructionPermitTiles,constructionCredit,CREDIT_CAP,PERMIT_CAP} from "../../../shared/augment-marble-development";
 import {showElimination} from "./elimination-announcement";
 import {blackTargets,hasBlack,protectedBlack,sniperEntities} from "../../../shared/augment-marble-black";
-import { beginPresentationClock, resetPresentationClock, effectStart, effectRemaining, timelineDelay } from "./presentation-clock";
+import { beginPresentationClock, resetPresentationClock, effectStart, effectRemaining } from "./presentation-clock";
 import { showLocustSwarm } from "./locust-effect";
 import { rulesGuide } from "./rules-guide";
 import { showTakeover } from "./takeover-effect";
@@ -15,7 +15,7 @@ import { portalJump } from "./portal-effect";
 import { destroyBuildings } from "./destruction-effects";
 import { EVENT_MS,eventDefinition,EVENT_CATEGORY_LABELS } from "../../../shared/augment-marble-events";
 import { eventTargets,eventOwnedTiles } from "../../../shared/augment-marble";
-import { turnTargets } from "../../../shared/augment-marble";
+import { turnTargets, markTurnsLeft } from "../../../shared/augment-marble";
 import { salaryAmount } from "../../../shared/augment-marble-effects";
 import { showOrderDraw } from "./order-draw";
 import { drawTurnOrder,ORDER_DRAW_MS } from "../../../shared/augment-marble";
@@ -112,13 +112,13 @@ function receive(next: View, keepDeadline = false) {
     resetPresentation(); needsBaseline = false; info = null; selected = null;
     moneyEffects.baseline(next.game.moneyTransfers??[]);
     abilityEffects.baseline(next.matchId, next.game.abilities.events); shownEventId = next.game.abilities.events.at(-1)?.id ?? 0; displayedLog = undefined; view = next; pending = false; retries = 0;
-    syncRematch(next); render();if(starting)sound.play("start");beginOrderDraw(next); if (!online) scheduleLocal(); return;
+    syncRematch(next); render();acknowledge(next);if(starting)sound.play("start");beginOrderDraw(next); if (!online) scheduleLocal(); return;
   }
   const last = queue.at(-1)?.next ?? view;
   if (next.game.revision < last.game.revision) return;
   if (next.game.revision === last.game.revision) {
     if (queue.length) queue[queue.length - 1].next = next;
-    else { const newlyReady=next.seats.some((seat,i)=>seat.ready&&!view!.seats[i]?.ready);view.seats = next.seats;if(newlyReady&&!next.started)sound.play("ready"); view.deadline = next.deadline; view.rematch = next.rematch; view.started = next.started; syncRematch(next);beginOrderDraw(next); if (!animating) { pending = false; render(); } }
+    else { const newlyReady=next.seats.some((seat,i)=>seat.ready&&!view!.seats[i]?.ready);view.seats = next.seats;if(newlyReady&&!next.started)sound.play("ready"); view.deadline = next.deadline; view.presentationUntil = next.presentationUntil; view.rematch = next.rematch; view.started = next.started; syncRematch(next);beginOrderDraw(next); if (!animating) { pending = false; render(); } }
     return;
   }
   queue.push({ next, keepDeadline }); void drain();
@@ -129,7 +129,7 @@ async function drain() {
   try {
     while (queue.length && run === generation) {
       const item = queue.shift()!;
-      try{await present(item.next, item.keepDeadline, controller.signal);}
+      try{await present(item.next, item.keepDeadline, controller.signal);if(run===generation)acknowledge(item.next);}
       catch(cause){console.error("[marble] presentation failed; restoring latest state",cause);needsBaseline=true;receive(latestSnapshot??item.next);return;}
     }
   } finally {
@@ -217,7 +217,7 @@ async function present(next: View, _keepDeadline = false, signal = controller.si
         cloneTarget={seat:cloneMoved.seat,tile:plan.dice||freshMove?(cloneMoved.path[0]+moveDirection(next.game,previous!.turn)*n+360)%36:cloneMoved.path.at(-1)!};
       }
       render();
-      if(!teleport&&(plan.dice||landingTarget&&route.length>1||cloneMoved))await pause(timelineDelay(520),signal);
+      if(!teleport&&(plan.dice||landingTarget&&route.length>1||cloneMoved))await pause(520,signal);
     }
     await play(plan.before.filter(e => e.ability === "dice"));
     if(batch?.length&&!signal.aborted){presentationStage="태풍";updateStage();await animateFlights(batch.map(item=>({seat:item.seat,tile:item.to,entity:item.entity})),signal);}
@@ -323,7 +323,7 @@ async function animateMovement(seat:number,path:number[],signal:AbortSignal){
     if(t<1)handle=requestAnimationFrame(frame);else done();
    };signal.addEventListener("abort",done,{once:true});frame(performance.now());
   });if(signal.aborted)return;
-  await pause(timelineDelay(TILE_STEP_MS-TILE_HOP_MS),signal);if(signal.aborted)return;
+  await pause(TILE_STEP_MS-TILE_HOP_MS,signal);if(signal.aborted)return;
   if(step===path.length-1)sound.play("land");position=target;displayedPositions.set(seat,path[step]);
   if(nextCloneTile!==undefined){cloneTile=nextCloneTile;cloneCurrent=nextClone;displayedClones.set(seat,nextCloneTile);}
   let changed=false;for(const m of view!.game.abilities.marks)if(m.owner===seat&&m.tile===path[step])changed=hiddenMarks.delete(markKey(m))||changed;
@@ -333,7 +333,10 @@ async function animateMovement(seat:number,path:number[],signal:AbortSignal){
  root.querySelectorAll(".m-step-active").forEach(el=>el.classList.remove("m-step-active"));
 }
 function coordinates(index: number) { return index <= 9 ? [10, 10 - index] : index <= 18 ? [19 - index, 1] : index <= 27 ? [1, index - 17] : [index - 26, 10]; }
-function editable() { return !drawingOrder && !!view && connected && !pending && !animating && !queue.length && view.started && !view.aborted && view.game.phase !== "finished" && canAct(view.game,view.seat); }
+/** The server holds input until every player reports this revision presented; it then rebroadcasts with presentationUntil cleared. */
+function presenting(){return !!view?.presentationUntil;}
+function acknowledge(v:View){if(online&&v.seat>=0&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:"MARBLE_PRESENTED",matchId:v.matchId,revision:v.game.revision}));}
+function editable() { return !drawingOrder && !!view && connected && !pending && !animating && !queue.length && !presenting() && view.started && !view.aborted && view.game.phase !== "finished" && canAct(view.game,view.seat); }
 function localAction(action: Action) {
   if (!view || !view.started || animating) return;
   const next = structuredClone(view); applyAction(next.game, action); next.serverNow = Date.now();
@@ -537,7 +540,7 @@ function inspectorMarkup() {
   if (selected === null) return "";
   const v = view!, g = v.game, t = BOARD[selected], p = g.properties[selected], visitor = v.seat >= 0 ? v.seat : undefined;
   const receipt = p.owner !== null ? displayedRent(g, t.index) : baseRent(t.index), personal = visitor !== undefined && p.owner !== visitor && p.owner !== null ? rentPayment(g, t.index, visitor) : null;
-  return `<section class="m-inspector"><span class="m-eyebrow">선택한 칸 · ${t.index + 1}/36</span><h2>${t.name}${p.landmark ? " · 랜드마크" : ""}</h2>${t.kind === "city" ? `<dl><div><dt>토지 정가</dt><dd>${t.price}만원</dd></div><div><dt>소유자</dt><dd>${p.owner === null ? "주인 없음" : `${p.owner + 1}P`}</dd></div><div><dt>${p.owner === null ? "토지 기본 통행료" : "감면 전 청구액"}</dt><dd>${receipt}만원</dd></div>${personal !== null ? `<div><dt>${visitor!==undefined&&rentQuote(g,t.index,visitor).reversed?"내 방문 시 수령 통행료":"내 방문 시 통행료"}</dt><dd>${personal}만원</dd></div>` : ""}${p.owner === null && visitor !== undefined ? `<div><dt>내 매입가</dt><dd>${purchaseCost(g, t.index, visitor)}만원</dd></div>` : ""}${p.owner !== null && p.owner !== visitor ? `<div><dt>${visitor === undefined ? "인수 기본액" : "내 최종 인수가"}</dt><dd>${p.landmark&&!hasBlack(g,visitor??g.turn,"landmark_takeover") ? "인수 불가" : `${visitor === undefined ? takeoverBase(g,t.index) : takeoverCost(g, t.index, visitor)}만원`}</dd></div>` : ""}${p.owner === visitor ? `<div><dt>채무 시 매각 대금</dt><dd>${`${saleProceeds(g, t.index, visitor)}만원`}</dd></div>` : ""}</dl><p>${p.breadBoost?"빵조각 강화 · 통행료 2배 / ":""}${p.revisitBoost?`재방문 통행료 +${p.revisitBoost*REVISIT_BONUS_PERCENT}% / `:""}${p.festival?`축제 ${p.festival}회 · 다음 상대 방문까지 / `:""}${p.locust?`메뚜기떼 ${p.locust}회 적용 / `:""}${String.fromCharCode(65 + t.group)} 그룹 · ${t.line + 1}번 변. 통행료와 인수가는 현재 보유 증강을 반영합니다. 유리대포의 추가 수입·지출은 은행 지급·소멸로 별도 정산합니다.</p>` : `<p>${tileDescription(t.index)}</p>`}<div class="m-tile-occupants">${g.players.flatMap((player,i)=>!player.bankrupt&&player.position===t.index?[`<span style="--seat:${COLORS[i]}"><img src="${boardBirds[i]}" alt=""><b>${i+1}P ${escape(player.name)}</b></span>`]:[]).join('')}</div>${g.abilities.marks.filter(m => m.tile === t.index).map(m => `<p class="m-current-status">${m.owner + 1}P의 ${m.kind === "gas" ? "방귀" : m.kind === "trap" ? "덫" : "독"} · ${(m.expiresRound ?? g.round) - g.round}라운드 뒤 만료</p>`).join("")}</section>`;
+  return `<section class="m-inspector"><span class="m-eyebrow">선택한 칸 · ${t.index + 1}/36</span><h2>${t.name}${p.landmark ? " · 랜드마크" : ""}</h2>${t.kind === "city" ? `<dl><div><dt>토지 정가</dt><dd>${t.price}만원</dd></div><div><dt>소유자</dt><dd>${p.owner === null ? "주인 없음" : `${p.owner + 1}P`}</dd></div><div><dt>${p.owner === null ? "토지 기본 통행료" : "감면 전 청구액"}</dt><dd>${receipt}만원</dd></div>${personal !== null ? `<div><dt>${visitor!==undefined&&rentQuote(g,t.index,visitor).reversed?"내 방문 시 수령 통행료":"내 방문 시 통행료"}</dt><dd>${personal}만원</dd></div>` : ""}${p.owner === null && visitor !== undefined ? `<div><dt>내 매입가</dt><dd>${purchaseCost(g, t.index, visitor)}만원</dd></div>` : ""}${p.owner !== null && p.owner !== visitor ? `<div><dt>${visitor === undefined ? "인수 기본액" : "내 최종 인수가"}</dt><dd>${p.landmark&&!hasBlack(g,visitor??g.turn,"landmark_takeover") ? "인수 불가" : `${visitor === undefined ? takeoverBase(g,t.index) : takeoverCost(g, t.index, visitor)}만원`}</dd></div>` : ""}${p.owner === visitor ? `<div><dt>채무 시 매각 대금</dt><dd>${`${saleProceeds(g, t.index, visitor)}만원`}</dd></div>` : ""}</dl><p>${p.breadBoost?"빵조각 강화 · 통행료 2배 / ":""}${p.revisitBoost?`재방문 통행료 +${p.revisitBoost*REVISIT_BONUS_PERCENT}% / `:""}${p.festival?`축제 ${p.festival}회 · 다음 상대 방문까지 / `:""}${p.locust?`메뚜기떼 ${p.locust}회 적용 / `:""}${String.fromCharCode(65 + t.group)} 그룹 · ${t.line + 1}번 변. 통행료와 인수가는 현재 보유 증강을 반영합니다. 유리대포의 추가 수입·지출은 은행 지급·소멸로 별도 정산합니다.</p>` : `<p>${tileDescription(t.index)}</p>`}<div class="m-tile-occupants">${g.players.flatMap((player,i)=>!player.bankrupt&&player.position===t.index?[`<span style="--seat:${COLORS[i]}"><img src="${boardBirds[i]}" alt=""><b>${i+1}P ${escape(player.name)}</b></span>`]:[]).join('')}</div>${g.abilities.marks.filter(m => m.tile === t.index).map(m => `<p class="m-current-status">${m.owner + 1}P의 ${m.kind === "gas" ? "방귀" : m.kind === "trap" ? "덫" : "독"} · ${markTurnsLeft(g, m)}차례 뒤 만료</p>`).join("")}</section>`;
 }
 function resultTitle(g:View['game']){return g.reason==='draw'?'무승부':`${(g.winners??(g.winner===null?[]:[g.winner])).map(seat=>g.players[seat].name).join(' · ')} ${g.winners&&g.winners.length>1?'공동 승리':'승리'}!`;}
 function resultMarkup() {

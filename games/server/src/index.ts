@@ -202,6 +202,7 @@ wss.on("connection", socket => {
       if (message.type === "SHOT" && room instanceof AlkkagiRoom) room.fire(peer, message);
       else if (message.type === "MARBLE_READY" && room instanceof AugmentMarbleRoom) room.setReady(peer, message);
       else if (message.type === "MARBLE_ACTION" && room instanceof AugmentMarbleRoom) room.handle(peer, message);
+      else if (message.type === "MARBLE_PRESENTED" && room instanceof AugmentMarbleRoom) room.presentedBy(peer, message);
       else if (message.type === "RUMMI_ACTION" && room instanceof RummikubRoom) room.handle(peer, message);
       else if (message.type === "MOVE" && (room instanceof OmokRoom || room instanceof OthelloRoom)) room.move(peer, message);
       else if (message.type === "INPUT") room!.input(peer, message);

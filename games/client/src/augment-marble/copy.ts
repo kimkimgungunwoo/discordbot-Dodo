@@ -1,6 +1,6 @@
 import { incomeWithoutGlass } from "../../../shared/augment-marble-effects";
 import { type AugmentDefinition, type EffectKind, TIER_LABELS } from "../../../shared/augment-marble-augments";
-import { BOARD, SALARY, BONUS, rent, rentPayment, type Game } from "../../../shared/augment-marble";
+import { BOARD, SALARY, BONUS, rent, rentPayment, definitionsActive, type Game } from "../../../shared/augment-marble";
 
 const timing: Partial<Record<EffectKind, string>> = {
   copernicus:"통행료 정산 시",bread:"최종 도착 시",pacemaker:"상대의 자기 차례 종료 시",guillotine:"획득 시 · 4라운드마다 지정",collector:"획득 시 · 모든 현금 정산 후",devour:"최종 도착 시",goblin:"매 주사위 이동 후",redistribution:"획득 즉시 · 1회",mind_control:"주사위 결과 확인 후",dirge:"출발점 도착·통과 시",leech:"매 자기 차례 시작 시",sniper:"매 자기 차례 시작 시",silent:"획득 후 경기 끝까지",shaco:"획득 시 분신 생성 · 이동·생존 선택",adamant:"보유 중 항상",landmark_takeover:"랜드마크 도착 후 인수 시",unfair_trade:"매 투척 결과 확인 후 · 선택 사용",direction:"굴린 뒤 · 이동 방향 선택", force:"굴리기 전 선택", reroll:"굴린 뒤 · 이동 전", selective_double:"매 차례 첫 투척 전", double_lover:"투척 시 자동", mimic:"굴리기 대신 선택", subsidy:"이동 대신 월급 선택",
@@ -38,7 +38,7 @@ export function statusLabels(g: Game, seat: number) {
   if (s.restrictWholeTurn) labels.push("신지드 · 이번 차례 주사위 제한");
   const e=g.world?.players[seat];
   if(e){if(e.passCoupons)labels.push(`하이패스 쿠폰 ${e.passCoupons}`);if(e.autoPass)labels.push(`자동 면제 ${e.autoPass}`);if(e.homeStones)labels.push(`귀환석 ${e.homeStones}`);if(e.extraCoupons)labels.push(`한번더 쿠폰 ${e.extraCoupons}`);if(e.sleep)labels.push(`수면 ${e.sleep}회`);if(e.disabledUntil>g.round)labels.push(`무능력 ${e.disabledUntil-g.round}라운드`);if(e.vulnerable)labels.push(`다음 손실 2배 ${e.vulnerable}회`);if(e.unpaidSalary)labels.push(`임금체불 ${e.unpaidSalary}회`);if(e.halfSalary)labels.push(`월급 반감 ${e.halfSalary}회`);if(e.lostThisTurn||e.lostDice)labels.push("주사위 분실");if(e.reverseThisTurn||e.reverseMoves)labels.push("역주행");if(e.overspendUntil>=g.abilities.ownerTurns[seat]&&e.overspendUntil>0)labels.push("과소비 · 통행료 1.5배");}
-  if (s.revival) labels.push(s.revival.consumed ? "부활 사용 완료" : `부활 대기 · ${TIER_LABELS[(["silver", "gold", "prism"] as const)[s.revival.tier]]}`);
+  if (s.revival) labels.push(s.revival.consumed ? "부활 사용 완료" : !definitionsActive(g, seat) ? "부활 봉인 · 증강 무효" : `부활 대기 · ${TIER_LABELS[(["silver", "gold", "prism"] as const)[s.revival.tier]]}`);
   return labels;
 }
 export function displayedRent(g: Game, index: number, visitor?: number) {
