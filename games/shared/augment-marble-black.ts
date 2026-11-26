@@ -28,7 +28,7 @@ function eliminate(g:Game,seat:number,actor:number,absorb:boolean,attack:BlackId
  p.cash=0;p.bankrupt=true;clearLand(g,seat);delete blackState(g).clones[seat];g.abilities.marks=g.abilities.marks.filter(m=>m.owner!==seat);
  blackEmit(g,actor,attack,`${seat+1}P 처형${absorb?` · ${cash}만원 흡수`:''}`,seat,absorb?cash:0);
 }
-export function survivalOptions(g:Game,seat:number,bypass=false){const options:number[]=[];if(!bypass&&!g.players[seat].liquidationRescueUsed)options.push(0);if(!bypass&&!(g.black?.silenced&&!hasBlack(g,seat,'silent')&&!protectedBlack(g,seat))&&(g.world.players[seat].disabledUntil??0)<=g.round&&g.abilities.statuses[seat].revivals?.some(r=>!r.consumed))options.push(1);if(blackState(g).clones[seat])options.push(2,3);return options}
+export function survivalOptions(g:Game,seat:number,bypass=false){const options:number[]=[];if(!bypass&&!(g.black?.silenced&&!hasBlack(g,seat,'silent')&&!protectedBlack(g,seat))&&(g.world.players[seat].disabledUntil??0)<=g.round&&g.abilities.statuses[seat].revivals?.some(r=>!r.consumed))options.push(1);if(blackState(g).clones[seat])options.push(2,3);return options}
 export function requestExecution(g:Game,actor:number,target:number,id:'collector'|'devour'|'pacemaker'|'guillotine',initial=false,absorb=true){
  if(g.phase==='finished'||g.players[target].bankrupt)return;if(protectedBlack(g,target)){reportAdamantBlock(g,target,id==='collector'?'징수의 총 · 처형':id==='devour'?'꿀꺽 · 처형':AUGMENT_CATALOG.find(a=>a.id===id)?.name??id,actor);return;}
  if(id==='collector'){initial=false;const safe=expansion(g).collectorSafe;if(!safe.includes(target))safe.push(target);}
@@ -98,9 +98,8 @@ export function blackChoice(g:Game,input:Action,random:()=>number,catalog:readon
  const state=blackState(g),p=state.pending[0];if(!p)throw new Error('선택할 블랙 효과가 없습니다.');
  if(p.kind==='guillotine'){if(!p.options?.includes(input.option??-99))throw new Error('집행 라인을 선택해주세요.');if(input.option!==-1)expansion(g).guillotines.push({seat:p.seat,line:input.option!,round:g.round+4});state.pending.shift();return;}
  if(p.kind==='survival'){
-  const option=input.option;if(option===undefined||!p.options?.includes(option))throw new Error('사용할 생존 수단을 선택해주세요.');
-  if(option===0){const cash=g.players[p.seat].cash,proceeds=cash+BOARD.reduce((sum,t)=>sum+(g.properties[t.index].owner===p.seat?saleProceeds(g,t.index,p.seat):0),0);bankCashChange(g,p.seat,proceeds-cash);if(p.creditor!==undefined&&p.creditor!==null)g.players[p.creditor].cash+=proceeds;else bankCashChange(g,p.seat,-proceeds);clearLand(g,p.seat);g.players[p.seat].cash=0;g.players[p.seat].liquidationRescueUsed=true;}
-  else if(option===1){if(!revivePlayer(g,p.seat))throw new Error('사용할 부활이 없습니다.');clearLand(g,p.seat);}
+  const option=input.option;if(option===undefined||!p.options?.includes(option)||option===0)throw new Error('사용할 생존 수단을 선택해주세요.');
+  if(option===1){if(!revivePlayer(g,p.seat))throw new Error('사용할 부활이 없습니다.');clearLand(g,p.seat);}
   else{const clone=state.clones[p.seat];if(!clone)throw new Error('희생할 개체가 없습니다.');if(option===2){g.players[p.seat].position=clone.position;state.mainIsClone.push(p.seat);if(state.entityFrame?.seat===p.seat){state.entityFrame.position=clone.position;state.entityFrame.rest=clone.rest;state.entityFrame.skip=clone.skip;state.entityFrame.restricted=clone.restricted;}}delete state.clones[p.seat];blackEmit(g,p.seat,'shaco',`${option===2?'본체':'분신'} 희생 · 처형 방어`)}
   state.pending.shift();if(!state.pending.length){checkWin(g);if(g.phase!=='finished'&&g.abilities.movement&&!g.players[g.turn].bankrupt){advanceMovement(g,random,catalog);return;}if(g.phase==='roll'&&g.abilities.startedTurn!==g.turnId)startTurn(g);}return;
  }

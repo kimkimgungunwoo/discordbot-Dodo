@@ -130,7 +130,7 @@ export function arrive(g: Game, random: () => number = Math.random) {
   note(g, `${g.turn + 1}P ${tile.name} 도착`);
   if (tile.kind === "city") {
     if (property.owner === null) g.phase = "buy";
-    else if (property.owner === g.turn) g.phase = property.purchasedTurn===g.turnId&&player.laps<2?"end":"build";
+    else if (property.owner === g.turn) g.phase = property.purchasedTurn===g.turnId&&player.laps<1?"end":"build";
     else {
       const quote = rentQuote(g,tile.index,g.turn),toll=freeBread?0:quote.amount;reportTollProtection(g,tile.index,g.turn,toll);
       property.festival=0;
@@ -307,11 +307,11 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
     }
   } else if (input.action === "buy") {
     requirePhase("buy"); if (player.cash < purchaseCost(g, index)) throw new Error("구매할 현금이 부족합니다.");
-    const cost = purchaseCost(g, index); consumeLoss(g,g.turn,cost);player.cash -= cost; reportDiscount(g, g.turn, "realtor", BOARD[index].price, cost); cashback(g, g.turn, cost); property.owner = g.turn;property.revisitBoost=0; property.landmark=false;property.buildings=0;delete property.builtTurn;if(power(g,g.turn,"first_spade")){property.buildings=1;property.builtTurn=g.turnId;reportMoney(g,g.turn,"first_spade",`첫 삽 · ${BOARD[index].name} 별장 무료 건설`,construction(index,0).cost);} property.purchasedTurn=g.turnId;delete g.landmarkVisit;refreshGamble(g, g.turn, index, random); g.phase = player.laps>=2?"build":"end"; note(g, `${g.turn + 1}P ${BOARD[index].name} 구매`); checkWin(g);
+    const cost = purchaseCost(g, index); consumeLoss(g,g.turn,cost);player.cash -= cost; reportDiscount(g, g.turn, "realtor", BOARD[index].price, cost); cashback(g, g.turn, cost); property.owner = g.turn;property.revisitBoost=0; property.landmark=false;property.buildings=0;delete property.builtTurn;if(power(g,g.turn,"first_spade")){property.buildings=1;property.builtTurn=g.turnId;reportMoney(g,g.turn,"first_spade",`첫 삽 · ${BOARD[index].name} 별장 무료 건설`,construction(index,0).cost);} property.purchasedTurn=g.turnId;delete g.landmarkVisit;refreshGamble(g, g.turn, index, random); g.phase = player.laps>=1?"build":"end"; note(g, `${g.turn + 1}P ${BOARD[index].name} 구매`); checkWin(g);
   } else if (input.action === "build") {
     requirePhase("build"); const selected=input.buildings??[input.building!];
     if(!Array.isArray(selected)||!selected.length||selected.length>3||new Set(selected).size!==selected.length)throw new Error("건물을 선택하세요.");
-    if((property.purchasedTurn===g.turnId&&player.laps<2)||property.owner!==g.turn||property.landmark||selected.some(b=>!Number.isInteger(b)||b<0||b>=BUILDINGS.length||(property.buildings&(1<<b))))throw new Error("건설할 수 없는 건물입니다.");
+    if((property.purchasedTurn===g.turnId&&player.laps<1)||property.owner!==g.turn||property.landmark||selected.some(b=>!Number.isInteger(b)||b<0||b>=BUILDINGS.length||(property.buildings&(1<<b))))throw new Error("건설할 수 없는 건물입니다.");
     const total=buildSelectionCost(g,index,selected).cash;if(player.cash<total)throw new Error("건설할 현금이 부족합니다.");
     for(const b of selected){const quote=constructionQuote(g,g.turn,construction(index,b).cost,!!power(g,g.turn,"free_build")),cost=quote.cash;payConstruction(g,g.turn,quote);if(power(g,g.turn,"free_build"))reportMoney(g,g.turn,"free_build",`건축의 거장 · ${construction(index,b).name} 무료 건설`,construction(index,b).cost);else reportDiscount(g,g.turn,"builder",construction(index,b).cost,quote.total);cashback(g,g.turn,cost);property.buildings|=1<<b;note(g,`${BOARD[index].name} ${construction(index,b).name} 건설`);}property.builtTurn=g.turnId;delete g.landmarkVisit;
   } else if (input.action === "takeover") {
@@ -321,7 +321,7 @@ function mutateAction(g: Game, input: Action, random: () => number = Math.random
     reportDiscount(g,g.turn,"negotiator",takeoverBase(g,index),cost);
     const receipt=incomeAmount(g,property.owner,principal);
     if(receipt>principal)reportMoney(g,property.owner,power(g,property.owner,"investor")?"investor":"glass_cannon",`인수 수입 · ${principal} → ${receipt}만원`,receipt-principal);
-    consumeLoss(g,g.turn,cost);transferMoney(g,g.turn,property.owner,cost,principal,receipt); property.owner = g.turn;property.purchasedTurn=g.turnId;delete g.landmarkVisit;for(const gambles of g.abilities.gambles)delete gambles[index];refreshGamble(g,g.turn,index,random); cashback(g, g.turn, cost); g.phase = player.laps>=2?"build":"end"; note(g, `${g.turn + 1}P ${BOARD[index].name} 인수 · ${cost}만원`); checkWin(g);
+    consumeLoss(g,g.turn,cost);transferMoney(g,g.turn,property.owner,cost,principal,receipt); property.owner = g.turn;property.purchasedTurn=g.turnId;delete g.landmarkVisit;for(const gambles of g.abilities.gambles)delete gambles[index];refreshGamble(g,g.turn,index,random); cashback(g, g.turn, cost); g.phase = player.laps>=1?"build":"end"; note(g, `${g.turn + 1}P ${BOARD[index].name} 인수 · ${cost}만원`); checkWin(g);
   } else if (input.action === "sell") {
     requirePhase("debt"); const tile = input.tile;
     if (!Number.isInteger(tile) || tile! < 0 || tile! >= BOARD.length || g.properties[tile!].owner !== g.turn) throw new Error("내 지역만 매각할 수 있습니다.");
@@ -349,7 +349,7 @@ export function automaticContinuation(g:Game):Action|null {
  if(coupon)return null;
  if(g.phase==="buy"&&p.cash>=purchaseCost(g,tile))return null;
  if(g.phase==="takeover"&&!property.landmark&&property.owner!==null&&property.owner!==seat&&p.cash>=takeoverCost(g,tile))return null;
- if(g.phase==="build"&&property.owner===seat&&(property.purchasedTurn!==g.turnId||p.laps>=2)&&!property.landmark){
+ if(g.phase==="build"&&property.owner===seat&&(property.purchasedTurn!==g.turnId||p.laps>=1)&&!property.landmark){
   if(BUILDINGS.some((_,i)=>!(property.buildings&(1<<i))&&p.cash>=buildCost(g,tile,i)))return null;
   if(landmarkAvailable(g,tile)&&p.cash>=landmarkCost(g,tile))return null;
  }
@@ -692,15 +692,11 @@ function settleForcedPayment(g: Game, seat: number, amount: number, creditor: nu
   settlePayment(g,seat,amount,creditor,split);
 
 }
-/** One liquidation rescue per player, independent of owned revival charges. */
+/** Insolvency requires a survival ability; ordinary asset sales remain available for payable debt. */
 function resolveInsolvency(g:Game,seat:number,creditor:number|null,split:PaymentSplit={}){
  if(blackInsolvency(g,seat,creditor))return true;
  const p=g.players[seat];
  const clearAssets=()=>{g.properties.forEach((prop,i)=>{if(prop.owner===seat)g.properties[i]={owner:null,buildings:0,locust:prop.locust};});};
- if(!p.liquidationRescueUsed){
-  const liquidation=assets(g,seat);bankCashChange(g,seat,liquidation-p.cash);settlePayment(g,seat,liquidation,creditor,split);clearAssets();p.cash=0;p.liquidationRescueUsed=true;
-  note(g,`${seat+1}P 매각 구제 · 1회 사용, 남은 채무 면제`);return true;
- }
  if(revivePlayer(g,seat)){clearAssets();return true;}
  const liquidation=assets(g,seat);bankCashChange(g,seat,liquidation-p.cash);settlePayment(g,seat,liquidation,creditor,split);clearAssets();p.cash=0;p.bankrupt=true;
  g.abilities.marks=g.abilities.marks.filter(m=>m.owner!==seat);note(g,`${seat+1}P 파산 · 남은 구제·부활 없음`);return false;
